@@ -1,0 +1,1939 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>TrailGauge: Off-Road Inclinometer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Share+Tech+Mono&family=Exo+2:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#0a0c0f; --bg2:#111418; --card:#161b22; --card2:#1c2330;
+  --border:#2a3342;
+  --accent:#3ddc97; --aglow:rgba(61,220,151,0.18);
+  --warn:#f0b429;   --wglow:rgba(240,180,41,0.22);
+  --danger:#ef4444; --dglow:rgba(239,68,68,0.28);
+  --sky:#38bdf8;
+  --txt:#e2e8f0; --txt2:#8899aa; --txt3:#4a5568;
+  --pitch:#3ddc97; --roll:#38bdf8;
+  --fd:'Rajdhani',sans-serif; --fm:'Share Tech Mono',monospace; --fb:'Exo 2',sans-serif;
+  --tr:0.3s ease;
+  --st:env(safe-area-inset-top,0px); --sb:env(safe-area-inset-bottom,0px);
+}
+body.light{
+  --bg:#f0f4f8; --bg2:#e2e8f0; --card:#fff; --card2:#f7fafc;
+  --border:#cbd5e0; --txt:#1a202c; --txt2:#4a5568; --txt3:#a0aec0;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--txt);
+  font-family:var(--fb);-webkit-font-smoothing:antialiased;touch-action:none;
+  user-select:none;-webkit-user-select:none}
+#app{width:100vw;height:100vh;height:100dvh;display:flex;flex-direction:column;
+  padding-top:var(--st);padding-bottom:var(--sb);background:var(--bg);
+  transition:background var(--tr),color var(--tr);animation:fadeUp .4s ease both}
+@keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+
+#hdr{display:flex;align-items:center;justify-content:space-between;padding:8px 16px;
+  background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0;z-index:10}
+.brand{font-family:var(--fd);font-size:20px;font-weight:700;color:var(--accent);
+  letter-spacing:1px;text-transform:uppercase}
+.sub{font-family:var(--fm);font-size:9px;color:var(--txt2);letter-spacing:1px;
+  text-transform:uppercase;margin-left:8px}
+#hctl{display:flex;align-items:center;gap:8px}
+.ibtn{background:var(--card);border:1px solid var(--border);color:var(--txt2);
+  width:34px;height:34px;border-radius:8px;display:flex;align-items:center;
+  justify-content:center;cursor:pointer;font-size:14px;font-family:var(--fm);
+  font-weight:600;transition:all var(--tr);-webkit-tap-highlight-color:transparent}
+.ibtn:active{transform:scale(.92)}
+.ibtn.on{border-color:var(--accent);color:var(--accent)}
+
+#main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0}
+
+#gsec{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:8px;gap:8px;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
+
+#readouts{display:flex;gap:8px;width:100%;max-width:480px}
+.rcard{flex:1;background:var(--card);border:1px solid var(--border);border-radius:12px;
+  padding:8px 12px;display:flex;flex-direction:column;align-items:center;
+  position:relative;overflow:hidden;transition:border-color var(--tr),box-shadow var(--tr)}
+.rcard::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;border-radius:2px 2px 0 0}
+.rcard.p::before{background:var(--pitch)}
+.rcard.r::before{background:var(--roll)}
+.rcard.ws{border-color:var(--warn);box-shadow:0 0 12px var(--wglow)}
+.rcard.ds{border-color:var(--danger);box-shadow:0 0 16px var(--dglow);animation:dp .8s ease-in-out infinite}
+@keyframes dp{0%,100%{box-shadow:0 0 16px var(--dglow)}50%{box-shadow:0 0 28px rgba(239,68,68,.45)}}
+.rlbl{font-family:var(--fm);font-size:9px;color:var(--txt2);letter-spacing:2px;text-transform:uppercase;margin-bottom:2px}
+.rval{font-family:var(--fd);font-size:32px;font-weight:700;line-height:1;letter-spacing:-1px;transition:color var(--tr)}
+.rcard.p .rval{color:var(--pitch)}
+.rcard.r .rval{color:var(--roll)}
+.rcard.ws .rval{color:var(--warn)!important}
+.rcard.ds .rval{color:var(--danger)!important}
+.runit{font-family:var(--fm);font-size:10px;color:var(--txt3);margin-top:1px}
+
+#gwrap{position:relative;flex-shrink:0;display:flex;align-items:flex-start;justify-content:center}
+#hc,#ac{display:block;border-radius:50%;
+  box-shadow:0 0 0 3px var(--border),0 0 0 5px var(--bg2),0 0 28px rgba(61,220,151,.1);
+  position:absolute;top:0;left:0;transition:opacity .35s ease}
+#ac{opacity:0;pointer-events:none}
+#gwrap.am #hc{opacity:0;pointer-events:none}
+#gwrap.am #ac{opacity:1;pointer-events:all}
+#mbtn{position:absolute;bottom:-15px;left:50%;transform:translateX(-50%);
+  background:var(--card2);border:1px solid var(--border);border-radius:20px;
+  padding:4px 16px;font-family:var(--fm);font-size:10px;color:var(--txt2);
+  letter-spacing:1px;text-transform:uppercase;cursor:pointer;white-space:nowrap;
+  z-index:5;transition:all var(--tr);-webkit-tap-highlight-color:transparent}
+#mbtn:active{transform:translateX(-50%) scale(.94)}
+#mbtn.am{border-color:var(--accent);color:var(--accent)}
+
+#gps{display:flex;gap:6px;width:100%;max-width:480px;flex-wrap:wrap}
+.gchip{background:var(--card);border:1px solid var(--border);border-radius:8px;
+  padding:5px 10px;display:flex;align-items:center;gap:5px;flex:1;min-width:0}
+.gico{font-size:11px;flex-shrink:0;opacity:.7}
+.gdata{display:flex;flex-direction:column;min-width:0}
+.glbl{font-family:var(--fm);font-size:7px;color:var(--txt3);letter-spacing:1px;text-transform:uppercase}
+.gval{font-family:var(--fm);font-size:11px;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#nogps{display:none;font-family:var(--fm);font-size:10px;color:var(--warn);text-align:center;padding:4px}
+#nogps.show{display:block}
+
+#zbwrap{display:flex;flex-direction:column;align-items:center;gap:4px;margin-top:14px}
+#zbtn{background:var(--card);border:2px solid var(--border);color:var(--txt2);
+  padding:10px 32px;border-radius:50px;font-family:var(--fd);font-size:14px;
+  font-weight:600;letter-spacing:2px;text-transform:uppercase;cursor:pointer;
+  transition:all var(--tr);-webkit-tap-highlight-color:transparent;position:relative;overflow:hidden}
+#zbtn::after{content:'';position:absolute;inset:0;background:var(--accent);transform:scaleX(0);
+  transform-origin:left;border-radius:inherit;transition:transform 1.5s linear;opacity:.18}
+#zbtn.hld::after{transform:scaleX(1)}
+#zbtn.hld{border-color:var(--accent);color:var(--accent)}
+#zbtn.zd{border-color:var(--accent);color:var(--accent);box-shadow:0 0 12px var(--aglow)}
+#zhint{font-family:var(--fm);font-size:9px;color:var(--txt3);letter-spacing:1px;text-transform:uppercase}
+
+#tripbar{display:flex;flex-direction:column;align-items:center;gap:6px;margin-top:6px;width:100%;max-width:480px}
+#tripBtn{background:var(--card);border:2px solid var(--border);color:var(--txt2);
+  padding:7px 22px;border-radius:50px;font-family:var(--fd);font-size:12px;
+  font-weight:600;letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;
+  transition:all var(--tr);-webkit-tap-highlight-color:transparent}
+#tripBtn:active{transform:scale(.96)}
+#tripBtn.rec{border-color:var(--danger);color:var(--danger);
+  animation:recPulse 1.4s ease-in-out infinite}
+@keyframes recPulse{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,0)}50%{box-shadow:0 0 12px rgba(239,68,68,.4)}}
+#tripLive{display:none;gap:10px;align-items:center;justify-content:center;
+  background:var(--card);border:1px solid var(--border);border-radius:10px;
+  padding:5px 12px;width:100%}
+#tripLive.show{display:flex}
+.tlive{display:flex;flex-direction:column;align-items:center;gap:1px;flex:1}
+.tllbl{font-family:var(--fm);font-size:7px;color:var(--txt3);letter-spacing:1px;text-transform:uppercase}
+.tlval{font-family:var(--fd);font-size:14px;font-weight:600;color:var(--accent);line-height:1}
+
+#wx{flex-shrink:0;background:var(--bg2);border-top:1px solid var(--border);display:flex;flex-direction:column}
+#wxhdr{display:flex;align-items:center;justify-content:space-between;padding:6px 12px 4px;flex-wrap:wrap;gap:4px}
+#wstat{display:flex;align-items:center;gap:6px}
+#wdot{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 6px var(--accent);flex-shrink:0}
+#wdot.stale{background:var(--warn);box-shadow:0 0 6px var(--warn)}
+#wdot.off{background:var(--danger);box-shadow:0 0 6px var(--danger)}
+#wlbl{font-family:var(--fm);font-size:9px;color:var(--txt2);letter-spacing:1px;text-transform:uppercase}
+#ctbox{display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:4px 10px}
+#ctime{font-family:var(--fm);font-size:13px;color:var(--txt);letter-spacing:1px}
+#cdot{width:3px;height:3px;border-radius:50%;background:var(--border)}
+#ctmp{font-family:var(--fd);font-size:14px;font-weight:600;color:var(--accent)}
+#suntimes{display:flex;gap:8px;align-items:center}
+.suni{display:flex;align-items:center;gap:3px;font-family:var(--fm);font-size:9px;color:var(--txt2)}
+#fwarn{display:none;margin:0 12px 6px;background:rgba(240,180,41,.12);border:1px solid var(--warn);
+  border-radius:8px;padding:5px 10px;font-family:var(--fm);font-size:10px;color:var(--warn);text-align:center}
+#fwarn.show{display:block}
+#hscroll{display:flex;gap:6px;overflow-x:auto;padding:4px 12px 8px;
+  scroll-behavior:smooth;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+#hscroll::-webkit-scrollbar{display:none}
+.hcard{flex-shrink:0;background:var(--card);border:1px solid var(--border);border-radius:10px;
+  padding:6px 10px;display:flex;flex-direction:column;align-items:center;gap:3px;min-width:60px;
+  transition:border-color var(--tr);animation:fadeUp .3s ease both}
+.hcard.cur{border-color:var(--accent);box-shadow:0 0 8px var(--aglow)}
+.hcard.ww{border-color:var(--warn)} .hcard.dw{border-color:var(--danger)}
+.htime{font-family:var(--fm);font-size:9px;color:var(--txt3)}
+.hico{font-size:14px;line-height:1}
+.htemp{font-family:var(--fd);font-size:15px;font-weight:600;color:var(--txt)}
+.hprc{font-family:var(--fm);font-size:8px;color:var(--sky)}
+.hwnd{font-family:var(--fm);font-size:8px;color:var(--txt3);display:inline-flex;align-items:center;gap:1px}
+.warr{display:inline-block;font-size:9px;line-height:1;color:var(--sky);transform-origin:center}
+
+@media (orientation:landscape){
+#main{flex-direction:row}
+#gsec{flex:1;min-width:0;padding:6px 8px;gap:6px;justify-content:center;align-items:center}
+#readouts{max-width:none;width:100%}
+.rval{font-size:26px}
+#gps{max-width:none;width:100%}
+.gval{font-size:10px}
+#wx{width:220px;flex-shrink:0;border-top:none;border-left:1px solid var(--border);overflow:hidden}
+#wxhdr{padding:6px 10px 4px}
+#ctbox{padding:3px 8px} #ctime{font-size:12px} #ctmp{font-size:13px}
+#hscroll{flex-direction:column;overflow-x:hidden;overflow-y:auto;flex:1;padding:4px 8px 8px;gap:4px}
+.hcard{flex-direction:row;min-width:unset;width:100%;justify-content:space-between;padding:5px 8px;flex-shrink:0}
+}
+@media (min-width:768px) and (orientation:portrait){
+.brand{font-size:24px} .rval{font-size:38px} #zbtn{padding:12px 48px;font-size:16px}
+}
+@media (min-width:900px) and (orientation:landscape){
+#wx{width:260px} .rval{font-size:30px}
+}
+
+#stp{position:fixed;inset:0;z-index:100;display:flex;align-items:flex-end;
+  background:rgba(0,0,0,.65);backdrop-filter:blur(4px);opacity:0;pointer-events:none;transition:opacity .3s ease}
+#stp.open{opacity:1;pointer-events:all}
+#stsh{width:100%;background:var(--card);border-radius:20px 20px 0 0;border-top:1px solid var(--border);
+  padding:16px 20px calc(20px + var(--sb));transform:translateY(100%);
+  transition:transform .35s cubic-bezier(.34,1.56,.64,1)}
+#stp.open #stsh{transform:translateY(0)}
+#sthdl{width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 16px}
+#sttl{font-family:var(--fd);font-size:18px;font-weight:700;color:var(--txt);letter-spacing:1px;
+  text-transform:uppercase;margin-bottom:16px}
+.srow{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border)}
+.srow:last-child{border-bottom:none}
+.sinfo{display:flex;flex-direction:column;gap:2px}
+.sname{font-family:var(--fb);font-size:14px;font-weight:600;color:var(--txt)}
+.sdesc{font-family:var(--fm);font-size:10px;color:var(--txt2)}
+.tgl{position:relative;width:48px;height:26px;flex-shrink:0}
+.tgl input{opacity:0;width:0;height:0}
+.tsl{position:absolute;inset:0;background:var(--border);border-radius:26px;cursor:pointer;transition:background .3s}
+.tsl::before{content:'';position:absolute;width:20px;height:20px;left:3px;top:3px;background:#fff;
+  border-radius:50%;transition:transform .3s cubic-bezier(.34,1.56,.64,1);box-shadow:0 1px 4px rgba(0,0,0,.3)}
+.tgl input:checked+.tsl{background:var(--accent)}
+.tgl input:checked+.tsl::before{transform:translateX(22px)}
+.thrwrap{display:flex;align-items:center;gap:10px;flex:1;justify-content:flex-end}
+.thrval{font-family:var(--fm);font-size:13px;color:var(--accent);min-width:36px;text-align:right}
+input[type=range]{-webkit-appearance:none;width:100px;height:4px;background:var(--border);border-radius:2px;outline:none;cursor:pointer}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:var(--accent);cursor:pointer}
+
+@keyframes cflash{
+0%{box-shadow:0 0 0 3px var(--border),0 0 0 5px var(--bg2),0 0 28px rgba(61,220,151,.1)}
+50%{box-shadow:0 0 0 3px var(--accent),0 0 0 7px rgba(61,220,151,.3),0 0 50px rgba(61,220,151,.4)}
+100%{box-shadow:0 0 0 3px var(--border),0 0 0 5px var(--bg2),0 0 28px rgba(61,220,151,.1)}
+}
+.calib{animation:cflash .6s ease!important}
+
+/* Shared modal styling for trip panels */
+#tlp,#snp,#tdp,#rcp{position:fixed;inset:0;z-index:101;display:flex;align-items:flex-end;
+  background:rgba(0,0,0,.65);backdrop-filter:blur(4px);opacity:0;pointer-events:none;transition:opacity .3s ease}
+#tdp{z-index:102} /* trip detail sits above the trips list when both are open */
+#snp{z-index:103} /* save modal sits above all — it owns unsaved data */
+#rcp{z-index:104} /* recovery modal beats everything — first thing user sees on load */
+#tlp.open,#snp.open,#tdp.open,#rcp.open{opacity:1;pointer-events:all}
+#tlsh,#snsh,#tdsh,#rcsh{width:100%;background:var(--card);border-radius:20px 20px 0 0;border-top:1px solid var(--border);
+  padding:16px 20px calc(20px + var(--sb));transform:translateY(100%);
+  transition:transform .35s cubic-bezier(.34,1.56,.64,1);
+  max-height:80vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+#tlp.open #tlsh,#snp.open #snsh,#tdp.open #tdsh,#rcp.open #rcsh{transform:translateY(0)}
+.mhdl{width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 16px}
+.mtl{font-family:var(--fd);font-size:18px;font-weight:700;color:var(--txt);letter-spacing:1px;
+  text-transform:uppercase;margin-bottom:16px;display:flex;align-items:baseline;justify-content:space-between}
+.mtlsub{font-family:var(--fm);font-size:10px;color:var(--txt2);letter-spacing:1px;font-weight:400}
+.tripItem{background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;
+  margin-bottom:8px;cursor:pointer;transition:border-color var(--tr);-webkit-tap-highlight-color:transparent}
+.tripItem:active{transform:scale(.98)}
+.tripItem .tname{font-family:var(--fb);font-size:14px;font-weight:600;color:var(--txt);margin-bottom:3px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tripItem .tmeta{font-family:var(--fm);font-size:10px;color:var(--txt2);display:flex;gap:10px;flex-wrap:wrap}
+.tripItem .tmeta span{white-space:nowrap}
+#snName{width:100%;background:var(--bg2);border:1px solid var(--border);color:var(--txt);
+  font-family:var(--fb);font-size:14px;padding:10px 12px;border-radius:8px;outline:none;
+  transition:border-color var(--tr)}
+#snName:focus{border-color:var(--accent)}
+.modalbtn{flex:1;padding:10px;border-radius:8px;font-family:var(--fd);font-size:13px;font-weight:600;
+  letter-spacing:1px;text-transform:uppercase;cursor:pointer;border:1px solid var(--border);
+  background:transparent;color:var(--txt2);transition:all var(--tr);-webkit-tap-highlight-color:transparent}
+.modalbtn:active{transform:scale(.97)}
+.modalbtn.primary{background:var(--accent);color:#000;border-color:var(--accent)}
+.modalbtn.danger{color:var(--danger);border-color:var(--danger)}
+.modalbtn.ghost:hover{border-color:var(--txt2)}
+.tdStat{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);
+  font-family:var(--fm);font-size:12px}
+.tdStat:last-of-type{border-bottom:none}
+.tdStat .lbl{color:var(--txt2);text-transform:uppercase;letter-spacing:1px;font-size:10px}
+.tdStat .val{color:var(--txt);font-family:var(--fd);font-size:14px;font-weight:600}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hdr">
+    <div style="display:flex;align-items:baseline">
+      <span class="brand">TrailGauge</span>
+      <span class="sub">Off-Road Inclinometer</span>
+    </div>
+    <div id="hctl">
+      <button class="ibtn" id="tripsBtn" title="Trips">📋</button>
+      <button class="ibtn" id="themeBtn">☀️</button>
+      <button class="ibtn" id="unitBtn">°F</button>
+      <button class="ibtn" id="stBtn">⚙️</button>
+    </div>
+  </div>
+
+  <div id="main">
+    <div id="gsec">
+      <div id="readouts">
+        <div class="rcard p" id="pcard">
+          <div class="rlbl">Pitch</div>
+          <div class="rval" id="pval">0.0°</div>
+          <div class="runit"><span id="pgrade">0%</span> · fore / aft</div>
+        </div>
+        <div class="rcard r" id="rcard_el">
+          <div class="rlbl">Roll</div>
+          <div class="rval" id="rval_el">0.0°</div>
+          <div class="runit">left / right</div>
+        </div>
+      </div>
+
+      <div id="gwrap">
+        <canvas id="hc"></canvas>
+        <canvas id="ac"></canvas>
+        <button id="mbtn">⬡ Horizon</button>
+      </div>
+
+      <div id="gps">
+        <div class="gchip"><span class="gico">📍</span><div class="gdata"><span class="glbl">Coords</span><span class="gval" id="gcoords">Locating…</span></div></div>
+        <div class="gchip"><span class="gico">⛰️</span><div class="gdata"><span class="glbl">Elevation</span><span class="gval" id="gelev">—</span></div></div>
+        <div class="gchip"><span class="gico">🧭</span><div class="gdata"><span class="glbl">Heading</span><span class="gval" id="ghead">—</span></div></div>
+      </div>
+      <div id="nogps">⚠ GPS unavailable — enable location access for full features</div>
+
+      <div id="zbwrap">
+        <button id="zbtn">ZERO / CALIBRATE</button>
+        <span id="zhint">Hold 1.5s to set reference plane</span>
+      </div>
+
+      <div id="tripbar">
+        <button id="tripBtn">▶ START TRIP</button>
+        <div id="tripLive">
+          <div class="tlive"><span class="tllbl">Dist</span><span class="tlval" id="tlDist">0.0 mi</span></div>
+          <div class="tlive"><span class="tllbl">Time</span><span class="tlval" id="tlTime">0:00</span></div>
+          <div class="tlive"><span class="tllbl">Gain</span><span class="tlval" id="tlGain">0 ft</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="wx">
+      <div id="wxhdr">
+        <div id="wstat"><div id="wdot"></div><span id="wlbl">Live Weather</span></div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <div id="suntimes">
+            <span class="suni">🌅 <span id="srise">—</span></span>
+            <span class="suni">🌇 <span id="sset">—</span></span>
+            <span class="suni" id="dlcount" style="display:none"></span>
+          </div>
+          <div id="ctbox">
+            <span id="ctime">--:--</span>
+            <div id="cdot"></div>
+            <span id="ctmp">—</span>
+          </div>
+        </div>
+      </div>
+      <div id="fwarn">⚠ FREEZE/THAW CONDITIONS — Icy or muddy surface possible</div>
+      <div id="hscroll">
+        <div style="display:flex;align-items:center;justify-content:center;width:100%;padding:14px;color:var(--txt3);font-family:var(--fm);font-size:11px">Acquiring location…</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="stp">
+  <div id="stsh">
+    <div id="sthdl"></div>
+    <div id="sttl">Settings</div>
+    <div class="srow">
+      <div class="sinfo"><span class="sname">Tilt Alarm</span><span class="sdesc">Sound + vibration when threshold exceeded</span></div>
+      <label class="tgl"><input type="checkbox" id="alarmTgl"><span class="tsl"></span></label>
+    </div>
+    <div class="srow">
+      <div class="sinfo"><span class="sname">Alarm Threshold</span><span class="sdesc">Trigger angle for pitch or roll</span></div>
+      <div class="thrwrap">
+        <input type="range" id="thrSlider" min="10" max="45" value="30" step="1">
+        <span class="thrval" id="thrDisp">30°</span>
+      </div>
+    </div>
+    <div class="srow">
+      <div class="sinfo"><span class="sname">Vibration Alert</span><span class="sdesc">Vibrate on threshold breach</span></div>
+      <label class="tgl"><input type="checkbox" id="vibTgl" checked><span class="tsl"></span></label>
+    </div>
+    <div class="srow">
+      <div class="sinfo"><span class="sname">Screen Wake Lock</span><span class="sdesc">Keep screen on while app is open</span></div>
+      <label class="tgl"><input type="checkbox" id="wlTgl" checked><span class="tsl"></span></label>
+    </div>
+  </div>
+</div>
+
+<!-- Trips list modal -->
+<div id="tlp">
+  <div id="tlsh">
+    <div class="mhdl"></div>
+    <div class="mtl">
+      <span>Saved Trips</span>
+      <span class="mtlsub" id="tripCount">0 trips</span>
+    </div>
+    <div id="tripList"></div>
+    <div id="tripEmpty" style="display:none;padding:24px 0;text-align:center;color:var(--txt3);font-family:var(--fm);font-size:11px">
+      No trips saved yet.<br>Hit START TRIP to begin recording.
+    </div>
+  </div>
+</div>
+
+<!-- Save trip name modal -->
+<div id="snp">
+  <div id="snsh">
+    <div class="mhdl"></div>
+    <div class="mtl"><span>Save Trip</span></div>
+    <div id="snStats" style="font-family:var(--fm);font-size:11px;color:var(--txt2);margin-bottom:14px;line-height:1.5"></div>
+    <input id="snName" type="text" maxlength="60" placeholder="Trip name…" />
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button class="modalbtn ghost" id="snDiscard">Discard</button>
+      <button class="modalbtn primary" id="snSave">Save Trip</button>
+    </div>
+  </div>
+</div>
+
+<!-- Trip detail modal -->
+<div id="tdp">
+  <div id="tdsh">
+    <div class="mhdl"></div>
+    <div class="mtl">
+      <span id="tdTitle">Trip</span>
+    </div>
+    <div id="tdBody"></div>
+    <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+      <button class="modalbtn ghost" id="tdRename">Rename</button>
+      <button class="modalbtn ghost" id="tdExport">Export GPX</button>
+      <button class="modalbtn danger" id="tdDelete">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- Recovery modal (shown on load if a draft trip is found) -->
+<div id="rcp">
+  <div id="rcsh">
+    <div class="mhdl"></div>
+    <div class="mtl"><span>Unfinished Trip Found</span></div>
+    <div id="rcBody" style="font-family:var(--fm);font-size:11px;color:var(--txt2);margin-bottom:14px;line-height:1.6"></div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button class="modalbtn primary" id="rcResume">Resume Recording</button>
+      <button class="modalbtn ghost"   id="rcSave">Save &amp; Stop</button>
+      <button class="modalbtn danger"  id="rcDiscard">Discard</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+const S = {
+  pitch:0, roll:0,
+  tPitch:0, tRoll:0,
+  rawPitch:0, rawRoll:0,
+  pOff:0, rOff:0,
+  cel:false, dark:true, analog:false,
+  alarm:false, vib:true, threshold:30, alarmFired:false,
+  wakeLock:null, audio:null,
+  weather:null, wxTs:null, wxStale:2*60*60*1000,
+  lat:null, lon:null, elev:null, hdg:null,
+  holding:false, holdT:null,
+  sensorLive:false,
+  sunrises:null, sunsets:null,  // populated when weather data arrives
+};
+
+const hc=document.getElementById('hc');
+const ac=document.getElementById('ac');
+const hx=hc.getContext('2d');
+const ax=ac.getContext('2d');
+const gw=document.getElementById('gwrap');
+const mb=document.getElementById('mbtn');
+let SZ=200, DPR=window.devicePixelRatio||1;
+
+function resize(){
+  DPR=window.devicePixelRatio||1;
+  const gs=document.getElementById('gsec');
+  const land=window.innerWidth>window.innerHeight;
+  const rH=land?155:262;
+  let sz=Math.min(gs.clientWidth-24, gs.clientHeight-rH);
+  sz=Math.max(140, Math.min(land?300:360, sz));
+  SZ=sz;
+  [hc,ac].forEach(c=>{
+    c.width=sz*DPR; c.height=sz*DPR;
+    c.style.width=sz+'px'; c.style.height=sz+'px';
+    c.style.position='absolute'; c.style.top='0'; c.style.left='0';
+  });
+  gw.style.width=sz+'px';
+  gw.style.height=(sz+28)+'px';
+  hx.setTransform(1,0,0,1,0,0); hx.scale(DPR,DPR);
+  ax.setTransform(1,0,0,1,0,0); ax.scale(DPR,DPR);
+}
+
+// Visual smoothing — higher alpha = more responsive, less smooth.
+// 0.45 keeps the horizon feeling live without strobing on sensor jitter.
+// We do NOT round the internal value — that broke the filter convergence.
+// Rounding happens only at display time.
+const ALPHA=0.45;
+function smooth(){
+  S.pitch+=(S.tPitch-S.pitch)*ALPHA;
+  S.roll +=(S.tRoll -S.roll )*ALPHA;
+}
+
+function loop(){
+  smooth();
+  S.analog ? drawAnalog(S.pitch,S.roll) : drawHorizon(S.pitch,S.roll);
+  updateCards();
+  checkAlarm();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+function drawHorizon(pitch,roll){
+  const s=SZ,cx=s/2,cy=s/2,r=s/2-4;
+  hx.clearRect(0,0,s,s);
+  hx.save();
+  hx.beginPath(); hx.arc(cx,cy,r,0,Math.PI*2); hx.clip();
+
+  hx.save();
+  hx.translate(cx,cy);
+  hx.rotate(roll*Math.PI/180);
+  const pp=(pitch/90)*r*1.65;
+
+  const sg=hx.createLinearGradient(0,-r*1.6,0,pp);
+  sg.addColorStop(0,S.dark?'#0d2540':'#2a6db5');
+  sg.addColorStop(1,S.dark?'#1a3a5c':'#5a9fd4');
+  hx.fillStyle=sg; hx.fillRect(-r*1.6,-r*1.6,r*3.2,r*1.6+pp);
+
+  const eg=hx.createLinearGradient(0,pp,0,r*1.6);
+  eg.addColorStop(0,S.dark?'#3d2c1a':'#9b6b3c');
+  eg.addColorStop(1,S.dark?'#1a1008':'#7a4f2c');
+  hx.fillStyle=eg; hx.fillRect(-r*1.6,pp,r*3.2,r*1.6);
+
+  hx.strokeStyle='rgba(255,255,255,0.9)'; hx.lineWidth=2.5;
+  hx.beginPath(); hx.moveTo(-r*1.6,pp); hx.lineTo(r*1.6,pp); hx.stroke();
+
+  const fs=Math.max(8,s*0.054);
+  hx.font=`${fs}px 'Share Tech Mono',monospace`; hx.textAlign='right';
+  [5,10,15,20,25].forEach(deg=>{
+    const lw=deg%10===0?r*0.38:r*0.22;
+    const px=(deg/90)*r*1.65;
+    hx.strokeStyle='rgba(255,255,255,0.35)'; hx.lineWidth=deg%10===0?1.5:1;
+    hx.beginPath(); hx.moveTo(-lw/2,pp-px); hx.lineTo(lw/2,pp-px); hx.stroke();
+    if(deg%10===0){hx.fillStyle='rgba(255,255,255,0.5)';hx.fillText(deg+'°',-lw/2-4,pp-px+4);}
+    hx.beginPath(); hx.moveTo(-lw/2,pp+px); hx.lineTo(lw/2,pp+px); hx.stroke();
+    if(deg%10===0){hx.fillStyle='rgba(255,255,255,0.5)';hx.fillText(-deg+'°',-lw/2-4,pp+px+4);}
+  });
+  hx.restore();
+
+  // P numeric overlay only — placed in the bottom dead zone, below the earth horizon.
+  // Roll readout deliberately omitted from the gauge: the roll arc + tick labels +
+  // red pointer triangle at the top already communicate roll, and adding a number
+  // in that space causes overlap. Roll readout lives on the card above the gauge.
+  const dispP=Math.round(pitch*2)/2;
+  const ovf=Math.max(10,s*0.058);
+  hx.font=`bold ${ovf}px 'Rajdhani',sans-serif`;
+  hx.shadowColor='rgba(0,0,0,0.85)'; hx.shadowBlur=5;
+  hx.textAlign='center'; hx.textBaseline='middle';
+  hx.fillStyle='rgba(61,220,151,0.96)';
+  hx.fillText('P '+(dispP>=0?'+':'')+dispP.toFixed(1)+'°', cx, cy+r*0.78);
+  hx.shadowBlur=0;
+
+  // L / R direction hints on the rim — small, dim, just enough to orient
+  const lrFs=Math.max(8,s*0.045);
+  hx.font=`${lrFs}px 'Share Tech Mono',monospace`;
+  hx.fillStyle='rgba(255,255,255,0.35)';
+  hx.textBaseline='middle';
+  hx.textAlign='left';
+  hx.fillText('L', cx-r*0.92, cy);
+  hx.textAlign='right';
+  hx.fillText('R', cx+r*0.92, cy);
+
+  const al=r*0.38,dr=Math.max(4,s*0.025);
+  hx.strokeStyle=S.dark?'rgba(61,220,151,0.95)':'#1a7a4a';
+  hx.fillStyle  =S.dark?'rgba(61,220,151,0.95)':'#1a7a4a';
+  hx.lineWidth=Math.max(2,s*0.011);
+  hx.beginPath(); hx.moveTo(cx-al-dr,cy); hx.lineTo(cx-dr*2,cy); hx.stroke();
+  hx.beginPath(); hx.moveTo(cx+dr*2,cy);  hx.lineTo(cx+al+dr,cy); hx.stroke();
+  hx.beginPath(); hx.arc(cx,cy,dr,0,Math.PI*2); hx.fill();
+  hx.lineWidth=Math.max(1.5,s*0.008);
+  hx.beginPath();
+  hx.moveTo(cx-dr*2,cy); hx.lineTo(cx-dr*2,cy+8);
+  hx.moveTo(cx+dr*2,cy); hx.lineTo(cx+dr*2,cy+8);
+  hx.stroke();
+
+  const ar=r-6;
+  hx.strokeStyle='rgba(255,255,255,0.2)'; hx.lineWidth=1.5;
+  hx.beginPath(); hx.arc(cx,cy,ar,Math.PI*1.1,Math.PI*1.9); hx.stroke();
+  [0,10,20,30,45].forEach(ang=>{
+    [-1,1].forEach(dir=>{
+      if(ang===0&&dir===-1) return;
+      const rad=(-90+ang*dir)*Math.PI/180;
+      const inn=ar-(ang%30===0?10:6);
+      hx.strokeStyle='rgba(255,255,255,0.5)'; hx.lineWidth=ang%30===0?1.5:1;
+      hx.beginPath();
+      hx.moveTo(cx+ar*Math.cos(rad),cy+ar*Math.sin(rad));
+      hx.lineTo(cx+inn*Math.cos(rad),cy+inn*Math.sin(rad));
+      hx.stroke();
+    });
+  });
+  // Degree labels for the roll arc — only at majors (10/20/30), placed inside
+  // the tick line, smaller and dimmer than pitch ladder labels since position
+  // is supplementary to the rotation cue.
+  const rollLblFs=Math.max(7,s*0.038);
+  hx.font=`${rollLblFs}px 'Share Tech Mono',monospace`;
+  hx.fillStyle='rgba(255,255,255,0.45)';
+  hx.textAlign='center'; hx.textBaseline='middle';
+  [10,20,30].forEach(ang=>{
+    [-1,1].forEach(dir=>{
+      const rad=(-90+ang*dir)*Math.PI/180;
+      const lr=ar-18; // inside the tick line
+      hx.fillText(String(ang), cx+lr*Math.cos(rad), cy+lr*Math.sin(rad));
+    });
+  });
+  hx.save(); hx.translate(cx,cy); hx.rotate(roll*Math.PI/180);
+  hx.fillStyle='#ef4444';
+  hx.beginPath(); hx.moveTo(0,-ar+2); hx.lineTo(-5,-ar+13); hx.lineTo(5,-ar+13); hx.closePath(); hx.fill();
+  hx.restore();
+
+  hx.restore();
+}
+
+/* ══════════════════════════════════════════════════════════
+   ANALOG DIAL — Quadrant layout
+
+   Pitch needle lives in the TOP quadrant (10:30–1:30 clock face).
+   Roll needle lives in the RIGHT quadrant (1:30–4:30).
+   Each axis maps degrees 1:1 to dial degrees, so no overlap.
+
+   PITCH: pitch is mapped directly to rotation in radians.
+     pitch=0   → angle=0       → tip at TOP (12 o'clock)
+     pitch=+45 → angle=+45°    → tip at 1:30 (upper-right)
+     pitch=-45 → angle=-45°    → tip at 10:30 (upper-left)
+
+   ROLL: roll mapped to rotation, base offset π/2 (right).
+     roll=0    → angle=π/2     → tip at RIGHT (3 o'clock)
+     roll=+45  → angle=π/2+45° → tip at 4:30 (lower-right)
+     roll=-45  → angle=π/2-45° → tip at 1:30 (upper-right)
+
+   At ±45°, pitch and roll needles both reach 1:30, so we cap
+   needle length so they don't visually collide at extremes.
+
+   TICK MARKS: drawn for 0/15/30/45 on each axis as short lines
+   in their own quadrant, with degree labels.
+
+   ZONE ARCS: drawn as pairs of 90°-arcs along each axis quadrant.
+══════════════════════════════════════════════════════════ */
+function drawAnalog(pitch,roll){
+  const s=SZ,cx=s/2,cy=s/2,r=s/2-4;
+  const D2R=Math.PI/180;
+  ax.clearRect(0,0,s,s);
+  ax.save();
+
+  const bg=ax.createRadialGradient(cx,cy-r*.1,r*.05,cx,cy,r);
+  bg.addColorStop(0,S.dark?'#1e2738':'#f0f4f8');
+  bg.addColorStop(1,S.dark?'#0a0c0f':'#dde3ea');
+  ax.beginPath(); ax.arc(cx,cy,r,0,Math.PI*2);
+  ax.fillStyle=bg; ax.fill();
+  ax.strokeStyle=S.dark?'#2a3342':'#cbd5e0'; ax.lineWidth=3; ax.stroke();
+
+  ax.beginPath(); ax.arc(cx,cy,r-8,0,Math.PI*2);
+  ax.strokeStyle=S.dark?'rgba(255,255,255,0.04)':'rgba(0,0,0,0.04)';
+  ax.lineWidth=1; ax.stroke();
+
+  // Subtle full-bezel decorative ticks
+  for(let i=0;i<360;i+=5){
+    const rad=i*D2R;
+    const maj=i%15===0;
+    const tl=maj?8:4, or=r-3, ir=or-tl;
+    ax.strokeStyle=maj
+      ?(S.dark?'rgba(255,255,255,0.18)':'rgba(0,0,0,0.18)')
+      :(S.dark?'rgba(255,255,255,0.07)':'rgba(0,0,0,0.07)');
+    ax.lineWidth=maj?1:0.6;
+    ax.beginPath();
+    ax.moveTo(cx+or*Math.cos(rad),cy+or*Math.sin(rad));
+    ax.lineTo(cx+ir*Math.cos(rad),cy+ir*Math.sin(rad));
+    ax.stroke();
+  }
+
+  // ── ZONE ARCS ──
+  // Each axis gets a 90° arc band (from -45° to +45° around its base).
+  // Canvas arc() angles: 0=right (3 o'clock), increases CW.
+  // Pitch axis base = -π/2 (TOP). Roll axis base = 0 (RIGHT).
+  const zr=r-13;
+  const thr=S.threshold;
+  const thrR=thr*D2R;
+  const warnR=Math.min(thrR*1.33, 45*D2R);
+  const maxR=45*D2R;
+  ax.lineWidth=6; ax.lineCap='round';
+
+  function zarc(start,end,color){
+    ax.beginPath(); ax.arc(cx,cy,zr,start,end);
+    ax.strokeStyle=color; ax.stroke();
+  }
+
+  // PITCH (centered on TOP = -π/2)
+  const PB=-Math.PI/2;
+  zarc(PB-thrR,    PB+thrR,    'rgba(61,220,151,0.32)'); // safe
+  zarc(PB+thrR,    PB+warnR,   'rgba(240,180,41,0.55)'); // warn +
+  zarc(PB-warnR,   PB-thrR,    'rgba(240,180,41,0.55)'); // warn -
+  zarc(PB+warnR,   PB+maxR,    'rgba(239,68,68,0.50)');  // danger +
+  zarc(PB-maxR,    PB-warnR,   'rgba(239,68,68,0.50)');  // danger -
+
+  // ROLL (centered on RIGHT = 0)
+  const RB=0;
+  zarc(RB-thrR,    RB+thrR,    'rgba(61,220,151,0.32)');
+  zarc(RB+thrR,    RB+warnR,   'rgba(240,180,41,0.55)');
+  zarc(RB-warnR,   RB-thrR,    'rgba(240,180,41,0.55)');
+  zarc(RB+warnR,   RB+maxR,    'rgba(239,68,68,0.50)');
+  zarc(RB-maxR,    RB-warnR,   'rgba(239,68,68,0.50)');
+
+  ax.lineCap='butt';
+
+  // Crosshair axis dashes (just inside the arcs)
+  ax.strokeStyle=S.dark?'rgba(255,255,255,0.07)':'rgba(0,0,0,0.10)';
+  ax.lineWidth=1; ax.setLineDash([3,6]);
+  ax.beginPath(); ax.moveTo(cx,cy-r+22); ax.lineTo(cx,cy+r-22); ax.stroke();
+  ax.beginPath(); ax.moveTo(cx-r+22,cy); ax.lineTo(cx+r-22,cy); ax.stroke();
+  ax.setLineDash([]);
+
+  // ── DEGREE TICKS + LABELS ──
+  // Drawn at the canvas-angle positions matching each axis quadrant.
+  // For a needle drawn via translate+rotate (tip starts at 0,-len), its tip
+  // at rotation angleRad lands at canvas angle = angleRad - π/2.
+  // So pitch deg D → canvas angle = D*D2R - π/2.
+  // Roll  deg D → canvas angle = (π/2 + D*D2R) - π/2 = D*D2R.
+  //
+  // Equivalent: pitch ticks live at -π/2 ± D, roll ticks at 0 ± D. ✓
+
+  const tickInner=r-13;
+  const tickOuter=r-3;
+  // Pitch labels close to rim, roll labels further in. Wider gap than before
+  // so the 30° labels never crowd at the upper-right corner.
+  const pitchLabelR=r-18;
+  const rollLabelR=r-44;
+  const lfs=Math.max(8,s*0.052);
+  ax.font=`bold ${lfs}px 'Share Tech Mono',monospace`;
+  ax.textAlign='center'; ax.textBaseline='middle';
+
+  function drawTick(canvasAngle,isMajor,color){
+    const ir = isMajor ? tickInner-3 : tickInner+1;
+    const or = tickOuter;
+    ax.strokeStyle=color;
+    ax.lineWidth = isMajor ? 2 : 1;
+    ax.beginPath();
+    ax.moveTo(cx+or*Math.cos(canvasAngle), cy+or*Math.sin(canvasAngle));
+    ax.lineTo(cx+ir*Math.cos(canvasAngle), cy+ir*Math.sin(canvasAngle));
+    ax.stroke();
+  }
+
+  // PITCH ticks + labels (canvas angles around -π/2)
+  const pitchColor = S.dark?'rgba(61,220,151,0.85)':'rgba(20,120,70,0.9)';
+  const pitchDim   = S.dark?'rgba(61,220,151,0.45)':'rgba(20,120,70,0.55)';
+  // 0 tick (top)
+  drawTick(-Math.PI/2, true, pitchColor);
+  // Tick marks for 5°-45°. Labels only at 15 and 30 (45° corners overlap with roll labels by definition)
+  [5,10,15,20,25,30,35,40,45].forEach(deg=>{
+    const isMaj = (deg%15===0);
+    const aPos = -Math.PI/2 + deg*D2R;
+    const aNeg = -Math.PI/2 - deg*D2R;
+    drawTick(aPos, isMaj, isMaj?pitchColor:pitchDim);
+    drawTick(aNeg, isMaj, isMaj?pitchColor:pitchDim);
+    if(isMaj && deg<45){
+      ax.fillStyle = pitchColor;
+      ax.fillText(String(deg),
+        cx+pitchLabelR*Math.cos(aPos),
+        cy+pitchLabelR*Math.sin(aPos));
+      ax.fillText(String(deg),
+        cx+pitchLabelR*Math.cos(aNeg),
+        cy+pitchLabelR*Math.sin(aNeg));
+    }
+  });
+
+  // ROLL ticks + labels (canvas angles around 0)
+  const rollColor = S.dark?'rgba(56,189,248,0.85)':'rgba(30,100,160,0.9)';
+  const rollDim   = S.dark?'rgba(56,189,248,0.45)':'rgba(30,100,160,0.55)';
+  drawTick(0, true, rollColor);
+  [5,10,15,20,25,30,35,40,45].forEach(deg=>{
+    const isMaj = (deg%15===0);
+    const aPos = 0 + deg*D2R;
+    const aNeg = 0 - deg*D2R;
+    drawTick(aPos, isMaj, isMaj?rollColor:rollDim);
+    drawTick(aNeg, isMaj, isMaj?rollColor:rollDim);
+    if(isMaj && deg<45){
+      ax.fillStyle = rollColor;
+      ax.fillText(String(deg),
+        cx+rollLabelR*Math.cos(aPos),
+        cy+rollLabelR*Math.sin(aPos));
+      ax.fillText(String(deg),
+        cx+rollLabelR*Math.cos(aNeg),
+        cy+rollLabelR*Math.sin(aNeg));
+    }
+  });
+
+  // P / R axis indicators — small, dim, sitting between the major ticks where
+  // there's empty rim space. P at top of pitch axis (12 o'clock), L/R at the
+  // ends of the roll axis (3 and 9 o'clock).
+  const axFs=Math.max(8,s*0.045);
+  ax.font=`bold ${axFs}px 'Share Tech Mono',monospace`;
+  ax.textAlign='center'; ax.textBaseline='middle';
+  ax.fillStyle = pitchDim;
+  ax.fillText('P', cx, cy - r + 9);
+  ax.fillStyle = rollDim;
+  ax.fillText('R', cx + r - 9, cy);
+  ax.fillText('L', cx - r + 9, cy);
+
+  // ── NEEDLES ──
+  // drawNeedle: tip starts at (0,-len), rotate by angleRad.
+  // Resulting tip: (cx+len*sin(a), cy-len*cos(a))
+  //              = canvas-angle (a - π/2) at radius len.
+  //
+  // Pitch: angle = pitch*D2R           → tip at canvas (pitch - 90°)  → top quadrant
+  // Roll:  angle = π/2 + roll*D2R      → tip at canvas (roll)          → right quadrant
+  function drawNeedle(angleRad,len,tail,width,color){
+    ax.save();
+    ax.translate(cx,cy); ax.rotate(angleRad);
+    ax.shadowColor='rgba(0,0,0,0.5)'; ax.shadowBlur=8;
+    ax.shadowOffsetX=2; ax.shadowOffsetY=2;
+    ax.beginPath();
+    ax.moveTo(0,-len);
+    ax.lineTo(width,0);
+    ax.lineTo(0,tail);
+    ax.lineTo(-width,0);
+    ax.closePath();
+    ax.fillStyle=color; ax.fill();
+    ax.beginPath();
+    ax.moveTo(0,-len); ax.lineTo(width*.38,-len*.5); ax.lineTo(0,0); ax.closePath();
+    ax.fillStyle='rgba(255,255,255,0.22)'; ax.fill();
+    ax.shadowBlur=0; ax.shadowOffsetX=0; ax.shadowOffsetY=0;
+    ax.restore();
+  }
+
+  // Clamp to ±45 visually so needles never escape their quadrant
+  const clamp=(v,m)=>Math.max(-m,Math.min(m,v));
+  const pVis = clamp(pitch,45);
+  const rVis = clamp(roll, 45);
+
+  // Slightly different lengths so tips don't overlap at the (45,45) extreme
+  const pLen = r*0.62;
+  const rLen = r*0.52;
+
+  const pAngle = pVis*D2R;
+  drawNeedle(pAngle, pLen, r*0.16, 4.5, '#3ddc97');
+
+  const rAngle = Math.PI/2 + rVis*D2R;
+  drawNeedle(rAngle, rLen, r*0.13, 4.5, '#38bdf8');
+
+  // Hub
+  const hr=r*0.1;
+  const hg=ax.createRadialGradient(cx,cy,0,cx,cy,hr);
+  hg.addColorStop(0,S.dark?'#4a5568':'#ffffff');
+  hg.addColorStop(1,S.dark?'#1c2330':'#e2e8f0');
+  ax.beginPath(); ax.arc(cx,cy,hr,0,Math.PI*2);
+  ax.fillStyle=hg; ax.fill();
+  ax.strokeStyle=S.dark?'#4a5568':'#cbd5e0'; ax.lineWidth=1.5; ax.stroke();
+
+  // P / R numeric readouts — placed in the lower dead zone below the hub,
+  // away from needles and major ticks. Side-by-side so neither is a focal
+  // point on its own; they're a quick supplement to the cards above.
+  const dispPa=Math.round(pitch*2)/2, dispRa=Math.round(roll*2)/2;
+  const ofA=Math.max(10,s*0.058);
+  ax.font=`bold ${ofA}px 'Rajdhani',sans-serif`;
+  ax.shadowColor='rgba(0,0,0,0.6)'; ax.shadowBlur=3;
+  ax.textBaseline='middle';
+  ax.textAlign='right';
+  ax.fillStyle='rgba(61,220,151,0.94)';
+  ax.fillText('P '+(dispPa>=0?'+':'')+dispPa.toFixed(1)+'°', cx-r*0.06, cy+r*0.62);
+  ax.textAlign='left';
+  ax.fillStyle='rgba(56,189,248,0.94)';
+  ax.fillText('R '+(dispRa>=0?'+':'')+dispRa.toFixed(1)+'°', cx+r*0.06, cy+r*0.62);
+  ax.shadowBlur=0;
+
+  ax.restore();
+}
+
+function getScreenAngle(){
+  // screen.orientation.angle is the modern API; window.orientation is the
+  // legacy iOS Safari fallback. Both return one of: 0, 90, -90 (or 270), 180.
+  if(screen.orientation && typeof screen.orientation.angle === 'number') {
+    return screen.orientation.angle;
+  }
+  if(typeof window.orientation === 'number') return window.orientation;
+  return 0;
+}
+
+function handleOri(e){
+  S.sensorLive=true;
+  let beta = e.beta ?? 0;   // front-back tilt in portrait (-180 to 180)
+  let gamma= e.gamma?? 0;   // left-right tilt in portrait (-90 to 90)
+  // Guard against NaN — once it propagates into the smoothed S.pitch/S.roll
+  // values, the entire gauge freezes at NaN forever (every subsequent
+  // (target - NaN) * α stays NaN). Drop the reading and wait for a clean one.
+  if(!Number.isFinite(beta) || !Number.isFinite(gamma)) return;
+  // Map sensor axes to "pitch / roll" relative to the user's view of the screen.
+  // In portrait (angle=0): pitch=beta, roll=gamma — original mapping.
+  // In landscape, the physical "front-back" of the device is along what the
+  // user perceives as left-right, so we swap and sign-flip accordingly.
+  const ang = getScreenAngle();
+  let pitch, roll;
+  if(ang === 90){          // landscape, rotated CCW
+    pitch =  gamma;
+    roll  = -beta;
+  } else if(ang === -90 || ang === 270){  // landscape, rotated CW
+    pitch = -gamma;
+    roll  =  beta;
+  } else if(ang === 180){  // upside-down portrait
+    pitch = -beta;
+    roll  = -gamma;
+  } else {                 // 0 or unknown — portrait
+    pitch =  beta;
+    roll  =  gamma;
+  }
+  // Clamp to a reasonable range (raw beta can go beyond ±90 if phone is upside-down)
+  pitch = Math.max(-90, Math.min(90, pitch));
+  roll  = Math.max(-90, Math.min(90, roll));
+  S.rawPitch = pitch;
+  S.rawRoll  = roll;
+  S.tPitch = pitch - S.pOff;
+  S.tRoll  = roll  - S.rOff;
+}
+function initOri(){
+  if(typeof DeviceOrientationEvent!=='undefined'&&typeof DeviceOrientationEvent.requestPermission==='function'){
+    // iOS Safari 13+: requestPermission MUST be called from a user gesture.
+    // Defer to first interaction. Once permission is granted, we attach the
+    // listener and remove the gesture binders. The user sees an iOS-native
+    // permission prompt the first time they touch the gauge or any button.
+    const requestOnce = ()=>{
+      DeviceOrientationEvent.requestPermission()
+        .then(p=>{
+          if(p==='granted') window.addEventListener('deviceorientation',handleOri,true);
+          // If denied, tilt readings stay at 0/0. User can reload and re-prompt.
+        })
+        .catch(console.error);
+      window.removeEventListener('pointerdown', requestOnce);
+      window.removeEventListener('keydown', requestOnce);
+    };
+    window.addEventListener('pointerdown', requestOnce, {once:true});
+    window.addEventListener('keydown',     requestOnce, {once:true});
+  } else {
+    // Android, desktop browsers, older iOS: no permission needed
+    window.addEventListener('deviceorientation',handleOri,true);
+  }
+}
+initOri();
+
+setTimeout(()=>{
+  if(!S.sensorLive){
+    let t=0;
+    setInterval(()=>{
+      t+=0.025;
+      S.tPitch=Math.sin(t)*14; S.tRoll=Math.cos(t*.7)*9;
+      S.rawPitch=S.tPitch; S.rawRoll=S.tRoll;
+    },50);
+  }
+},2000);
+
+// Round to nearest 0.5 — readable, no flicker in low-order digits at rest
+const halfStep = v => Math.round(v*2)/2;
+function updateCards(){
+  const dp=halfStep(S.pitch), dr=halfStep(S.roll);
+  document.getElementById('pval').textContent   =(dp>=0?'+':'')+dp.toFixed(1)+'°';
+  document.getElementById('rval_el').textContent=(dr>=0?'+':'')+dr.toFixed(1)+'°';
+  // Grade % = tan(pitch) × 100, displayed at 0.5% resolution
+  const grade = Math.tan(S.pitch*Math.PI/180)*100;
+  const dg = halfStep(grade);
+  const gradeStr = (dg>=0?'+':'')+dg.toFixed(1)+'%';
+  document.getElementById('pgrade').textContent = gradeStr;
+  const max=Math.max(Math.abs(S.pitch),Math.abs(S.roll));
+  const pc=document.getElementById('pcard'), rc=document.getElementById('rcard_el');
+  [pc,rc].forEach(c=>c.classList.remove('ws','ds'));
+  const card=Math.abs(S.pitch)>=Math.abs(S.roll)?pc:rc;
+  if(S.alarm&&max>=S.threshold)  card.classList.add('ds');
+  else if(max>=S.threshold*0.75) card.classList.add('ws');
+}
+
+function checkAlarm(){
+  if(!S.alarm){S.alarmFired=false;return;}
+  const max=Math.max(Math.abs(S.pitch),Math.abs(S.roll));
+  // Hysteresis: arm at the threshold, disarm only when we drop ~3° below it.
+  // Prevents alarm chatter when the rig sits right at the threshold and the
+  // smoothed value oscillates by 0.x° between frames.
+  const armAt = S.threshold;
+  const disarmAt = Math.max(0, S.threshold - 3);
+  if(max>=armAt && !S.alarmFired){ S.alarmFired=true; doAlarm(); }
+  else if(max < disarmAt) S.alarmFired=false;
+}
+// Audio: AudioContext starts suspended on iOS Safari and modern Chrome.
+// We must call resume() from a user gesture before it'll produce sound.
+// ensureAudio() lazy-creates the context, and a one-shot gesture handler
+// resumes it the first time the user touches the screen.
+function ensureAudio(){
+  if(!S.audio){
+    try{ S.audio = new (window.AudioContext||window.webkitAudioContext)(); }
+    catch(e){ return null; }
+  }
+  return S.audio;
+}
+function _audioGestureResume(){
+  const ctx = ensureAudio();
+  if(ctx && ctx.state === 'suspended') ctx.resume().catch(()=>{});
+  window.removeEventListener('pointerdown', _audioGestureResume);
+  window.removeEventListener('keydown',     _audioGestureResume);
+}
+window.addEventListener('pointerdown', _audioGestureResume, {once:true});
+window.addEventListener('keydown',     _audioGestureResume, {once:true});
+
+function doAlarm(){
+  if(S.vib&&navigator.vibrate) navigator.vibrate([200,100,200]);
+  try{
+    const ctx = ensureAudio();
+    if(!ctx) return;
+    if(ctx.state === 'suspended') ctx.resume().catch(()=>{});
+    const o=ctx.createOscillator(),g=ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.type='sine';
+    o.frequency.setValueAtTime(880,ctx.currentTime);
+    o.frequency.setValueAtTime(660,ctx.currentTime+.15);
+    g.gain.setValueAtTime(.3,ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.5);
+    o.start(); o.stop(ctx.currentTime+.5);
+  }catch(e){}
+}
+
+const zb=document.getElementById('zbtn'),zh=document.getElementById('zhint');
+function startHold(){S.holding=true;zb.classList.add('hld');zh.textContent='Hold…';S.holdT=setTimeout(()=>{if(S.holding)doZero();},1500);}
+function cancelHold(){S.holding=false;clearTimeout(S.holdT);if(!zb.classList.contains('zd')){zb.classList.remove('hld');zh.textContent='Hold 1.5s to set reference plane';}}
+function doZero(){
+  S.pOff=S.rawPitch; S.rOff=S.rawRoll;
+  S.tPitch=0; S.tRoll=0;
+  zb.classList.remove('hld'); zb.classList.add('zd');
+  zh.textContent='Reference plane set ✓';
+  [hc,ac].forEach(c=>{c.classList.add('calib');setTimeout(()=>c.classList.remove('calib'),700);});
+  if(navigator.vibrate) navigator.vibrate([50,30,80]);
+  try{
+    const ctx = ensureAudio();
+    if(!ctx) return;
+    if(ctx.state === 'suspended') ctx.resume().catch(()=>{});
+    const o=ctx.createOscillator(),g=ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.type='sine';
+    o.frequency.setValueAtTime(440,ctx.currentTime);
+    o.frequency.setValueAtTime(880,ctx.currentTime+.1);
+    g.gain.setValueAtTime(.2,ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.3);
+    o.start(); o.stop(ctx.currentTime+.3);
+  }catch(e){}
+  setTimeout(()=>{zb.classList.remove('zd');S.holding=false;zh.textContent='Hold 1.5s to set reference plane';},2500);
+}
+zb.addEventListener('mousedown',startHold);
+zb.addEventListener('touchstart',e=>{e.preventDefault();startHold();},{passive:false});
+zb.addEventListener('mouseup',cancelHold); zb.addEventListener('mouseleave',cancelHold);
+zb.addEventListener('touchend',cancelHold); zb.addEventListener('touchcancel',cancelHold);
+
+mb.addEventListener('click',()=>{
+  S.analog=!S.analog;
+  gw.classList.toggle('am',S.analog);
+  mb.textContent=S.analog?'◎ Analog':'⬡ Horizon';
+  mb.classList.toggle('am',S.analog);
+  try{localStorage.setItem('tg_mode',S.analog?'analog':'horizon');}catch(e){}
+});
+try{if(localStorage.getItem('tg_mode')==='analog'){S.analog=true;gw.classList.add('am');mb.textContent='◎ Analog';mb.classList.add('am');}}catch(e){}
+
+function startGPS(){
+  if(!navigator.geolocation){
+    document.getElementById('nogps').classList.add('show');
+    document.getElementById('gcoords').textContent='Unavailable';
+    return;
+  }
+  navigator.geolocation.watchPosition(pos=>{
+    S.lat=pos.coords.latitude; S.lon=pos.coords.longitude;
+    S.elev=pos.coords.altitude; S.hdg=pos.coords.heading;
+    document.getElementById('gcoords').textContent=S.lat.toFixed(5)+', '+S.lon.toFixed(5);
+    document.getElementById('gelev').textContent=S.elev!==null?Math.round(S.elev*3.28084)+' ft':'—';
+    document.getElementById('ghead').textContent=(S.hdg&&!isNaN(S.hdg))?btoc(S.hdg)+' '+Math.round(S.hdg)+'°':'—';
+    document.getElementById('nogps').classList.remove('show');
+    if(!S.weather||Date.now()-S.wxTs>15*60*1000) fetchWx(S.lat,S.lon);
+    // Feed the trip recorder if it's running
+    if(typeof tripIngestFix==='function') tripIngestFix(pos);
+  },err=>{
+    console.warn('GPS:',err.message);
+    document.getElementById('gcoords').textContent='GPS denied';
+    document.getElementById('nogps').classList.add('show');
+    // If a trip is actively recording, escalate the warning — silent GPS loss
+    // would result in a gap in the track that the user wouldn't notice until
+    // they checked the trip stats. Show on the live readout too.
+    if(TRIP.active){
+      const tlDist = document.getElementById('tlDist');
+      if(tlDist) tlDist.textContent = '⚠ GPS lost';
+    }
+    loadCachedWx();
+  },{enableHighAccuracy:true,timeout:15000,maximumAge:5000});
+}
+function btoc(b){return['N','NE','E','SE','S','SW','W','NW'][Math.round(b/45)%8];}
+
+const WK='tg_wx_v1';
+let _wxInflight = false;
+async function fetchWx(lat,lon){
+  if(_wxInflight) return; // Prevent duplicate concurrent fetches racing localStorage writes
+  _wxInflight = true;
+  try{
+    const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`
+      +`&hourly=temperature_2m,precipitation_probability,windspeed_10m,winddirection_10m,weathercode`
+      +`&daily=sunrise,sunset&temperature_unit=celsius&windspeed_unit=mph&timezone=auto&forecast_days=2`;
+    const res=await fetch(url); if(!res.ok) throw new Error('fail');
+    const d=await res.json();
+    S.weather=d; S.wxTs=Date.now();
+    try{localStorage.setItem(WK,JSON.stringify({data:d,ts:S.wxTs}));}catch(e){}
+    renderWx(d); setWDot('live');
+  }catch(e){console.warn('wx:',e);loadCachedWx();}
+  finally { _wxInflight = false; }
+}
+function loadCachedWx(){
+  try{
+    const c=JSON.parse(localStorage.getItem(WK));
+    if(!c){setWDot('off');return;}
+    S.weather=c.data; S.wxTs=c.ts;
+    const age=Date.now()-c.ts;
+    renderWx(c.data,age); setWDot(age>S.wxStale?'stale':'cached');
+  }catch(e){setWDot('off');}
+}
+function setWDot(st){
+  const d=document.getElementById('wdot'),l=document.getElementById('wlbl');
+  d.className='';
+  const scr = document.getElementById('hscroll');
+  if(st==='live') l.textContent='Live Weather';
+  else if(st==='cached'){const m=Math.round((Date.now()-S.wxTs)/60000);l.textContent=`Cached ${m}m ago`;}
+  else if(st==='stale'){d.classList.add('stale');const m=Math.round((Date.now()-S.wxTs)/60000);l.textContent=`⚠ Stale ${m}m ago`;}
+  else{
+    // Offline / no cache yet — show a clearer placeholder than "Acquiring location…"
+    d.classList.add('off');
+    l.textContent='⚠ Offline';
+    if(scr && scr.children.length===1 && scr.firstChild.textContent && scr.firstChild.textContent.includes('Acquiring')){
+      scr.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;width:100%;padding:14px;color:var(--txt3);font-family:var(--fm);font-size:11px;text-align:center">No weather data yet —<br>connect to internet and allow location access</div>`;
+    }
+  }
+}
+function wxIcon(c){
+  if(c===0)return'☀️';if(c<=2)return'⛅';if(c<=3)return'☁️';
+  if(c<=48)return'🌫️';if(c<=67)return'🌧️';if(c<=77)return'❄️';
+  if(c<=82)return'🌧️';if(c<=86)return'❄️';if(c<=99)return'⛈️';return'🌡️';
+}
+function c2d(c){return S.cel?Math.round(c)+'°C':Math.round(c*9/5+32)+'°F';}
+function renderWx(data,ageMs){
+  if(!data?.hourly) return;
+  const now=new Date(),scr=document.getElementById('hscroll');
+  scr.innerHTML='';
+  const times=data.hourly.time; let si=0;
+  for(let i=0;i<times.length;i++){
+    const t=new Date(times[i]);
+    if(t.getHours()===now.getHours()&&t.toDateString()===now.toDateString()){si=i;break;}
+  }
+  document.getElementById('ctmp').textContent=c2d(data.hourly.temperature_2m[si]);
+  let fr=false;
+  for(let i=si;i<Math.min(si+6,times.length);i++){
+    if(data.hourly.temperature_2m[i]>=-3&&data.hourly.temperature_2m[i]<=4){fr=true;break;}
+  }
+  document.getElementById('fwarn').classList.toggle('show',fr);
+  if(data.daily?.sunrise?.[0]){
+    document.getElementById('srise').textContent=fmtT(new Date(data.daily.sunrise[0]));
+    document.getElementById('sset').textContent =fmtT(new Date(data.daily.sunset[0]));
+    // Cache for the daylight countdown (which ticks every 30s independently)
+    S.sunrises = data.daily.sunrise.map(t=>new Date(t));
+    S.sunsets  = data.daily.sunset .map(t=>new Date(t));
+    updateDaylight();
+  }
+  const cnt=Math.min(12,times.length-si);
+  for(let i=0;i<cnt;i++){
+    const idx=si+i,t=new Date(times[idx]);
+    const tc=data.hourly.temperature_2m[idx];
+    const pr=data.hourly.precipitation_probability[idx];
+    const wd=Math.round(data.hourly.windspeed_10m[idx]);
+    const wdir=data.hourly.winddirection_10m?.[idx];
+    const cd=data.hourly.weathercode[idx];
+    const card=document.createElement('div');
+    card.className='hcard'; card.style.animationDelay=(i*.04)+'s';
+    if(i===0) card.classList.add('cur');
+    if(tc<=1||(tc<=4&&pr>30)) card.classList.add('dw');
+    else if(pr>50||cd>=80)    card.classList.add('ww');
+    // Wind: bearing is direction wind comes FROM. Arrow points where wind is GOING (bearing+180).
+    // Cardinal label uses the source direction (standard meteorology).
+    const wcard=(wdir!=null)
+      ? `<span class="hwnd">💨${wd}<span class="warr" style="transform:rotate(${(wdir+180)%360}deg)">↑</span>${btoc(wdir)}</span>`
+      : `<span class="hwnd">💨${wd}mph</span>`;
+    card.innerHTML=`<span class="htime">${fmtT(t)}</span><span class="hico">${wxIcon(cd)}</span><span class="htemp">${c2d(tc)}</span><span class="hprc">💧${pr}%</span>${wcard}`;
+    scr.appendChild(card);
+  }
+  if(ageMs&&ageMs>0){
+    const n=document.createElement('div');
+    n.style.cssText='flex-shrink:0;padding:8px 12px;font-family:var(--fm);font-size:9px;color:var(--warn);white-space:nowrap;';
+    n.textContent=`Last updated ${Math.round(ageMs/60000)} min ago`;
+    scr.appendChild(n);
+  }
+}
+function fmtT(d){let h=d.getHours();const m=d.getMinutes(),ap=h>=12?'pm':'am';h=h%12||12;return`${h}${m>0?':'+String(m).padStart(2,'0'):''}${ap}`;}
+
+function tick(){const n=new Date();let h=n.getHours();const m=String(n.getMinutes()).padStart(2,'0'),ap=h>=12?'PM':'AM';h=h%12||12;document.getElementById('ctime').textContent=`${h}:${m} ${ap}`;}
+tick(); setInterval(tick,1000);
+
+/* ─── DAYLIGHT COUNTDOWN ──────────────────────────────────
+   Shows time until next event (sunset if sun is up, sunrise if down).
+   Color-coded:
+     green:  >2h until sunset, or daytime far from dusk
+     yellow: <2h until sunset (golden hour-ish)
+     orange: <60min until sunset
+     red:    <30min until sunset / after sunset before dark
+     dim:    nighttime (showing time until sunrise)
+*/
+function updateDaylight(){
+  const el=document.getElementById('dlcount');
+  if(!el || !S.sunrises || !S.sunsets){ if(el) el.style.display='none'; return; }
+  const now=new Date();
+  // Find today's sunrise/sunset (the first pair where sunset is in the future, OR the most recent pair)
+  let sunrise=null, sunset=null, nextSunrise=null;
+  for(let i=0;i<S.sunsets.length;i++){
+    if(S.sunsets[i] > now){ sunrise=S.sunrises[i]; sunset=S.sunsets[i]; nextSunrise=S.sunrises[i+1]||null; break; }
+  }
+  // After today's sunset → next event is tomorrow's sunrise
+  if(!sunset){
+    sunrise=S.sunrises[S.sunrises.length-1];
+    sunset =S.sunsets [S.sunsets .length-1];
+    nextSunrise=null;
+  }
+  const dayNow = (now>=sunrise && now<sunset);
+  let target, label, mins;
+  if(dayNow){
+    target=sunset;
+    mins=Math.round((target-now)/60000);
+    label='🌇';
+  } else if(now<sunrise){
+    target=sunrise;
+    mins=Math.round((target-now)/60000);
+    label='🌅';
+  } else {
+    // After sunset, next sunrise is tomorrow's
+    target=nextSunrise;
+    if(!target){ el.style.display='none'; return; }
+    mins=Math.round((target-now)/60000);
+    label='🌅';
+  }
+  // Format as Hh Mm if >60min, else Mm. Clamp negative (target slipped into the past
+  // between ticks — e.g., we're a few seconds past sunset before the next 30s update).
+  if(mins < 0) mins = 0;
+  const h=Math.floor(mins/60), m=mins%60;
+  const txt = h>0 ? `${h}h ${m}m` : `${m}m`;
+  // Color coding (only urgent colors during daytime countdown to sunset)
+  let color='var(--txt2)';
+  if(dayNow){
+    if(mins<=30) color='var(--danger)';
+    else if(mins<=60) color='#ff8800';
+    else if(mins<=120) color='var(--warn)';
+    else color='var(--accent)';
+  }
+  el.style.display='inline-flex';
+  el.style.color=color;
+  el.innerHTML = `${label} ${txt}`;
+}
+updateDaylight();
+setInterval(updateDaylight, 30000);
+
+// Settings persistence — single key holds all user preferences as JSON.
+// Doesn't include trip data, mode toggle (already persisted), or weather cache.
+const SK = 'tg_settings_v1';
+function loadSettings(){
+  try {
+    const raw = localStorage.getItem(SK);
+    if(!raw) return;
+    const s = JSON.parse(raw);
+    if(typeof s.dark === 'boolean') S.dark = s.dark;
+    if(typeof s.cel === 'boolean') S.cel = s.cel;
+    if(typeof s.alarm === 'boolean') S.alarm = s.alarm;
+    if(typeof s.vib === 'boolean') S.vib = s.vib;
+    if(typeof s.threshold === 'number' && s.threshold>=10 && s.threshold<=45) S.threshold = s.threshold;
+    if(typeof s.wlEnabled === 'boolean') S._wlEnabled = s.wlEnabled;
+  } catch(e) { console.warn('Settings load failed:', e); }
+}
+function saveSettings(){
+  try {
+    localStorage.setItem(SK, JSON.stringify({
+      dark: S.dark, cel: S.cel, alarm: S.alarm, vib: S.vib,
+      threshold: S.threshold,
+      wlEnabled: document.getElementById('wlTgl')?.checked ?? true
+    }));
+  } catch(e) {}
+}
+loadSettings();
+
+// Apply loaded settings to UI on page load
+function applyLoadedSettings(){
+  if(!S.dark) document.body.classList.add('light');
+  document.getElementById('themeBtn').textContent = S.dark ? '☀️' : '🌙';
+  document.getElementById('unitBtn').textContent  = S.cel  ? '°C' : '°F';
+  document.getElementById('alarmTgl').checked = S.alarm;
+  document.getElementById('vibTgl').checked   = S.vib;
+  document.getElementById('thrSlider').value  = S.threshold;
+  document.getElementById('thrDisp').textContent = S.threshold + '°';
+  if(S._wlEnabled === false) document.getElementById('wlTgl').checked = false;
+}
+applyLoadedSettings();
+
+document.getElementById('themeBtn').addEventListener('click',()=>{
+  S.dark=!S.dark;
+  document.body.classList.toggle('light',!S.dark);
+  document.getElementById('themeBtn').textContent=S.dark?'☀️':'🌙';
+  saveSettings();
+});
+
+document.getElementById('unitBtn').addEventListener('click',()=>{
+  S.cel=!S.cel;
+  document.getElementById('unitBtn').textContent=S.cel?'°C':'°F';
+  if(S.weather) renderWx(S.weather);
+  saveSettings();
+});
+
+const stp=document.getElementById('stp'),stb=document.getElementById('stBtn');
+stb.addEventListener('click',()=>{stp.classList.toggle('open');stb.classList.toggle('on',stp.classList.contains('open'));});
+stp.addEventListener('click',e=>{if(e.target===stp){stp.classList.remove('open');stb.classList.remove('on');}});
+document.getElementById('alarmTgl').addEventListener('change',e=>{
+  S.alarm=e.target.checked;S.alarmFired=false;
+  if(S.alarm) ensureAudio();
+  saveSettings();
+});
+document.getElementById('vibTgl').addEventListener('change',e=>{S.vib=e.target.checked;saveSettings();});
+document.getElementById('thrSlider').addEventListener('input',function(){
+  S.threshold=parseInt(this.value);
+  document.getElementById('thrDisp').textContent=S.threshold+'°';
+  S.alarmFired=false;
+  saveSettings();
+});
+document.getElementById('wlTgl').addEventListener('change',async e=>{
+  if(e.target.checked) await reqWL();
+  else if(S.wakeLock){await S.wakeLock.release();S.wakeLock=null;}
+  saveSettings();
+});
+
+async function reqWL(){
+  if('wakeLock' in navigator)
+    try{S.wakeLock=await navigator.wakeLock.request('screen');S.wakeLock.addEventListener('release',()=>S.wakeLock=null);}
+    catch(e){console.warn('WL:',e);}
+}
+// Wake lock requires a user activation to grant, so calling it at load time
+// fails with NotAllowedError. Bind to the first interaction with the page;
+// once we have it, the visibilitychange handler keeps it alive.
+function _firstGestureWL(){
+  if(document.getElementById('wlTgl')?.checked) reqWL();
+  window.removeEventListener('pointerdown', _firstGestureWL);
+  window.removeEventListener('keydown', _firstGestureWL);
+}
+window.addEventListener('pointerdown', _firstGestureWL, {once:true});
+window.addEventListener('keydown', _firstGestureWL, {once:true});
+document.addEventListener('visibilitychange',async()=>{
+  if(document.visibilityState==='visible'&&document.getElementById('wlTgl').checked) await reqWL();
+});
+
+/* ══════════════════════════════════════════════════════════
+   TRIP RECORDER + IndexedDB persistence + GPX export
+══════════════════════════════════════════════════════════ */
+
+const TRIP = {
+  active:false,
+  startMs:0,
+  pts:[],            // {lat, lon, elev, t, acc}
+  lastPt:null,
+  distM:0,           // total meters
+  gainM:0,           // cumulative elevation gain (meters)
+  lossM:0,
+  maxElevM:-Infinity,
+  minElevM:Infinity,
+  movingMs:0,        // time spent moving (>0.5 m/s between fixes)
+  lastFixMs:0,
+};
+
+// Haversine distance in meters between two lat/lon points
+function haversineM(a,b){
+  const R=6371000, toRad=Math.PI/180;
+  const dLat=(b.lat-a.lat)*toRad, dLon=(b.lon-a.lon)*toRad;
+  const la1=a.lat*toRad, la2=b.lat*toRad;
+  const h=Math.sin(dLat/2)**2 + Math.cos(la1)*Math.cos(la2)*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.sqrt(h));
+}
+const m2mi = m => m * 0.000621371;
+const m2ft = m => m * 3.28084;
+
+// Called from the GPS watch handler whenever a new position arrives
+function tripIngestFix(pos){
+  if(!TRIP.active) return;
+  const c=pos.coords;
+  // Filter low-accuracy fixes — anything worse than 30m is noise
+  if(c.accuracy && c.accuracy>30) return;
+  // Reject NaN/invalid coords (rare sensor glitches that would corrupt the trip)
+  if(!Number.isFinite(c.latitude) || !Number.isFinite(c.longitude)) return;
+  const fix={
+    lat:c.latitude, lon:c.longitude,
+    elev: (c.altitude!=null && Number.isFinite(c.altitude)) ? c.altitude : null,
+    t:Date.now(),
+    acc: (c.accuracy==null ? null : c.accuracy)
+  };
+  let accepted = false;
+  if(TRIP.lastPt){
+    const dM = haversineM(TRIP.lastPt, fix);
+    const gapMs = fix.t - TRIP.lastPt.t;
+    // Distinguish two cases:
+    //   1) Big jump in a short time = bad GPS reading. Throw it away.
+    //   2) Big gap in time = signal dropout (canyon/tunnel/app suspended).
+    //      Don't credit distance for the gap, but DO record the new point so
+    //      the GPX export creates a fresh <trkseg> at the boundary.
+    if(dM>200 && gapMs<30000) {
+      TRIP.lastPt=fix;
+      return;
+    }
+    if(gapMs>30000) {
+      // Signal recovered after an outage. Push the point as the start of a
+      // new segment, but skip distance/elevation/moving-time credit since we
+      // have no idea what happened during the gap.
+      TRIP.pts.push(fix);
+      TRIP.lastPt=fix;
+      accepted = true;
+    } else if(dM < 3) {
+      // GPS jitter while parked — ignore entirely
+      return;
+    } else {
+      TRIP.distM += dM;
+      const dtSec = gapMs/1000;
+      const speed = dtSec>0 ? dM/dtSec : 0;
+      if(speed > 0.5) TRIP.movingMs += gapMs;
+      if(fix.elev!=null && TRIP.lastPt.elev!=null){
+        const dE = fix.elev - TRIP.lastPt.elev;
+        if(dE >  1) TRIP.gainM += dE;
+        if(dE < -1) TRIP.lossM += -dE;
+      }
+      TRIP.pts.push(fix);
+      TRIP.lastPt=fix;
+      accepted = true;
+    }
+  } else {
+    // First fix of the trip — use this real GPS reading as the start point.
+    // We deliberately don't seed with an earlier S.lat/S.lon snapshot, because
+    // that older position may be stale and would inflate first-segment distance.
+    TRIP.pts.push(fix);
+    TRIP.lastPt=fix;
+    accepted = true;
+  }
+  // Only update min/max elevation and last-fix timestamp from accepted fixes,
+  // not from rejected jumps or jitter — otherwise a single bad GPS fix at high
+  // altitude can permanently inflate the trip's max elevation stat.
+  if(accepted){
+    if(fix.elev!=null){
+      if(fix.elev>TRIP.maxElevM) TRIP.maxElevM=fix.elev;
+      if(fix.elev<TRIP.minElevM) TRIP.minElevM=fix.elev;
+    }
+    TRIP.lastFixMs=fix.t;
+    refreshTripLive();
+  }
+}
+
+function fmtDuration(ms){
+  const total=Math.floor(ms/1000);
+  const h=Math.floor(total/3600), m=Math.floor((total%3600)/60), s=total%60;
+  if(h>0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  return `${m}:${String(s).padStart(2,'0')}`;
+}
+
+function refreshTripLive(){
+  if(!TRIP.active) return;
+  document.getElementById('tlDist').textContent = m2mi(TRIP.distM).toFixed(2)+' mi';
+  document.getElementById('tlTime').textContent = fmtDuration(Date.now()-TRIP.startMs);
+  document.getElementById('tlGain').textContent = Math.round(m2ft(TRIP.gainM))+' ft';
+}
+
+const tripBtn=document.getElementById('tripBtn');
+const tripLive=document.getElementById('tripLive');
+
+function tripStart(){
+  if(!S.lat || !S.lon){
+    alert('Waiting for GPS lock — try again in a few seconds.');
+    return;
+  }
+  TRIP.active=true;
+  TRIP.startMs=Date.now();
+  TRIP.pts=[];
+  TRIP.lastPt=null;
+  TRIP.distM=0; TRIP.gainM=0; TRIP.lossM=0;
+  TRIP.maxElevM=-Infinity; TRIP.minElevM=Infinity;
+  TRIP.movingMs=0;
+  // Don't seed with a synthesized point. The first real GPS fix from
+  // navigator.geolocation.watchPosition will become the start point in
+  // tripIngestFix. This avoids inflating distance if S.lat/S.lon is stale.
+  tripBtn.textContent='⏹ STOP TRIP';
+  tripBtn.classList.add('rec');
+  tripLive.classList.add('show');
+  refreshTripLive();
+}
+
+function tripStop(){
+  if(!TRIP.active) return;
+  TRIP.active=false;
+  // Reset the button immediately. If the user discards or saves later,
+  // we're already in the right visual state. This prevents a stale "STOP TRIP"
+  // button from being tapped while the save modal is open and triggering a
+  // new tripStart that would wipe the unsaved data.
+  tripReset();
+  if(TRIP.pts.length<2 || TRIP.distM<10){
+    alert('Trip too short to save (need at least ~30 ft of movement).');
+    return;
+  }
+  openSaveModal();
+}
+
+function tripReset(){
+  tripBtn.textContent='▶ START TRIP';
+  tripBtn.classList.remove('rec');
+  tripLive.classList.remove('show');
+}
+
+tripBtn.addEventListener('click',()=>{
+  if(TRIP.active) tripStop();
+  else tripStart();
+});
+
+// Live tick for time display (since GPS may not fire every second)
+setInterval(()=>{ if(TRIP.active) refreshTripLive(); }, 1000);
+// Autosave draft every 30s while recording — survives tab close / crash
+setInterval(()=>{ if(TRIP.active) saveDraft(); }, 30000);
+
+/* ─── INDEXEDDB ──────────────────────────────────────────── */
+const DB_NAME='trailgauge', DB_VER=1, STORE='trips';
+let _db=null;
+function openDB(){
+  return new Promise((resolve,reject)=>{
+    if(_db) return resolve(_db);
+    const req=indexedDB.open(DB_NAME,DB_VER);
+    req.onupgradeneeded=()=>{
+      const db=req.result;
+      if(!db.objectStoreNames.contains(STORE)){
+        const os=db.createObjectStore(STORE,{keyPath:'id'});
+        os.createIndex('startMs','startMs',{unique:false});
+      }
+    };
+    req.onsuccess=()=>{ _db=req.result; resolve(_db); };
+    req.onerror =()=> reject(req.error);
+  });
+}
+async function dbPut(trip){
+  const db=await openDB();
+  return new Promise((res,rej)=>{
+    const tx=db.transaction(STORE,'readwrite');
+    tx.objectStore(STORE).put(trip);
+    tx.oncomplete=()=>res();
+    tx.onerror=()=>rej(tx.error);
+  });
+}
+async function dbAll(){
+  const db=await openDB();
+  return new Promise((res,rej)=>{
+    const tx=db.transaction(STORE,'readonly');
+    const req=tx.objectStore(STORE).getAll();
+    req.onsuccess=()=>res(req.result||[]);
+    req.onerror=()=>rej(req.error);
+  });
+}
+async function dbDelete(id){
+  const db=await openDB();
+  return new Promise((res,rej)=>{
+    const tx=db.transaction(STORE,'readwrite');
+    tx.objectStore(STORE).delete(id);
+    tx.oncomplete=()=>res();
+    tx.onerror=()=>rej(tx.error);
+  });
+}
+
+/* ─── DRAFT AUTOSAVE ─────────────────────────────────────────
+   While a trip is recording, periodically save a draft to IndexedDB.
+   If the tab dies or the device crashes, the draft survives and the
+   user is offered to resume/recover it on next page load.
+   The draft uses a single fixed key so it overwrites itself.
+*/
+const DRAFT_ID = '__draft__';
+async function saveDraft(){
+  if(!TRIP.active) return;
+  const draft = {
+    id: DRAFT_ID,
+    isDraft: true,
+    name: '(in progress)',
+    startMs: TRIP.startMs,
+    endMs: Date.now(),
+    distM: TRIP.distM,
+    gainM: TRIP.gainM,
+    lossM: TRIP.lossM,
+    maxElevM: TRIP.maxElevM===-Infinity ? null : TRIP.maxElevM,
+    minElevM: TRIP.minElevM=== Infinity ? null : TRIP.minElevM,
+    movingMs: TRIP.movingMs,
+    pts: TRIP.pts,
+    savedAt: Date.now()
+  };
+  try { await dbPut(draft); } catch(e) { console.warn('Draft autosave failed:', e); }
+}
+async function clearDraft(){
+  try { await dbDelete(DRAFT_ID); } catch(e) {}
+}
+async function loadDraft(){
+  try {
+    const db = await openDB();
+    return await new Promise((res,rej)=>{
+      const tx = db.transaction(STORE,'readonly');
+      const req = tx.objectStore(STORE).get(DRAFT_ID);
+      req.onsuccess = ()=> res(req.result || null);
+      req.onerror = ()=> rej(req.error);
+    });
+  } catch(e) { return null; }
+}
+// Filter drafts out of the trips list — they're not real trips yet
+async function dbAllReal(){
+  const all = await dbAll();
+  return all.filter(t => !t.isDraft);
+}
+
+/* ─── SAVE MODAL ─────────────────────────────────────────── */
+const snp=document.getElementById('snp');
+const snName=document.getElementById('snName');
+const snStats=document.getElementById('snStats');
+
+// Generate a default name from a given Date (or now if not provided).
+// Uses the device's locale for date and time formatting so it reads naturally
+// for users outside the US (e.g. d/m/yyyy in most of the world). Falls back
+// gracefully if Intl isn't available on very old browsers.
+function defaultTripName(d){
+  d = d || new Date();
+  let dateStr, timeStr;
+  try {
+    dateStr = d.toLocaleDateString();
+    timeStr = d.toLocaleTimeString(undefined, {hour:'numeric', minute:'2-digit'});
+  } catch(_) {
+    dateStr = `${d.getMonth()+1}/${d.getDate()}/${d.getFullYear()}`;
+    let h=d.getHours();const mm=String(d.getMinutes()).padStart(2,'0'),ap=h>=12?'PM':'AM';h=h%12||12;
+    timeStr = `${h}:${mm} ${ap}`;
+  }
+  return `Trip ${dateStr} ${timeStr}`;
+}
+
+// Track whether the current save flow is from a recovered trip.
+// If so, endMs comes from the last GPS point, not Date.now().
+let _saveIsRecovery = false;
+
+function openSaveModal(isRecovery){
+  _saveIsRecovery = !!isRecovery;
+  // For recovery, use the actual end time (last point's timestamp) for stats display.
+  // For a normal stop, "now" is correct.
+  const effectiveEndMs = isRecovery && TRIP.pts.length
+    ? TRIP.pts[TRIP.pts.length-1].t
+    : Date.now();
+  const elapsed = effectiveEndMs - TRIP.startMs;
+  const moving=TRIP.movingMs;
+  const minE = TRIP.minElevM===Infinity ? null : TRIP.minElevM;
+  const maxE = TRIP.maxElevM===-Infinity ? null : TRIP.maxElevM;
+  snStats.innerHTML = [
+    `<b>Distance:</b> ${m2mi(TRIP.distM).toFixed(2)} mi`,
+    `<b>Duration:</b> ${fmtDuration(elapsed)}  <b>Moving:</b> ${fmtDuration(moving)}`,
+    `<b>Gain / Loss:</b> +${Math.round(m2ft(TRIP.gainM))} / −${Math.round(m2ft(TRIP.lossM))} ft`,
+    (minE!=null && maxE!=null) ? `<b>Elev range:</b> ${Math.round(m2ft(minE))} – ${Math.round(m2ft(maxE))} ft` : null,
+    `<b>GPS points:</b> ${TRIP.pts.length}`
+  ].filter(Boolean).join('<br>');
+  // Default name uses the trip's start time, not "now" — important for recovered trips
+  // and for cases where the user stares at the save modal for a few minutes before saving.
+  snName.value = defaultTripName(new Date(TRIP.startMs));
+  snp.classList.add('open');
+  setTimeout(()=>snName.focus(), 350);
+}
+
+document.getElementById('snDiscard').addEventListener('click', async ()=>{
+  if(confirm('Discard this trip without saving?')){
+    await clearDraft();
+    snp.classList.remove('open');
+    tripReset();
+  }
+});
+
+document.getElementById('snSave').addEventListener('click', async ()=>{
+  // Default also uses trip start time, not now — keeps name in sync with the actual trip.
+  const name = snName.value.trim() || defaultTripName(new Date(TRIP.startMs));
+  // For recovered trips, endMs is the last GPS fix's timestamp (when recording really stopped).
+  // For a normal stop, endMs is "now" (the moment they hit Stop).
+  const endMs = _saveIsRecovery && TRIP.pts.length
+    ? TRIP.pts[TRIP.pts.length-1].t
+    : Date.now();
+  const trip={
+    id: 't_'+TRIP.startMs+'_'+Math.random().toString(36).slice(2,7),
+    name,
+    startMs: TRIP.startMs,
+    endMs,
+    distM: TRIP.distM,
+    gainM: TRIP.gainM,
+    lossM: TRIP.lossM,
+    maxElevM: TRIP.maxElevM===-Infinity ? null : TRIP.maxElevM,
+    minElevM: TRIP.minElevM=== Infinity ? null : TRIP.minElevM,
+    movingMs: TRIP.movingMs,
+    pts: TRIP.pts
+  };
+  try{
+    await dbPut(trip);
+    await clearDraft();
+    snp.classList.remove('open');
+    tripReset();
+    _saveIsRecovery = false;
+  }catch(e){
+    alert('Failed to save: '+e.message);
+  }
+});
+
+snp.addEventListener('click',e=>{ if(e.target===snp){
+  // Don't accidentally lose data — require explicit Discard
+}});
+
+/* ─── TRIPS LIST ─────────────────────────────────────────── */
+const tlp=document.getElementById('tlp');
+document.getElementById('tripsBtn').addEventListener('click', async ()=>{
+  await renderTripsList();
+  tlp.classList.add('open');
+});
+tlp.addEventListener('click',e=>{ if(e.target===tlp) tlp.classList.remove('open'); });
+
+async function renderTripsList(){
+  const list=document.getElementById('tripList');
+  const empty=document.getElementById('tripEmpty');
+  let trips=[];
+  try {
+    trips = await dbAllReal();
+  } catch(e) {
+    console.warn('Failed to load trips:', e);
+    list.innerHTML = '';
+    empty.style.display='block';
+    empty.innerHTML = `Couldn't load saved trips.<br><span style="color:var(--danger)">Storage error: ${escapeHtml(e.message||'unknown')}</span>`;
+    document.getElementById('tripCount').textContent = '—';
+    return;
+  }
+  trips.sort((a,b)=>b.startMs-a.startMs);
+  document.getElementById('tripCount').textContent = trips.length+(trips.length===1?' trip':' trips');
+  list.innerHTML='';
+  if(trips.length===0){ empty.style.display='block'; empty.innerHTML='No trips saved yet.<br>Hit START TRIP to begin recording.'; return; }
+  empty.style.display='none';
+  for(const t of trips){
+    const d=new Date(t.startMs);
+    const date=`${d.getMonth()+1}/${d.getDate()}/${String(d.getFullYear()).slice(2)}`;
+    const item=document.createElement('div');
+    item.className='tripItem';
+    item.innerHTML=`
+      <div class="tname">${escapeHtml(t.name)}</div>
+      <div class="tmeta">
+        <span>📅 ${date}</span>
+        <span>📏 ${m2mi(t.distM).toFixed(2)} mi</span>
+        <span>⛰️ +${Math.round(m2ft(t.gainM))} ft</span>
+        <span>⏱ ${fmtDuration(t.endMs-t.startMs)}</span>
+      </div>`;
+    item.addEventListener('click',()=>openTripDetail(t));
+    list.appendChild(item);
+  }
+}
+
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+/* ─── TRIP DETAIL ────────────────────────────────────────── */
+const tdp=document.getElementById('tdp');
+let _currentTrip=null;
+function openTripDetail(trip){
+  _currentTrip=trip;
+  document.getElementById('tdTitle').textContent=trip.name;
+  const d=new Date(trip.startMs);
+  let startStr;
+  try {
+    startStr = `${d.toLocaleDateString()} ${d.toLocaleTimeString(undefined, {hour:'numeric', minute:'2-digit'})}`;
+  } catch(_) {
+    const dateStr=`${d.getMonth()+1}/${d.getDate()}/${d.getFullYear()}`;
+    let h=d.getHours();const mm=String(d.getMinutes()).padStart(2,'0'),ap=h>=12?'PM':'AM';h=h%12||12;
+    startStr = `${dateStr} ${h}:${mm} ${ap}`;
+  }
+  const rows=[
+    ['Started', startStr],
+    ['Distance', m2mi(trip.distM).toFixed(2)+' mi'],
+    ['Duration', fmtDuration(trip.endMs-trip.startMs)],
+    ['Moving time', fmtDuration(trip.movingMs)],
+    ['Elevation gain', '+'+Math.round(m2ft(trip.gainM))+' ft'],
+    ['Elevation loss', '−'+Math.round(m2ft(trip.lossM))+' ft'],
+  ];
+  if(trip.maxElevM!=null) rows.push(['Max elevation', Math.round(m2ft(trip.maxElevM))+' ft']);
+  if(trip.minElevM!=null) rows.push(['Min elevation', Math.round(m2ft(trip.minElevM))+' ft']);
+  rows.push(['GPS points', String(trip.pts.length)]);
+  document.getElementById('tdBody').innerHTML = rows.map(r=>
+    `<div class="tdStat"><span class="lbl">${r[0]}</span><span class="val">${r[1]}</span></div>`
+  ).join('');
+  tdp.classList.add('open');
+}
+tdp.addEventListener('click',e=>{ if(e.target===tdp) tdp.classList.remove('open'); });
+
+document.getElementById('tdRename').addEventListener('click', async ()=>{
+  if(!_currentTrip) return;
+  const next=prompt('New name:', _currentTrip.name);
+  if(next==null) return;
+  const trimmed=next.trim();
+  if(!trimmed) return;
+  // Don't mutate the in-memory trip until the DB commit succeeds.
+  const updated = {..._currentTrip, name: trimmed};
+  try {
+    await dbPut(updated);
+  } catch(e) {
+    alert('Rename failed: '+(e.message||'storage error'));
+    return;
+  }
+  _currentTrip = updated;
+  document.getElementById('tdTitle').textContent=trimmed;
+  await renderTripsList();
+});
+
+document.getElementById('tdDelete').addEventListener('click', async ()=>{
+  if(!_currentTrip) return;
+  if(!confirm('Delete "'+_currentTrip.name+'"? This cannot be undone.')) return;
+  try {
+    await dbDelete(_currentTrip.id);
+  } catch(e) {
+    alert('Delete failed: '+(e.message||'storage error'));
+    return;
+  }
+  _currentTrip=null;
+  tdp.classList.remove('open');
+  await renderTripsList();
+});
+
+document.getElementById('tdExport').addEventListener('click',()=>{
+  if(!_currentTrip) return;
+  exportGPX(_currentTrip);
+});
+
+/* ─── GPX EXPORT ─────────────────────────────────────────── */
+function exportGPX(trip){
+  const startISO = new Date(trip.startMs).toISOString();
+  const safeName = escapeXml(trip.name);
+  // Split points into segments at any gap >30s — those are dropout boundaries.
+  // Each segment becomes a <trkseg>, so GPS viewers don't draw straight lines
+  // through canyons / tunnels where signal was lost.
+  const GAP_THRESHOLD_MS = 30000;
+  const segments = [];
+  let current = [];
+  for(let i=0; i<trip.pts.length; i++){
+    const p = trip.pts[i];
+    if(current.length>0 && (p.t - current[current.length-1].t) > GAP_THRESHOLD_MS){
+      segments.push(current);
+      current = [];
+    }
+    current.push(p);
+  }
+  if(current.length>0) segments.push(current);
+
+  const segXml = segments.map(seg => {
+    const points = seg.map(p=>{
+      const ele = (p.elev!=null) ? `<ele>${p.elev.toFixed(1)}</ele>` : '';
+      const tIso = new Date(p.t).toISOString();
+      return `      <trkpt lat="${p.lat.toFixed(7)}" lon="${p.lon.toFixed(7)}">${ele}<time>${tIso}</time></trkpt>`;
+    }).join('\n');
+    return `    <trkseg>\n${points}\n    </trkseg>`;
+  }).join('\n');
+
+  const gpx = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="TrailGauge"
+  xmlns="http://www.topografix.com/GPX/1/1"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">
+  <metadata>
+    <name>${safeName}</name>
+    <time>${startISO}</time>
+  </metadata>
+  <trk>
+    <name>${safeName}</name>
+${segXml}
+  </trk>
+</gpx>`;
+  const blob=new Blob([gpx],{type:'application/gpx+xml'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  // Strip to filesystem-safe characters; fall back to a date-based name if
+  // the trip name was entirely emoji or special characters.
+  let stripped = trip.name.replace(/[^a-z0-9_\-]+/gi,'_').replace(/^_+|_+$/g,'').slice(0,40);
+  if(!stripped) stripped = 'trip_'+new Date(trip.startMs).toISOString().slice(0,10);
+  const fname = stripped + '.gpx';
+  a.href=url; a.download=fname;
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 100);
+}
+function escapeXml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));}
+
+let rt;
+window.addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(resize,80);});
+window.addEventListener('orientationchange',()=>{setTimeout(resize,250);});
+
+resize();
+startGPS();
+setTimeout(()=>{if(!S.weather)loadCachedWx();},3000);
+setInterval(()=>{if(S.lat&&S.lon)fetchWx(S.lat,S.lon);},15*60*1000);
+setInterval(()=>{if(S.wxTs)setWDot((Date.now()-S.wxTs)>S.wxStale?'stale':'cached');},60000);
+
+// Check for an unfinished trip from a previous session.
+// If found, offer three options: Resume (continue recording), Save (stop and save),
+// or Discard (throw away). Resume is critical for the case where the tab died but
+// the user is still on the trail — they want to keep recording, not end the trip.
+(async () => {
+  const draft = await loadDraft();
+  if(!draft || !draft.pts || draft.pts.length<2) return;
+  await new Promise(r => setTimeout(r, 800)); // let the UI settle
+
+  const ageMin = Math.round((Date.now() - draft.savedAt) / 60000);
+  const distMi = (draft.distM * 0.000621371).toFixed(2);
+  const lastPtTime = draft.pts[draft.pts.length-1]?.t || draft.savedAt;
+  const tripDurationMin = Math.round((lastPtTime - draft.startMs) / 60000);
+
+  const rcp = document.getElementById('rcp');
+  const rcBody = document.getElementById('rcBody');
+  rcBody.innerHTML = [
+    `<b>Distance:</b> ${distMi} mi`,
+    `<b>Duration:</b> ${tripDurationMin} min`,
+    `<b>GPS points:</b> ${draft.pts.length}`,
+    `<b>Last saved:</b> ${ageMin} min ago`,
+    '',
+    `<span style="color:var(--txt3)">Resume to continue recording where you left off, or save to finalize the trip as-is.</span>`
+  ].join('<br>');
+  rcp.classList.add('open');
+
+  // Restore TRIP state from draft (used by both Resume and Save paths)
+  function rehydrate(){
+    TRIP.startMs = draft.startMs;
+    TRIP.distM = draft.distM;
+    TRIP.gainM = draft.gainM;
+    TRIP.lossM = draft.lossM;
+    TRIP.maxElevM = draft.maxElevM ?? -Infinity;
+    TRIP.minElevM = draft.minElevM ??  Infinity;
+    TRIP.movingMs = draft.movingMs;
+    TRIP.pts = draft.pts;
+    TRIP.lastPt = draft.pts[draft.pts.length-1];
+  }
+
+  document.getElementById('rcResume').addEventListener('click', ()=>{
+    rehydrate();
+    TRIP.active = true;
+    // Visual state: show recording UI
+    tripBtn.textContent='⏹ STOP TRIP';
+    tripBtn.classList.add('rec');
+    tripLive.classList.add('show');
+    refreshTripLive();
+    rcp.classList.remove('open');
+  }, {once:true});
+
+  document.getElementById('rcSave').addEventListener('click', ()=>{
+    rehydrate();
+    TRIP.active = false;
+    rcp.classList.remove('open');
+    openSaveModal(/*recovery=*/true);
+  }, {once:true});
+
+  document.getElementById('rcDiscard').addEventListener('click', async ()=>{
+    if(!confirm('Discard this trip permanently?')) return;
+    await clearDraft();
+    rcp.classList.remove('open');
+  }, {once:true});
+})();
+
+})();
+</script>
+</body>
+</html>
