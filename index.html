@@ -88,6 +88,34 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 #mbtn:active{transform:translateX(-50%) scale(.94)}
 #mbtn.am{border-color:var(--accent);color:var(--accent)}
 
+/* Motion permission gate — covers the gauge until the user grants sensor access.
+   Hidden by default; JS adds .show when iOS requires the permission prompt.
+   Dimensions and position are set in resize() to match the canvas exactly so
+   border-radius:50% renders as a circle, not an ellipse. */
+#permOverlay{position:absolute;border-radius:50%;
+  background:rgba(10,12,15,0.92);
+  -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+  display:none;flex-direction:column;align-items:center;justify-content:center;
+  padding:18px;text-align:center;z-index:6;
+  box-shadow:0 0 0 3px var(--accent),0 0 0 5px var(--bg2),0 0 32px rgba(61,220,151,.35)}
+body.light #permOverlay{background:rgba(240,244,248,0.94)}
+#permOverlay.show{display:flex;animation:permFade .3s ease both}
+@keyframes permFade{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+.permIcon{font-size:28px;margin-bottom:6px}
+.permTitle{font-family:var(--fd);font-size:14px;font-weight:700;color:var(--accent);
+  letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px}
+.permMsg{font-family:var(--fm);font-size:10px;color:var(--txt);line-height:1.4;
+  margin-bottom:14px;max-width:80%}
+#permBtn{background:var(--accent);color:#000;border:none;border-radius:24px;
+  padding:10px 22px;font-family:var(--fd);font-size:12px;font-weight:700;
+  letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;transition:transform var(--tr);
+  box-shadow:0 2px 12px rgba(61,220,151,.35)}
+#permBtn:active{transform:scale(.95)}
+#permBtn:disabled{opacity:.5;cursor:default}
+.permHint{font-family:var(--fm);font-size:9px;color:var(--warn);line-height:1.4;
+  margin-top:10px;max-width:85%}
+
 #gps{display:flex;gap:6px;width:100%;max-width:480px;flex-wrap:wrap}
 .gchip{background:var(--card);border:1px solid var(--border);border-radius:8px;
   padding:5px 10px;display:flex;align-items:center;gap:5px;flex:1;min-width:0}
@@ -179,7 +207,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 }
 
 #stp{position:fixed;inset:0;z-index:100;display:flex;align-items:flex-end;
-  background:rgba(0,0,0,.65);backdrop-filter:blur(4px);opacity:0;pointer-events:none;transition:opacity .3s ease}
+  background:rgba(0,0,0,.65);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);opacity:0;pointer-events:none;transition:opacity .3s ease}
 #stp.open{opacity:1;pointer-events:all}
 #stsh{width:100%;background:var(--card);border-radius:20px 20px 0 0;border-top:1px solid var(--border);
   padding:16px 20px calc(20px + var(--sb));transform:translateY(100%);
@@ -214,7 +242,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 
 /* Shared modal styling for trip panels */
 #tlp,#snp,#tdp,#rcp{position:fixed;inset:0;z-index:101;display:flex;align-items:flex-end;
-  background:rgba(0,0,0,.65);backdrop-filter:blur(4px);opacity:0;pointer-events:none;transition:opacity .3s ease}
+  background:rgba(0,0,0,.65);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);opacity:0;pointer-events:none;transition:opacity .3s ease}
 #tdp{z-index:102} /* trip detail sits above the trips list when both are open */
 #snp{z-index:103} /* save modal sits above all — it owns unsaved data */
 #rcp{z-index:104} /* recovery modal beats everything — first thing user sees on load */
@@ -287,6 +315,13 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
         <canvas id="hc"></canvas>
         <canvas id="ac"></canvas>
         <button id="mbtn">⬡ Horizon</button>
+        <div id="permOverlay">
+          <div class="permIcon">📐</div>
+          <div class="permTitle">Motion Sensors</div>
+          <div class="permMsg" id="permMsg">TrailGauge needs access to your phone's motion sensors to display real-time tilt readings.</div>
+          <button id="permBtn">Enable Motion Sensors</button>
+          <div class="permHint" id="permHint" style="display:none"></div>
+        </div>
       </div>
 
       <div id="gps">
@@ -462,6 +497,17 @@ function resize(){
   });
   gw.style.width=sz+'px';
   gw.style.height=(sz+28)+'px';
+  // Size the permission overlay to match the gauge canvas exactly, so its
+  // border-radius:50% renders as a true circle (the gauge wrapper is 28px
+  // taller than wide because of the mode toggle button below it — using
+  // inset:0 there would produce an ellipse).
+  const po = document.getElementById('permOverlay');
+  if(po){
+    po.style.width = sz+'px';
+    po.style.height = sz+'px';
+    po.style.top = '0';
+    po.style.left = '0';
+  }
   hx.setTransform(1,0,0,1,0,0); hx.scale(DPR,DPR);
   ax.setTransform(1,0,0,1,0,0); ax.scale(DPR,DPR);
 }
@@ -893,40 +939,136 @@ function handleOri(e){
   S.tPitch = pitch - S.pOff;
   S.tRoll  = roll  - S.rOff;
 }
-function initOri(){
-  if(typeof DeviceOrientationEvent!=='undefined'&&typeof DeviceOrientationEvent.requestPermission==='function'){
-    // iOS Safari 13+: requestPermission MUST be called from a user gesture.
-    // Defer to first interaction. Once permission is granted, we attach the
-    // listener and remove the gesture binders. The user sees an iOS-native
-    // permission prompt the first time they touch the gauge or any button.
-    const requestOnce = ()=>{
-      DeviceOrientationEvent.requestPermission()
-        .then(p=>{
-          if(p==='granted') window.addEventListener('deviceorientation',handleOri,true);
-          // If denied, tilt readings stay at 0/0. User can reload and re-prompt.
-        })
-        .catch(console.error);
-      window.removeEventListener('pointerdown', requestOnce);
-      window.removeEventListener('keydown', requestOnce);
-    };
-    window.addEventListener('pointerdown', requestOnce, {once:true});
-    window.addEventListener('keydown',     requestOnce, {once:true});
-  } else {
-    // Android, desktop browsers, older iOS: no permission needed
-    window.addEventListener('deviceorientation',handleOri,true);
+/* ─── DEVICE ORIENTATION + iOS PERMISSION GATE ──────────────
+   iOS Safari 13+ requires DeviceOrientationEvent.requestPermission() to be
+   called from a real user gesture. The previous "first pointer-down anywhere"
+   approach was unreliable in standalone PWA mode — iOS sometimes ignores the
+   implicit gesture and never shows the prompt. The fix is an explicit button:
+   the user sees "Enable Motion Sensors", taps it, iOS shows the prompt, done.
+
+   States we handle:
+   - iOS, no permission yet → show overlay with button
+   - iOS, granted → no overlay, attach listener
+   - iOS, denied → show overlay with help text pointing to Settings
+   - Non-iOS (Android, desktop) → no permission needed, no overlay
+*/
+
+const PERM_KEY = 'tg_motion_perm_v1';   // 'granted' | 'denied' | absent
+const needsIOSPermission = (typeof DeviceOrientationEvent !== 'undefined'
+  && typeof DeviceOrientationEvent.requestPermission === 'function');
+
+function showPermOverlay(){
+  // Ensure dimensions are set before showing — initOri() can run before
+  // the bottom-of-script resize() call, so we proactively size the overlay
+  // here. Cheap: just reads SZ which is set during resize/canvas setup.
+  const po = document.getElementById('permOverlay');
+  if(!po) return;
+  if(SZ){
+    po.style.width = SZ+'px';
+    po.style.height = SZ+'px';
+    po.style.top = '0';
+    po.style.left = '0';
+  }
+  po.classList.add('show');
+}
+function hidePermOverlay(){
+  document.getElementById('permOverlay').classList.remove('show');
+}
+
+function attachOrientationListener(){
+  window.addEventListener('deviceorientation', handleOri, true);
+}
+
+async function requestMotionPermission(){
+  const btn = document.getElementById('permBtn');
+  const hint = document.getElementById('permHint');
+  const msg = document.getElementById('permMsg');
+  // Reset state in case this is being shown again after a previous denial/error
+  btn.disabled = true;
+  btn.textContent = 'Requesting…';
+  btn.style.display = '';
+  hint.style.display = 'none';
+  try {
+    const result = await DeviceOrientationEvent.requestPermission();
+    if(result === 'granted'){
+      try { localStorage.setItem(PERM_KEY, 'granted'); } catch(_){}
+      attachOrientationListener();
+      hidePermOverlay();
+      // Reset button state for next time the overlay might show
+      btn.disabled = false;
+      btn.textContent = 'Enable Motion Sensors';
+    } else {
+      // denied
+      try { localStorage.setItem(PERM_KEY, 'denied'); } catch(_){}
+      btn.disabled = false;
+      btn.style.display = 'none';
+      msg.textContent = 'Motion access was denied.';
+      hint.style.display = 'block';
+      hint.innerHTML = 'To enable later: iPhone <b>Settings → Safari → Advanced → Website Data</b>, delete this site, then reload and tap Enable again.';
+    }
+  } catch(err){
+    btn.disabled = false;
+    btn.textContent = 'Enable Motion Sensors';
+    hint.style.display = 'block';
+    hint.textContent = 'Could not request permission — please try again.';
+    console.warn('Motion permission error:', err);
   }
 }
+
+function initOri(){
+  if(!needsIOSPermission){
+    // Android, desktop, older iOS — no permission gate, just listen
+    attachOrientationListener();
+    return;
+  }
+
+  // iOS Safari 13+ path. Important truth: requestPermission() requires a
+  // user gesture EVERY page load — there's no "remembered grant" we can use
+  // silently. So we always show the overlay on iOS and let the user tap the
+  // button to satisfy the gesture requirement. The previously-stored grant
+  // state is only used to soften the messaging on repeat visits.
+  let prevPerm = null;
+  try { prevPerm = localStorage.getItem(PERM_KEY); } catch(_){}
+
+  // Soften copy if user has previously granted
+  if(prevPerm === 'granted'){
+    const msg = document.getElementById('permMsg');
+    if(msg) msg.textContent = 'Tap to re-enable motion sensors for this session.';
+  } else if(prevPerm === 'denied'){
+    const msg = document.getElementById('permMsg');
+    if(msg) msg.textContent = 'Motion access was previously denied. Tap to try again.';
+  }
+
+  // Attach button handler exactly once. The overlay may be shown/hidden
+  // multiple times in the lifecycle, but the handler stays bound.
+  document.getElementById('permBtn').addEventListener('click', requestMotionPermission);
+  showPermOverlay();
+}
+// resize() must run before initOri so SZ is computed and the overlay can be
+// sized correctly when shown. Subsequent resize/orientation changes will
+// re-size both the canvases and the overlay.
+resize();
 initOri();
 
+// Demo simulator — only runs as a fallback for genuinely unsupported devices
+// (desktop browsers without sensors, old phones). On iOS where the user simply
+// hasn't tapped Enable yet, we DON'T want the gauge to start cycling — the
+// overlay is the answer, not a misleading auto-demo.
 setTimeout(()=>{
-  if(!S.sensorLive){
-    let t=0;
-    setInterval(()=>{
-      t+=0.025;
-      S.tPitch=Math.sin(t)*14; S.tRoll=Math.cos(t*.7)*9;
-      S.rawPitch=S.tPitch; S.rawRoll=S.tRoll;
-    },50);
+  if(S.sensorLive) return;
+  if(needsIOSPermission){
+    // iOS: if sensors aren't live by now, it's because the user hasn't granted
+    // permission. The overlay is already showing them what to do. Stay quiet.
+    return;
   }
+  // Non-iOS path with no orientation events arriving — must be a device with
+  // no sensors. Run a gentle demo loop so the gauge isn't completely lifeless.
+  let t=0;
+  setInterval(()=>{
+    t+=0.025;
+    S.tPitch=Math.sin(t)*14; S.tRoll=Math.cos(t*.7)*9;
+    S.rawPitch=S.tPitch; S.rawRoll=S.tRoll;
+  },50);
 },2000);
 
 // Round to nearest 0.5 — readable, no flicker in low-order digits at rest
@@ -1863,7 +2005,7 @@ let rt;
 window.addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(resize,80);});
 window.addEventListener('orientationchange',()=>{setTimeout(resize,250);});
 
-resize();
+// resize() and initOri() already ran higher up — no need to call them again here.
 startGPS();
 setTimeout(()=>{if(!S.weather)loadCachedWx();},3000);
 setInterval(()=>{if(S.lat&&S.lon)fetchWx(S.lat,S.lon);},15*60*1000);
