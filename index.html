@@ -265,15 +265,16 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 #onbInner{width:100%;max-width:420px;display:flex;flex-direction:column;
   align-items:stretch;gap:18px;height:100%;justify-content:center}
 #onbCards{position:relative;width:100%;flex:1;max-height:520px;overflow:hidden}
-/* Inner track holds all three cards side-by-side. The cards container
-   above is the viewport; this track is what slides. Width 300% so each
-   card can claim a real 100% of the viewport via flex-basis 33.333%. */
-#onbTrack{display:flex;width:300%;height:100%;
+/* Inner track holds all four cards side-by-side. The cards container
+   above is the viewport; this track is what slides. Width 400% so each
+   card can claim a real 100% of the viewport via flex-basis 25%. */
+#onbTrack{display:flex;width:400%;height:100%;
   transition:transform .35s cubic-bezier(.34,1.2,.64,1)}
 #onbTrack.onb-pos-0{transform:translateX(0)}
-#onbTrack.onb-pos-1{transform:translateX(-33.3333%)}
-#onbTrack.onb-pos-2{transform:translateX(-66.6666%)}
-.onbCard{flex:0 0 33.3333%;width:33.3333%;display:flex;flex-direction:column;align-items:center;
+#onbTrack.onb-pos-1{transform:translateX(-25%)}
+#onbTrack.onb-pos-2{transform:translateX(-50%)}
+#onbTrack.onb-pos-3{transform:translateX(-75%)}
+.onbCard{flex:0 0 25%;width:25%;display:flex;flex-direction:column;align-items:center;
   text-align:center;padding:30px 18px;background:var(--card);
   border:1px solid var(--border);border-radius:18px;justify-content:center;
   overflow-y:auto;-webkit-overflow-scrolling:touch;box-sizing:border-box}
@@ -323,6 +324,8 @@ body.prof-trail #gsec { justify-content: flex-start; padding-top: 12px; gap: 14p
 body.prof-trail #trailHero { display: flex !important; }
 body.prof-trail #wx { padding: 14px 16px; }
 body.prof-trail .wxbig { font-size: 32px; }
+body.prof-trail #gps #gelevChip,
+body.prof-trail #gps #gheadChip { display: none !important; }
 body.prof-trail #gps .gval { font-size: 16px; }
 body.prof-trail #gps .glbl { font-size: 11px; }
 body.prof-trail #gps .gchip { padding: 10px 14px; }
@@ -351,19 +354,49 @@ body.prof-trail .hourcard { padding: 8px 6px; }
 .maxResetBtn:active{transform:scale(.95);border-color:var(--accent);color:var(--accent)}
 
 /* Trail Hero: compass rose + central readouts. Rendered only in trail mode. */
-#trailHero{display:none;flex-direction:column;align-items:center;
+/* Trail mode hero block — redesigned in v20.x to put location/elevation as
+   the primary readout. Compass is now a small accessory pinned alongside
+   the elevation card rather than the centerpiece. */
+#trailHero{display:none;flex-direction:column;align-items:stretch;
   width:100%;gap:14px}
-#compassWrap{position:relative;width:240px;height:240px;
-  display:flex;align-items:center;justify-content:center}
-#compassCanvas{width:240px;height:240px;display:block}
+/* Top row: big elevation hero card with the compass tucked into its corner */
+#trailPrimary{display:flex;background:var(--card);border:1px solid var(--border);
+  border-radius:14px;padding:18px 20px;align-items:center;justify-content:space-between;
+  gap:14px;position:relative;overflow:hidden}
+#trailPrimary::before{
+  content:"";position:absolute;inset:0;background:
+    radial-gradient(circle at 0% 100%, rgba(61,220,151,.07), transparent 50%);
+  pointer-events:none}
+#trailElevBlock{display:flex;flex-direction:column;flex:1;min-width:0;position:relative;z-index:1}
+.trailLbl{font-family:var(--fd);font-size:10px;letter-spacing:2px;
+  text-transform:uppercase;color:var(--txt2);margin-bottom:4px}
+.trailBigVal{font-family:var(--fd);font-size:44px;font-weight:700;color:var(--accent);
+  letter-spacing:1px;line-height:1;font-feature-settings:"tnum";
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:380px){
+  /* Smaller screens: shrink the elevation hero to keep compass alongside */
+  .trailBigVal{font-size:36px;letter-spacing:.5px}
+  #compassWrap{width:100px;height:100px}
+  #compassCanvas{width:100px;height:100px}
+  .compassDeg{font-size:18px}
+  .compassCard{font-size:9px}
+}
+.trailUnit{font-family:var(--fm);font-size:11px;color:var(--txt3);
+  margin-top:6px;letter-spacing:.5px}
+/* Compass accessory — small dial in primary block's right side */
+#compassWrap{position:relative;width:120px;height:120px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;z-index:1}
+#compassCanvas{width:120px;height:120px;display:block}
 #compassReadout{position:absolute;display:flex;flex-direction:column;
   align-items:center;justify-content:center;pointer-events:none}
-.compassDeg{font-family:var(--fd);font-size:42px;font-weight:700;color:var(--accent);
-  letter-spacing:1px;line-height:1}
-.compassCard{font-family:var(--fd);font-size:14px;letter-spacing:3px;
-  color:var(--txt2);margin-top:4px;text-transform:uppercase}
-.compassHint{font-family:var(--fm);font-size:8px;color:var(--txt3);
-  margin-top:4px;letter-spacing:.5px;text-align:center}
+.compassDeg{font-family:var(--fd);font-size:22px;font-weight:700;color:var(--accent);
+  letter-spacing:1px;line-height:1;font-feature-settings:"tnum"}
+.compassCard{font-family:var(--fd);font-size:10px;letter-spacing:2px;
+  color:var(--txt2);margin-top:2px;text-transform:uppercase}
+.compassHint{font-family:var(--fm);font-size:7px;color:var(--txt3);
+  margin-top:2px;letter-spacing:.5px;text-align:center;max-width:110px}
+/* In trail mode, only the small accessory compass is shown — its parent
+   #compassWrap retains the same id so the existing render JS still works. */
 
 /* Trail trip strip — distance/elevation tracking front and center */
 #trailTripStrip{display:none;width:100%;background:var(--card);
@@ -526,12 +559,18 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
           <div class="onbTitle">Calibrate &amp; Drop Pins</div>
           <div class="onbBody"><b>ZERO/CALIBRATE</b> sets your phone's resting angle as the reference. Always recalibrate when you change the mount.<br><br>Tap the <b>coordinates</b> at any time to drop a pin or open in maps.</div>
         </div>
+        <div class="onbCard">
+          <div class="onbHero">📸</div>
+          <div class="onbTitle">Share Your Adventures</div>
+          <div class="onbBody">Snap a photo when you save a pin or finish a trip. TrailGauge generates a <b>shareable image card</b> with your photo, location, and stats — perfect for Instagram, Reddit, or your group chat.<br><br>Open any saved pin → <b>Share as Image Card</b>.</div>
+        </div>
       </div>
     </div>
     <div id="onbDots">
       <span class="onbDot active" data-i="0"></span>
       <span class="onbDot" data-i="1"></span>
       <span class="onbDot" data-i="2"></span>
+      <span class="onbDot" data-i="3"></span>
     </div>
     <div id="onbBtns">
       <button id="onbSkip" class="modalbtn ghost">Skip</button>
@@ -597,20 +636,28 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
 
       <!-- Trail Mode hero — compass rose with central degree readout -->
       <div id="trailHero">
-        <div id="compassWrap">
-          <canvas id="compassCanvas"></canvas>
-          <div id="compassReadout">
-            <div class="compassDeg" id="compassDeg">—</div>
-            <div class="compassCard" id="compassCard">—</div>
-            <div class="compassHint" id="compassHint">Waiting for sensor</div>
+        <!-- Primary readout: elevation as hero, compass as accessory -->
+        <div id="trailPrimary">
+          <div id="trailElevBlock">
+            <div class="trailLbl">Elevation</div>
+            <div class="trailBigVal" id="trailElev">—</div>
+            <div class="trailUnit" id="trailElevSub">—</div>
+          </div>
+          <div id="compassWrap">
+            <canvas id="compassCanvas"></canvas>
+            <div id="compassReadout">
+              <div class="compassDeg" id="compassDeg">—</div>
+              <div class="compassCard" id="compassCard">—</div>
+              <div class="compassHint" id="compassHint"></div>
+            </div>
           </div>
         </div>
       </div>
 
       <div id="gps">
         <div class="gchip" id="gcoordsChip" role="button" tabindex="0"><span class="gico">📍</span><div class="gdata"><span class="glbl">Coords · tap to share</span><span class="gval" id="gcoords">Locating…</span></div></div>
-        <div class="gchip"><span class="gico">⛰️</span><div class="gdata"><span class="glbl">Elevation</span><span class="gval" id="gelev">—</span></div></div>
-        <div class="gchip"><span class="gico">🧭</span><div class="gdata"><span class="glbl">Heading</span><span class="gval" id="ghead">—</span></div></div>
+        <div class="gchip" id="gelevChip"><span class="gico">⛰️</span><div class="gdata"><span class="glbl">Elevation</span><span class="gval" id="gelev">—</span></div></div>
+        <div class="gchip" id="gheadChip"><span class="gico">🧭</span><div class="gdata"><span class="glbl">Heading</span><span class="gval" id="ghead">—</span></div></div>
       </div>
       <div id="nogps">⚠ GPS unavailable — enable location access for full features</div>
 
@@ -760,6 +807,8 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
     </div>
     <div id="tdBody"></div>
     <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+      <button class="modalbtn ghost"   id="tdToggleMap">Show Route Map</button>
+      <button class="modalbtn primary" id="tdShareCard">Share as Image Card</button>
       <button class="modalbtn ghost" id="tdRename">Rename</button>
       <button class="modalbtn ghost" id="tdExport">Export GPX</button>
       <button class="modalbtn danger" id="tdDelete">Delete</button>
@@ -1647,6 +1696,19 @@ function startGPS(){
     document.getElementById('gcoords').textContent=S.lat.toFixed(5)+', '+S.lon.toFixed(5);
     document.getElementById('gcoordsChip').classList.add('ready');
     document.getElementById('gelev').textContent=S.elev!==null?Math.round(S.elev*3.28084)+' ft':'—';
+    // Trail-mode primary block — bigger elevation readout. Element only
+    // exists in trail mode markup; getElementById guarded for completeness.
+    const teEl = document.getElementById('trailElev');
+    const tesEl = document.getElementById('trailElevSub');
+    if(teEl){
+      if(S.elev !== null){
+        teEl.textContent = Math.round(S.elev*3.28084).toLocaleString() + ' ft';
+        if(tesEl) tesEl.textContent = Math.round(S.elev) + ' m above sea level';
+      } else {
+        teEl.textContent = '—';
+        if(tesEl) tesEl.textContent = '—';
+      }
+    }
     document.getElementById('ghead').textContent=(S.hdg&&!isNaN(S.hdg))?btoc(S.hdg)+' '+Math.round(S.hdg)+'°':'—';
     document.getElementById('nogps').classList.remove('show');
     if(!S.weather||Date.now()-S.wxTs>15*60*1000) fetchWx(S.lat,S.lon);
@@ -2615,6 +2677,214 @@ function roundRect(ctx, x, y, w, h, r){
   ctx.closePath();
 }
 
+/* ─── TRIP SHARE CARD ──────────────────────────────────────
+   Generates an Instagram-square image of the trip's route + stats. Renders
+   the polyline directly on canvas using Web Mercator projection — no map
+   tiles, just the trail itself on a dark background. Visually distinct from
+   raster map screenshots and intentionally lightweight (no extra deps). */
+
+// Project lat/lon to Web Mercator (EPSG:3857). Returns {x, y} in meters.
+function projectMercator(lat, lon){
+  const R = 6378137;
+  const x = R * lon * Math.PI / 180;
+  // Clamp lat to web mercator's range to avoid +/-Infinity at the poles
+  const clampedLat = Math.max(-85.0511, Math.min(85.0511, lat));
+  const y = R * Math.log(Math.tan(Math.PI/4 + clampedLat * Math.PI / 360));
+  return {x, y};
+}
+
+function renderTripShareCard(trip){
+  return new Promise(resolve => {
+    const W = 1080, H = 1080;
+    const c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    const ctx = c.getContext('2d');
+
+    // Background — same dark gradient as pin no-photo case
+    const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+    bgGrad.addColorStop(0, '#0a0c0f');
+    bgGrad.addColorStop(1, '#161b22');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, W, H);
+
+    // Decorative grid for visual texture
+    ctx.strokeStyle = 'rgba(61,220,151,.05)';
+    ctx.lineWidth = 1;
+    for(let x = 0; x < W; x += 60){
+      ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke();
+    }
+    for(let y = 0; y < H; y += 60){
+      ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke();
+    }
+
+    // Route area — top 60% of card
+    const routeArea = { x: 60, y: 80, w: W - 120, h: 540 };
+
+    if(trip.pts && trip.pts.length >= 2){
+      // Project all points to mercator
+      const projected = trip.pts.map(p => projectMercator(p.lat, p.lon));
+      // Find bounds in mercator space
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for(const p of projected){
+        if(p.x < minX) minX = p.x; if(p.x > maxX) maxX = p.x;
+        if(p.y < minY) minY = p.y; if(p.y > maxY) maxY = p.y;
+      }
+      const spanX = maxX - minX || 1;
+      const spanY = maxY - minY || 1;
+      // Scale to fit the routeArea while preserving aspect ratio
+      const scale = Math.min(routeArea.w / spanX, routeArea.h / spanY) * 0.92;
+      // Center the route in the area
+      const offsetX = routeArea.x + routeArea.w/2 - (minX + spanX/2) * scale;
+      const offsetY = routeArea.y + routeArea.h/2 + (minY + spanY/2) * scale;
+      // Project to canvas coords (note: mercator Y is up, canvas Y is down)
+      const canvasPts = projected.map(p => ({
+        x: p.x * scale + offsetX,
+        y: -p.y * scale + offsetY
+      }));
+
+      // Glow effect — draw the route 3 times with decreasing blur for a soft glow
+      ctx.strokeStyle = 'rgba(61,220,151,.18)';
+      ctx.lineWidth = 12;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      canvasPts.forEach((pt, i) => {
+        if(i === 0) ctx.moveTo(pt.x, pt.y); else ctx.lineTo(pt.x, pt.y);
+      });
+      ctx.stroke();
+
+      ctx.strokeStyle = 'rgba(61,220,151,.4)';
+      ctx.lineWidth = 7;
+      ctx.beginPath();
+      canvasPts.forEach((pt, i) => {
+        if(i === 0) ctx.moveTo(pt.x, pt.y); else ctx.lineTo(pt.x, pt.y);
+      });
+      ctx.stroke();
+
+      // Solid main line on top
+      ctx.strokeStyle = '#3ddc97';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      canvasPts.forEach((pt, i) => {
+        if(i === 0) ctx.moveTo(pt.x, pt.y); else ctx.lineTo(pt.x, pt.y);
+      });
+      ctx.stroke();
+
+      // Start marker (green dot, white ring)
+      const start = canvasPts[0];
+      ctx.fillStyle = '#3ddc97';
+      ctx.beginPath();
+      ctx.arc(start.x, start.y, 14, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      // End marker (red dot, white ring)
+      const end = canvasPts[canvasPts.length - 1];
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath();
+      ctx.arc(end.x, end.y, 14, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      // Direction label badges
+      ctx.font = '700 16px "Rajdhani",sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      // START label above start marker
+      drawSmallBadge(ctx, start.x, start.y - 28, 'START', '#3ddc97');
+      // END label above end marker
+      drawSmallBadge(ctx, end.x, end.y - 28, 'FINISH', '#ef4444');
+    } else {
+      // No route data — should never happen since the share button is hidden
+      // for trips with < 2 points, but defensive.
+      ctx.fillStyle = '#1f2630';
+      ctx.font = '300px serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('🛤️', W/2, routeArea.y + routeArea.h/2);
+    }
+
+    // Top-right TrailGauge badge
+    drawTopBadge(ctx, W);
+
+    // ─── BOTTOM STATS BLOCK ───────────────────────────────
+    const padX = 60;
+    const statsY = 700;
+
+    // Trip name (label) — like pin label, big white
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '700 56px "Rajdhani",sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    const nameLines = wrapText(ctx, trip.name || 'Trip', W - padX*2).slice(0, 2);
+    let y = statsY;
+    nameLines.forEach((line, i) => {
+      ctx.fillText(line, padX, y + i * 64);
+    });
+    y += nameLines.length * 64 + 24;
+
+    // Stats row — 3 columns: distance, gain, time
+    const distMi = m2mi(trip.distM).toFixed(2);
+    const gainFt = '+' + Math.round(m2ft(trip.gainM)).toLocaleString();
+    const durMs = Math.max(0, (trip.endMs - trip.startMs) - (trip.pausedTotalMs || 0));
+    const durStr = fmtDuration(durMs);
+
+    const stats = [
+      ['DISTANCE', distMi + ' mi'],
+      ['ELEV GAIN', gainFt + ' ft'],
+      ['TIME', durStr]
+    ];
+    const colW = (W - padX*2) / 3;
+    stats.forEach((s, i) => {
+      const cx = padX + colW * i + colW/2;
+      // Label
+      ctx.fillStyle = 'rgba(220,228,238,.6)';
+      ctx.font = '700 18px "Rajdhani",sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(s[0], cx, y);
+      // Value
+      ctx.fillStyle = '#3ddc97';
+      ctx.font = '700 42px "Rajdhani",sans-serif';
+      ctx.fillText(s[1], cx, y + 32);
+    });
+
+    // Date footer — small text below stats
+    const startDate = new Date(trip.startMs);
+    let dateStr;
+    try { dateStr = startDate.toLocaleDateString(undefined, {month:'long', day:'numeric', year:'numeric'}); }
+    catch(_) { dateStr = `${startDate.getMonth()+1}/${startDate.getDate()}/${startDate.getFullYear()}`; }
+    ctx.fillStyle = 'rgba(220,228,238,.45)';
+    ctx.font = '500 24px "Share Tech Mono",monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(dateStr, W/2, H - 70);
+
+    c.toBlob(b => resolve(b), 'image/png');
+  });
+}
+
+// Small label badge for start/finish markers on the route share card
+function drawSmallBadge(ctx, x, y, text, color){
+  ctx.font = '700 14px "Rajdhani",sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const tw = ctx.measureText(text).width;
+  const w = tw + 14;
+  const h = 22;
+  ctx.fillStyle = 'rgba(10,12,15,.85)';
+  roundRect(ctx, x - w/2, y - h/2, w, h, h/2);
+  ctx.fill();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  roundRect(ctx, x - w/2, y - h/2, w, h, h/2);
+  ctx.stroke();
+  ctx.fillStyle = color;
+  ctx.fillText(text, x, y + 1);
+}
+
 function wrapText(ctx, text, maxWidth){
   const words = String(text).split(/\s+/);
   const lines = [];
@@ -2670,15 +2940,14 @@ applyProfile(_savedProf);
 /* ─── ONBOARDING ──────────────────────────────────────────
    First-launch 3-card walkthrough. Shown only once — controlled by
    localStorage flag tg_onboarded_v1. Swipe via Next button or dot tap. */
-// Key bumped from v1 to v2 in the build that fixed the broken card layout.
-// Anyone who hit Skip on the buggy version had their v1 flag set; bumping
-// the key forces a fresh onboarding so they actually see the working cards.
-const ONB_KEY = 'tg_onboarded_v2';
+// Key bumped to v3 in the build that added the share-feature card.
+// Anyone with the v1/v2 flag has not seen the 4th card; bumping forces fresh.
+const ONB_KEY = 'tg_onboarded_v3';
 const onb = document.getElementById('onb');
 const onbCards = document.getElementById('onbCards');   // viewport (touch target)
 const onbTrack = document.getElementById('onbTrack');   // sliding track (transform target)
 let _onbStep = 0;
-const ONB_STEPS = 3;
+const ONB_STEPS = 4;
 
 function setOnbStep(i){
   _onbStep = Math.max(0, Math.min(ONB_STEPS - 1, i));
@@ -2823,12 +3092,16 @@ function compassCardinal(deg){
 function drawCompass(){
   if(!compCtx) return;
   const dpr = window.devicePixelRatio || 1;
-  const cssW = 240, cssH = 240;
+  // Read the canvas's actual CSS-rendered size — handles the media-query
+  // shrink for small screens without hardcoding two paths.
+  const rect = compCanvas.getBoundingClientRect();
+  const cssW = Math.round(rect.width) || 120;
+  const cssH = Math.round(rect.height) || 120;
+  if(cssW < 1 || cssH < 1) return;   // not laid out yet (compass hidden in offroad mode)
   if(compCanvas.width !== cssW * dpr){
     compCanvas.width = cssW * dpr;
     compCanvas.height = cssH * dpr;
-    compCanvas.style.width = cssW + 'px';
-    compCanvas.style.height = cssH + 'px';
+    // Don't set style.width/height — let CSS continue to control display size
   }
   compCtx.setTransform(1,0,0,1,0,0);
   compCtx.scale(dpr, dpr);
@@ -2842,11 +3115,11 @@ function drawCompass(){
   const colTxt3   = cs.getPropertyValue('--txt3').trim()   || '#4a5568';
 
   const cx = cssW / 2, cy = cssH / 2;
-  const R = Math.min(cx, cy) - 6;
+  const R = Math.min(cx, cy) - 4;
 
   // Outer ring
   compCtx.strokeStyle = colBorder;
-  compCtx.lineWidth = 2;
+  compCtx.lineWidth = 1.5;
   compCtx.beginPath();
   compCtx.arc(cx, cy, R, 0, Math.PI * 2);
   compCtx.stroke();
@@ -2858,49 +3131,45 @@ function drawCompass(){
   compCtx.translate(cx, cy);
   compCtx.rotate(-heading * Math.PI / 180);
 
-  // Tick marks every 15°
-  for(let deg = 0; deg < 360; deg += 15){
+  // Tick marks every 30° at this small size — 15° ticks would be too dense
+  for(let deg = 0; deg < 360; deg += 30){
     const isCardinal = (deg % 90 === 0);
-    const isMajor = (deg % 30 === 0);
-    const len = isCardinal ? 14 : (isMajor ? 9 : 5);
+    const len = isCardinal ? 7 : 4;
     const rad = (deg - 90) * Math.PI / 180;
     const x1 = Math.cos(rad) * (R - len);
     const y1 = Math.sin(rad) * (R - len);
-    const x2 = Math.cos(rad) * (R - 2);
-    const y2 = Math.sin(rad) * (R - 2);
-    compCtx.strokeStyle = isCardinal ? colAccent : (isMajor ? colTxt2 : colTxt3);
-    compCtx.lineWidth = isCardinal ? 2.5 : (isMajor ? 1.5 : 1);
+    const x2 = Math.cos(rad) * (R - 1);
+    const y2 = Math.sin(rad) * (R - 1);
+    compCtx.strokeStyle = isCardinal ? colAccent : colTxt3;
+    compCtx.lineWidth = isCardinal ? 1.5 : 0.8;
     compCtx.beginPath();
     compCtx.moveTo(x1, y1);
     compCtx.lineTo(x2, y2);
     compCtx.stroke();
   }
 
-  // Cardinal letters
-  const letters = [['N',0],['E',90],['S',180],['W',270]];
-  compCtx.font = '600 14px "Rajdhani",sans-serif';
+  // Only render the N letter at this small size — others would crowd the readout
+  compCtx.font = '700 9px "Rajdhani",sans-serif';
   compCtx.textAlign = 'center';
   compCtx.textBaseline = 'middle';
-  letters.forEach(([letter, deg]) => {
-    const rad = (deg - 90) * Math.PI / 180;
-    const r = R - 28;
-    const x = Math.cos(rad) * r;
-    const y = Math.sin(rad) * r;
-    compCtx.fillStyle = (letter === 'N') ? colAccent : colTxt2;
-    compCtx.save();
-    compCtx.translate(x, y);
-    compCtx.rotate(heading * Math.PI / 180);
-    compCtx.fillText(letter, 0, 0);
-    compCtx.restore();
-  });
+  const nRad = (-90) * Math.PI / 180;
+  const nR = R - 14;
+  const nX = Math.cos(nRad) * nR;
+  const nY = Math.sin(nRad) * nR;
+  compCtx.fillStyle = colAccent;
+  compCtx.save();
+  compCtx.translate(nX, nY);
+  compCtx.rotate(heading * Math.PI / 180);
+  compCtx.fillText('N', 0, 0);
+  compCtx.restore();
   compCtx.restore();
 
   // Top center indicator (the direction the phone is "pointing")
   compCtx.fillStyle = colAccent;
   compCtx.beginPath();
-  compCtx.moveTo(cx, cy - R + 2);
-  compCtx.lineTo(cx - 6, cy - R + 14);
-  compCtx.lineTo(cx + 6, cy - R + 14);
+  compCtx.moveTo(cx, cy - R + 1);
+  compCtx.lineTo(cx - 4, cy - R + 9);
+  compCtx.lineTo(cx + 4, cy - R + 9);
   compCtx.closePath();
   compCtx.fill();
 }
@@ -2915,13 +3184,12 @@ function refreshCompassReadout(){
     let permState = 'unknown';
     try { permState = localStorage.getItem(PERM_KEY) || 'unknown'; } catch(_){}
     if(permState === 'denied'){
-      // User explicitly denied. iOS won't re-prompt this session — show
-      // recovery instructions instead of a useless button. Off-Road mode
-      // would show this in the gauge permOverlay; trail needs its own copy.
+      // User denied. Compass is too small to show recovery text inline —
+      // just show "Denied" and rely on the off-road permOverlay if user switches.
       degEl.textContent = '—';
-      cardEl.textContent = '—';
+      cardEl.textContent = '';
       if(!hintEl._showingDenied){
-        hintEl.innerHTML = '<div style="font-size:9px;color:var(--txt2);line-height:1.5;max-width:240px;margin:0 auto">Motion access denied. iPhone <b>Settings → Safari → Advanced → Website Data</b>, delete this site, then reload.</div>';
+        hintEl.innerHTML = '<span style="font-size:7px;color:var(--danger)">Denied — see Settings</span>';
         hintEl._showingDenied = true;
         hintEl._showingPermBtn = false;
       }
@@ -2929,12 +3197,13 @@ function refreshCompassReadout(){
     }
     if(permState !== 'granted'){
       degEl.textContent = '—';
-      cardEl.textContent = '—';
+      cardEl.textContent = '';
       // Inject the button only once — RAF runs at 60fps, and re-writing
       // innerHTML each frame would discard the wired click handler and
-      // create a fresh unwired DOM node every 16ms.
+      // create a fresh unwired DOM node every 16ms. Compact size for the
+      // small accessory compass.
       if(!hintEl._showingPermBtn){
-        hintEl.innerHTML = '<button id="compassPermBtn" style="background:var(--accent);color:#000;border:none;border-radius:14px;padding:6px 14px;font-family:var(--fd);font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;cursor:pointer;-webkit-tap-highlight-color:transparent">Enable Compass</button>';
+        hintEl.innerHTML = '<button id="compassPermBtn" style="background:var(--accent);color:#000;border:none;border-radius:10px;padding:4px 8px;font-family:var(--fd);font-size:8px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;-webkit-tap-highlight-color:transparent">Enable</button>';
         hintEl._showingPermBtn = true;
         hintEl._showingDenied = false;
         const cpb = document.getElementById('compassPermBtn');
@@ -3893,12 +4162,134 @@ function openTripDetail(trip){
   if(trip.maxElevM!=null) rows.push(['Max elevation', Math.round(m2ft(trip.maxElevM))+' ft']);
   if(trip.minElevM!=null) rows.push(['Min elevation', Math.round(m2ft(trip.minElevM))+' ft']);
   rows.push(['GPS points', String(trip.pts.length)]);
-  document.getElementById('tdBody').innerHTML = rows.map(r=>
+  let html = rows.map(r=>
     `<div class="tdStat"><span class="lbl">${r[0]}</span><span class="val">${r[1]}</span></div>`
   ).join('');
+  // Map container — same hidden-by-default pattern as pin detail. Only
+  // shown when user taps Show Route Map. Trip routes get the same
+  // tile-toggle UI as pins.
+  html += `
+    <div class="pinMapWrap" id="tripMapWrap">
+      <div class="mapTileToggle">
+        <button class="mapTileBtn active" data-tile="osm">Map</button>
+        <button class="mapTileBtn" data-tile="topo">Topo</button>
+      </div>
+      <div class="mapLoading" id="tripMapLoading">Loading map…</div>
+      <div class="pinMap" id="tripMap"></div>
+    </div>`;
+  document.getElementById('tdBody').innerHTML = html;
+  // Reset map state and button label every detail open
+  destroyTripMap();
+  document.getElementById('tdToggleMap').textContent = 'Show Route Map';
+  // Hide route-map button if trip has no points (shouldn't happen for saved trips,
+  // but defensive against malformed records). Same for share card — empty trips
+  // don't make for compelling share content.
+  const hasRoute = (trip.pts && trip.pts.length >= 2);
+  document.getElementById('tdToggleMap').style.display = hasRoute ? '' : 'none';
+  document.getElementById('tdShareCard').style.display = hasRoute ? '' : 'none';
   tdp.classList.add('open');
 }
-tdp.addEventListener('click',e=>{ if(e.target===tdp) tdp.classList.remove('open'); });
+
+/* ─── TRIP MAP LIFECYCLE ──────────────────────────────────────
+   Same pattern as pin map. Loads Leaflet on first open, draws the trip
+   route as a polyline, fits the viewport to the route's bounds. */
+let _tripMap = null;
+let _tripTileLayer = null;
+let _tripPolyline = null;
+let _tripStartMarker = null;
+let _tripEndMarker = null;
+let _tripTileStyle = 'osm';
+
+async function showTripMap(){
+  const wrap = document.getElementById('tripMapWrap');
+  if(!wrap || !_currentTrip || !_currentTrip.pts || _currentTrip.pts.length < 2) return;
+  wrap.classList.add('show');
+  document.getElementById('tdToggleMap').textContent = 'Hide Route Map';
+  try {
+    await loadLeaflet();
+  } catch(err){
+    document.getElementById('tripMapLoading').textContent = 'Map unavailable — check connection.';
+    return;
+  }
+  document.getElementById('tripMapLoading').style.display = 'none';
+  if(_tripMap){
+    _tripMap.invalidateSize();
+    return;
+  }
+  const pts = _currentTrip.pts;
+  const latLngs = pts.map(p => [p.lat, p.lon]);
+  _tripMap = L.map('tripMap', {
+    zoomControl: false,
+    attributionControl: true,
+    zoomSnap: 0.5
+  });
+  _tripTileLayer = makeTileLayer(_tripTileStyle).addTo(_tripMap);
+  // Draw the route as a polyline. Accent green matches app branding.
+  _tripPolyline = L.polyline(latLngs, {
+    color: '#3ddc97',
+    weight: 4,
+    opacity: 0.9,
+    lineCap: 'round',
+    lineJoin: 'round'
+  }).addTo(_tripMap);
+  // Start (green) and end (red) markers as small circles to keep visual
+  // weight light vs full Leaflet pins. Helps users orient direction of travel.
+  _tripStartMarker = L.circleMarker(latLngs[0], {
+    radius: 7, color: '#fff', weight: 2, fillColor: '#3ddc97', fillOpacity: 1
+  }).addTo(_tripMap).bindTooltip('Start', {permanent: false, direction: 'top'});
+  _tripEndMarker = L.circleMarker(latLngs[latLngs.length - 1], {
+    radius: 7, color: '#fff', weight: 2, fillColor: '#ef4444', fillOpacity: 1
+  }).addTo(_tripMap).bindTooltip('End', {permanent: false, direction: 'top'});
+  // Fit map to route bounds with a bit of padding so markers don't sit at the edge
+  _tripMap.fitBounds(_tripPolyline.getBounds(), { padding: [20, 20] });
+  // Wire the tile toggle (delegated since the buttons are inside tdBody innerHTML
+  // which is rebuilt each detail open)
+  wrap.querySelectorAll('.mapTileBtn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tile === _tripTileStyle);
+    btn.addEventListener('click', () => {
+      const style = btn.dataset.tile;
+      if(style === _tripTileStyle) return;
+      _tripTileStyle = style;
+      if(_tripTileLayer) _tripMap.removeLayer(_tripTileLayer);
+      _tripTileLayer = makeTileLayer(style).addTo(_tripMap);
+      wrap.querySelectorAll('.mapTileBtn').forEach(b => {
+        b.classList.toggle('active', b.dataset.tile === style);
+      });
+    });
+  });
+  setTimeout(() => { if(_tripMap) _tripMap.invalidateSize(); }, 60);
+}
+
+function hideTripMap(){
+  const wrap = document.getElementById('tripMapWrap');
+  if(wrap) wrap.classList.remove('show');
+  document.getElementById('tdToggleMap').textContent = 'Show Route Map';
+}
+
+function destroyTripMap(){
+  if(_tripMap){
+    try { _tripMap.remove(); } catch(_){}
+    _tripMap = null;
+    _tripTileLayer = null;
+    _tripPolyline = null;
+    _tripStartMarker = null;
+    _tripEndMarker = null;
+  }
+}
+
+document.getElementById('tdToggleMap').addEventListener('click', () => {
+  const wrap = document.getElementById('tripMapWrap');
+  if(!wrap) return;
+  if(wrap.classList.contains('show')) hideTripMap();
+  else showTripMap();
+});
+
+tdp.addEventListener('click',e=>{
+  if(e.target===tdp){
+    tdp.classList.remove('open');
+    destroyTripMap();
+  }
+});
 
 document.getElementById('tdRename').addEventListener('click', async ()=>{
   if(!_currentTrip) return;
@@ -3930,12 +4321,51 @@ document.getElementById('tdDelete').addEventListener('click', async ()=>{
   }
   _currentTrip=null;
   tdp.classList.remove('open');
+  destroyTripMap();
   await renderTripsList();
 });
 
 document.getElementById('tdExport').addEventListener('click',()=>{
   if(!_currentTrip) return;
   exportGPX(_currentTrip);
+});
+
+document.getElementById('tdShareCard').addEventListener('click', async () => {
+  if(!_currentTrip) return;
+  const btn = document.getElementById('tdShareCard');
+  const origLabel = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Generating…';
+  try {
+    const blob = await renderTripShareCard(_currentTrip);
+    if(!blob){ alert('Could not generate the share card.'); return; }
+    const file = new File([blob], `${_currentTrip.name || 'trip'}.png`, { type: 'image/png' });
+    if(navigator.canShare && navigator.canShare({ files: [file] })){
+      try {
+        await navigator.share({
+          files: [file],
+          title: _currentTrip.name || 'TrailGauge Trip',
+          text: `${m2mi(_currentTrip.distM).toFixed(2)} mi · +${Math.round(m2ft(_currentTrip.gainM))} ft elevation gain`
+        });
+      } catch(e) { /* user cancelled */ }
+    } else {
+      // Fallback: download
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${_currentTrip.name || 'trip'}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+  } catch(err){
+    console.warn('Trip share card failed:', err);
+    alert('Could not generate the share card.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = origLabel;
+  }
 });
 
 /* ─── GPX EXPORT ─────────────────────────────────────────── */
