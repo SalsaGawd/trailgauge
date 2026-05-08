@@ -119,6 +119,9 @@ body.light #permOverlay{background:rgba(240,244,248,0.94)}
 #gps{display:flex;gap:6px;width:100%;max-width:480px;flex-wrap:wrap}
 .gchip{background:var(--card);border:1px solid var(--border);border-radius:8px;
   padding:5px 10px;display:flex;align-items:center;gap:5px;flex:1;min-width:0}
+#gcoordsChip{cursor:pointer;-webkit-tap-highlight-color:transparent;transition:border-color var(--tr)}
+#gcoordsChip:active{transform:scale(.98)}
+#gcoordsChip.ready{border-color:var(--accent)}
 .gico{font-size:11px;flex-shrink:0;opacity:.7}
 .gdata{display:flex;flex-direction:column;min-width:0}
 .glbl{font-family:var(--fm);font-size:7px;color:var(--txt3);letter-spacing:1px;text-transform:uppercase}
@@ -233,6 +236,30 @@ body.light #permOverlay{background:rgba(240,244,248,0.94)}
 input[type=range]{-webkit-appearance:none;width:100px;height:4px;background:var(--border);border-radius:2px;outline:none;cursor:pointer}
 input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:var(--accent);cursor:pointer}
 
+/* Profile selector */
+.profSelect{display:flex;gap:8px;margin:4px 0 12px;border-bottom:1px solid var(--border);padding-bottom:14px}
+.profBtn{flex:1;background:var(--card2);border:1px solid var(--border);border-radius:10px;
+  padding:10px 4px;display:flex;flex-direction:column;align-items:center;gap:3px;
+  cursor:pointer;-webkit-tap-highlight-color:transparent;transition:all var(--tr);
+  font-size:18px;color:var(--txt2)}
+.profBtn span{font-family:var(--fm);font-size:9px;letter-spacing:1px;text-transform:uppercase}
+.profBtn:active{transform:scale(.96)}
+.profBtn.active{border-color:var(--accent);color:var(--accent);box-shadow:0 0 12px var(--aglow)}
+
+/* Mode-driven layout: hide elements that don't fit each profile */
+body.prof-hiking #gwrap,
+body.prof-hiking #pcard,
+body.prof-hiking #rcard_el,
+body.prof-camping #gwrap,
+body.prof-camping #pcard,
+body.prof-camping #rcard_el { display: none !important; }
+body.prof-hiking #zbwrap,
+body.prof-camping #zbwrap { display: none !important; }
+body.prof-hiking #gsec,
+body.prof-camping #gsec { justify-content: flex-start; padding-top: 16px; gap: 12px; }
+/* Camping mode: emphasize the weather / sun strip */
+body.prof-camping #wx { flex: 1; }
+
 @keyframes cflash{
 0%{box-shadow:0 0 0 3px var(--border),0 0 0 5px var(--bg2),0 0 28px rgba(61,220,151,.1)}
 50%{box-shadow:0 0 0 3px var(--accent),0 0 0 7px rgba(61,220,151,.3),0 0 50px rgba(61,220,151,.4)}
@@ -241,17 +268,18 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 .calib{animation:cflash .6s ease!important}
 
 /* Shared modal styling for trip panels */
-#tlp,#snp,#tdp,#rcp{position:fixed;inset:0;z-index:101;display:flex;align-items:flex-end;
+#tlp,#snp,#tdp,#rcp,#shp{position:fixed;inset:0;z-index:101;display:flex;align-items:flex-end;
   background:rgba(0,0,0,.65);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);opacity:0;pointer-events:none;transition:opacity .3s ease}
 #tdp{z-index:102} /* trip detail sits above the trips list when both are open */
 #snp{z-index:103} /* save modal sits above all — it owns unsaved data */
 #rcp{z-index:104} /* recovery modal beats everything — first thing user sees on load */
-#tlp.open,#snp.open,#tdp.open,#rcp.open{opacity:1;pointer-events:all}
-#tlsh,#snsh,#tdsh,#rcsh{width:100%;background:var(--card);border-radius:20px 20px 0 0;border-top:1px solid var(--border);
+#shp{z-index:102}
+#tlp.open,#snp.open,#tdp.open,#rcp.open,#shp.open{opacity:1;pointer-events:all}
+#tlsh,#snsh,#tdsh,#rcsh,#shsh{width:100%;background:var(--card);border-radius:20px 20px 0 0;border-top:1px solid var(--border);
   padding:16px 20px calc(20px + var(--sb));transform:translateY(100%);
   transition:transform .35s cubic-bezier(.34,1.56,.64,1);
   max-height:80vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
-#tlp.open #tlsh,#snp.open #snsh,#tdp.open #tdsh,#rcp.open #rcsh{transform:translateY(0)}
+#tlp.open #tlsh,#snp.open #snsh,#tdp.open #tdsh,#rcp.open #rcsh,#shp.open #shsh{transform:translateY(0)}
 .mhdl{width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 16px}
 .mtl{font-family:var(--fd);font-size:18px;font-weight:700;color:var(--txt);letter-spacing:1px;
   text-transform:uppercase;margin-bottom:16px;display:flex;align-items:baseline;justify-content:space-between}
@@ -325,7 +353,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
       </div>
 
       <div id="gps">
-        <div class="gchip"><span class="gico">📍</span><div class="gdata"><span class="glbl">Coords</span><span class="gval" id="gcoords">Locating…</span></div></div>
+        <div class="gchip" id="gcoordsChip" role="button" tabindex="0"><span class="gico">📍</span><div class="gdata"><span class="glbl">Coords · tap to share</span><span class="gval" id="gcoords">Locating…</span></div></div>
         <div class="gchip"><span class="gico">⛰️</span><div class="gdata"><span class="glbl">Elevation</span><span class="gval" id="gelev">—</span></div></div>
         <div class="gchip"><span class="gico">🧭</span><div class="gdata"><span class="glbl">Heading</span><span class="gval" id="ghead">—</span></div></div>
       </div>
@@ -374,6 +402,14 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
   <div id="stsh">
     <div id="sthdl"></div>
     <div id="sttl">Settings</div>
+    <div class="srow">
+      <div class="sinfo"><span class="sname">Mode</span><span class="sdesc">Tailor the layout to how you're using TrailGauge</span></div>
+    </div>
+    <div class="profSelect">
+      <button class="profBtn" data-prof="offroad">🚙<span>Off-Road</span></button>
+      <button class="profBtn" data-prof="hiking">🥾<span>Hiking</span></button>
+      <button class="profBtn" data-prof="camping">⛺<span>Camping</span></button>
+    </div>
     <div class="srow">
       <div class="sinfo"><span class="sname">Tilt Alarm</span><span class="sdesc">Sound + vibration when threshold exceeded</span></div>
       <label class="tgl"><input type="checkbox" id="alarmTgl"><span class="tsl"></span></label>
@@ -452,6 +488,25 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
       <button class="modalbtn ghost"   id="rcSave">Save &amp; Stop</button>
       <button class="modalbtn danger"  id="rcDiscard">Discard</button>
     </div>
+  </div>
+</div>
+
+<!-- Share current location modal -->
+<div id="shp">
+  <div id="shsh">
+    <div class="mhdl"></div>
+    <div class="mtl"><span>Share Location</span></div>
+    <div id="shCoords" style="font-family:var(--fm);font-size:12px;color:var(--txt2);margin-bottom:14px;text-align:center"></div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button class="modalbtn primary" id="shAppleMaps">Open in Apple Maps</button>
+      <button class="modalbtn ghost"   id="shGoogleMaps">Open in Google Maps</button>
+      <button class="modalbtn ghost"   id="shWaze">Open in Waze</button>
+      <button class="modalbtn ghost"   id="shGaia">Open in Gaia GPS</button>
+      <button class="modalbtn ghost"   id="shOnX">Open in onX</button>
+      <button class="modalbtn ghost"   id="shCopy">Copy Coordinates</button>
+      <button class="modalbtn ghost"   id="shShare">Share via…</button>
+    </div>
+    <div id="shHint" style="margin-top:10px;font-family:var(--fm);font-size:9px;color:var(--txt3);text-align:center;line-height:1.5"></div>
   </div>
 </div>
 
@@ -904,40 +959,74 @@ function getScreenAngle(){
   return 0;
 }
 
+// Median-of-3 buffers for spike rejection (kills single-frame outliers
+// without adding lag the way deeper smoothing does)
+const _pBuf = [0, 0, 0];
+const _rBuf = [0, 0, 0];
+let _bufIdx = 0;
+let _sensorWarmupAt = 0;  // timestamp when sensor first reports — discard 300ms
+
+function median3(a, b, c){
+  if(a > b){ const t=a; a=b; b=t; }
+  if(b > c){ const t=b; b=c; c=t; }
+  if(a > b){ const t=a; a=b; b=t; }
+  return b;
+}
+
 function handleOri(e){
-  S.sensorLive=true;
-  let beta = e.beta ?? 0;   // front-back tilt in portrait (-180 to 180)
-  let gamma= e.gamma?? 0;   // left-right tilt in portrait (-90 to 90)
-  // Guard against NaN — once it propagates into the smoothed S.pitch/S.roll
-  // values, the entire gauge freezes at NaN forever (every subsequent
-  // (target - NaN) * α stays NaN). Drop the reading and wait for a clean one.
+  let beta = e.beta ?? 0;
+  let gamma= e.gamma?? 0;
   if(!Number.isFinite(beta) || !Number.isFinite(gamma)) return;
-  // Map sensor axes to "pitch / roll" relative to the user's view of the screen.
-  // In portrait (angle=0): pitch=beta, roll=gamma — original mapping.
-  // In landscape, the physical "front-back" of the device is along what the
-  // user perceives as left-right, so we swap and sign-flip accordingly.
+
+  // Beta wraparound fix: when phone tips past vertical (face-down), beta jumps
+  // from +90 toward -90 instead of continuing past 90. For an off-road app
+  // this matters at extreme tilts. If gamma is also large, we know we're
+  // beyond vertical and can correct.
+  if(Math.abs(gamma) > 90){
+    if(beta > 0)  beta = 180 - beta;
+    else          beta = -180 - beta;
+  }
+
   const ang = getScreenAngle();
   let pitch, roll;
-  if(ang === 90){          // landscape, rotated CCW
-    pitch =  gamma;
-    roll  = -beta;
-  } else if(ang === -90 || ang === 270){  // landscape, rotated CW
-    pitch = -gamma;
-    roll  =  beta;
-  } else if(ang === 180){  // upside-down portrait
-    pitch = -beta;
-    roll  = -gamma;
-  } else {                 // 0 or unknown — portrait
-    pitch =  beta;
-    roll  =  gamma;
-  }
-  // Clamp to a reasonable range (raw beta can go beyond ±90 if phone is upside-down)
+  if(ang === 90){           pitch =  gamma; roll = -beta; }
+  else if(ang === -90 || ang === 270){ pitch = -gamma; roll =  beta; }
+  else if(ang === 180){     pitch = -beta;  roll = -gamma; }
+  else {                    pitch =  beta;  roll =  gamma; }
+
   pitch = Math.max(-90, Math.min(90, pitch));
   roll  = Math.max(-90, Math.min(90, roll));
+
+  // Warmup: discard the first 300ms of sensor readings — the OS hasn't
+  // settled its sensor fusion yet and early values can be wildly wrong.
+  const now = Date.now();
+  if(_sensorWarmupAt === 0){ _sensorWarmupAt = now; }
+  if(now - _sensorWarmupAt < 300) return;
+
+  // Mark live AFTER warmup so the demo simulator doesn't kick in,
+  // but we also don't show garbage in the first few frames.
+  S.sensorLive = true;
+
+  // Median-of-3 spike rejection: write the new reading into a 3-slot ring
+  // buffer, then take the median. Removes single-frame jumps without
+  // affecting responsiveness to real movement.
+  _pBuf[_bufIdx] = pitch;
+  _rBuf[_bufIdx] = roll;
+  _bufIdx = (_bufIdx + 1) % 3;
+  pitch = median3(_pBuf[0], _pBuf[1], _pBuf[2]);
+  roll  = median3(_rBuf[0], _rBuf[1], _rBuf[2]);
+
   S.rawPitch = pitch;
   S.rawRoll  = roll;
-  S.tPitch = pitch - S.pOff;
-  S.tRoll  = roll  - S.rOff;
+
+  // Deadband: snap micro-jitter at level to exactly 0. Only applies in a
+  // tight ±0.5° window, so any real tilt shows immediately.
+  let tp = pitch - S.pOff;
+  let tr = roll  - S.rOff;
+  if(Math.abs(tp) < 0.5) tp = 0;
+  if(Math.abs(tr) < 0.5) tr = 0;
+  S.tPitch = tp;
+  S.tRoll  = tr;
 }
 /* ─── DEVICE ORIENTATION + iOS PERMISSION GATE ──────────────
    iOS Safari 13+ requires DeviceOrientationEvent.requestPermission() to be
@@ -1092,6 +1181,10 @@ function updateCards(){
 
 function checkAlarm(){
   if(!S.alarm){S.alarmFired=false;return;}
+  // Only fire alarm in off-road profile. In hiking/camping the gauge is hidden
+  // so a beep from a tilted phone in someone's pocket would be confusing and
+  // wouldn't make sense without visual context.
+  if(!document.body.classList.contains('prof-offroad')){S.alarmFired=false;return;}
   const max=Math.max(Math.abs(S.pitch),Math.abs(S.roll));
   // Hysteresis: arm at the threshold, disarm only when we drop ~3° below it.
   // Prevents alarm chatter when the rig sits right at the threshold and the
@@ -1187,6 +1280,7 @@ function startGPS(){
     S.lat=pos.coords.latitude; S.lon=pos.coords.longitude;
     S.elev=pos.coords.altitude; S.hdg=pos.coords.heading;
     document.getElementById('gcoords').textContent=S.lat.toFixed(5)+', '+S.lon.toFixed(5);
+    document.getElementById('gcoordsChip').classList.add('ready');
     document.getElementById('gelev').textContent=S.elev!==null?Math.round(S.elev*3.28084)+' ft':'—';
     document.getElementById('ghead').textContent=(S.hdg&&!isNaN(S.hdg))?btoc(S.hdg)+' '+Math.round(S.hdg)+'°':'—';
     document.getElementById('nogps').classList.remove('show');
@@ -1208,6 +1302,135 @@ function startGPS(){
   },{enableHighAccuracy:true,timeout:15000,maximumAge:5000});
 }
 function btoc(b){return['N','NE','E','SE','S','SW','W','NW'][Math.round(b/45)%8];}
+
+/* ─── SHARE CURRENT LOCATION ─────────────────────────────────
+   Opens a modal with options to launch the current GPS coordinates in
+   popular maps and trail apps. Each app uses its own URL scheme; if the
+   app isn't installed iOS will fall back to the App Store or web URL.
+*/
+const shp = document.getElementById('shp');
+const shCoords = document.getElementById('shCoords');
+// Snapshot of coords at the moment modal opens. Prevents weird URLs if GPS
+// goes stale between opening the modal and tapping a maps button.
+let _shareLat = null, _shareLon = null;
+
+function openShareModal(){
+  if(S.lat == null || S.lon == null){
+    alert('GPS not ready yet. Wait for location lock.');
+    return;
+  }
+  _shareLat = S.lat;
+  _shareLon = S.lon;
+  const lat = _shareLat.toFixed(6);
+  const lon = _shareLon.toFixed(6);
+  shCoords.innerHTML = `<b>${lat}, ${lon}</b><br><span style="color:var(--txt3);font-size:10px">${S.elev!=null ? Math.round(S.elev*3.28084)+' ft elevation' : ''}</span>`;
+  // Clear any stale hint text from a previous interaction
+  document.getElementById('shHint').textContent = '';
+  shp.classList.add('open');
+}
+
+document.getElementById('gcoordsChip').addEventListener('click', openShareModal);
+document.getElementById('gcoordsChip').addEventListener('keydown', e => {
+  if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); openShareModal(); }
+});
+shp.addEventListener('click', e => { if(e.target === shp) shp.classList.remove('open'); });
+
+document.getElementById('shAppleMaps').addEventListener('click', () => {
+  const url = `maps://?q=${_shareLat},${_shareLon}&ll=${_shareLat},${_shareLon}`;
+  const web = `https://maps.apple.com/?q=${_shareLat},${_shareLon}&ll=${_shareLat},${_shareLon}`;
+  window.location.href = url;
+  setTimeout(() => { window.open(web, '_blank'); }, 1500);
+  shp.classList.remove('open');
+});
+
+document.getElementById('shGoogleMaps').addEventListener('click', () => {
+  const url = `comgooglemaps://?q=${_shareLat},${_shareLon}&center=${_shareLat},${_shareLon}&zoom=15`;
+  const web = `https://www.google.com/maps/search/?api=1&query=${_shareLat},${_shareLon}`;
+  window.location.href = url;
+  setTimeout(() => { window.open(web, '_blank'); }, 1500);
+  shp.classList.remove('open');
+});
+
+document.getElementById('shWaze').addEventListener('click', () => {
+  const url = `waze://?ll=${_shareLat},${_shareLon}&navigate=yes`;
+  const web = `https://waze.com/ul?ll=${_shareLat},${_shareLon}&navigate=yes`;
+  window.location.href = url;
+  setTimeout(() => { window.open(web, '_blank'); }, 1500);
+  shp.classList.remove('open');
+});
+
+document.getElementById('shGaia').addEventListener('click', () => {
+  copyCoordsToClipboard();
+  document.getElementById('shHint').textContent = 'Coordinates copied. Open Gaia GPS → Search → paste.';
+});
+
+document.getElementById('shOnX').addEventListener('click', () => {
+  copyCoordsToClipboard();
+  document.getElementById('shHint').textContent = 'Coordinates copied. Open onX → search bar → paste.';
+});
+
+document.getElementById('shCopy').addEventListener('click', () => {
+  copyCoordsToClipboard();
+  document.getElementById('shHint').textContent = 'Coordinates copied to clipboard.';
+});
+
+document.getElementById('shShare').addEventListener('click', async () => {
+  // Native iOS share sheet — lets user pick any installed app that accepts text/URLs
+  const text = `${_shareLat.toFixed(6)}, ${_shareLon.toFixed(6)}`;
+  const url = `https://maps.apple.com/?q=${_shareLat},${_shareLon}&ll=${_shareLat},${_shareLon}`;
+  if(navigator.share){
+    try {
+      await navigator.share({ title: 'Location', text, url });
+      shp.classList.remove('open');
+    } catch(e) { /* user cancelled — no-op */ }
+  } else {
+    copyCoordsToClipboard();
+    document.getElementById('shHint').textContent = 'Sharing not supported. Coordinates copied instead.';
+  }
+});
+
+async function copyCoordsToClipboard(){
+  const text = `${_shareLat.toFixed(6)}, ${_shareLon.toFixed(6)}`;
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch(e) {
+    // Fallback for older Safari
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch(_){}
+    ta.remove();
+  }
+}
+
+/* ─── PROFILE SYSTEM ─────────────────────────────────────────
+   Three modes targeting different user types:
+   - offroad: full inclinometer + alarm (default, current behavior)
+   - hiking:  hide inclinometer, focus on weather/elevation/trip log/daylight
+   - camping: hide inclinometer, emphasize weather/sun/freeze warnings
+   Profile is persisted across sessions. Free for all users. */
+const PROF_KEY = 'tg_profile_v1';
+
+function applyProfile(prof){
+  document.body.classList.remove('prof-offroad','prof-hiking','prof-camping');
+  document.body.classList.add('prof-' + prof);
+  document.querySelectorAll('.profBtn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.prof === prof);
+  });
+  try { localStorage.setItem(PROF_KEY, prof); } catch(_){}
+  // Re-flow the gauge canvas if the inclinometer just got hidden/shown
+  setTimeout(() => { if(typeof resize === 'function') resize(); }, 50);
+}
+
+document.querySelectorAll('.profBtn').forEach(btn => {
+  btn.addEventListener('click', () => applyProfile(btn.dataset.prof));
+});
+
+// Restore saved profile on load (default: offroad)
+let _savedProf = 'offroad';
+try { _savedProf = localStorage.getItem(PROF_KEY) || 'offroad'; } catch(_){}
+applyProfile(_savedProf);
 
 const WK='tg_wx_v1';
 let _wxInflight = false;
