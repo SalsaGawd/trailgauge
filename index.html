@@ -288,6 +288,23 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 .onbDot{width:8px;height:8px;border-radius:50%;background:var(--border);
   transition:all var(--tr);cursor:pointer}
 .onbDot.active{background:var(--accent);width:24px;border-radius:4px}
+#onbDontShow{display:flex;align-items:center;gap:8px;justify-content:center;
+  align-self:center;font-family:var(--fm);font-size:11px;color:var(--txt2);
+  cursor:pointer;-webkit-user-select:none;user-select:none;
+  -webkit-tap-highlight-color:transparent;padding:4px 0}
+#onbDontShow input[type="checkbox"]{
+  /* Custom checkbox so it matches the dark theme — default browser
+     checkboxes look out of place in the onboarding. */
+  appearance:none;-webkit-appearance:none;
+  width:16px;height:16px;border:1.5px solid var(--border);
+  border-radius:3px;background:var(--bg2);cursor:pointer;
+  transition:all var(--tr);position:relative;flex-shrink:0;margin:0}
+#onbDontShow input[type="checkbox"]:checked{
+  background:var(--accent);border-color:var(--accent)}
+#onbDontShow input[type="checkbox"]:checked::after{
+  content:"";position:absolute;left:4px;top:0px;
+  width:4px;height:9px;border:solid #000;
+  border-width:0 2px 2px 0;transform:rotate(45deg)}
 #onbBtns{display:flex;gap:10px;width:100%}
 #onbSkip{flex:1}
 #onbNext{flex:2}
@@ -320,7 +337,14 @@ body.prof-trail #rcard_el,
 body.prof-trail #zbwrap,
 body.prof-trail #tripLive,
 body.prof-trail #maxAngleCard { display: none !important; }
-body.prof-trail #gsec { justify-content: flex-start; padding-top: 12px; gap: 14px; }
+body.prof-trail #gsec { justify-content: flex-start; padding-top: 12px; gap: 14px;
+  /* In trail mode, let gsec size to its actual content rather than filling
+     the available height. This eliminates the dead space between the trip
+     strip / coords and the weather block — weather slides up to sit right
+     below the active content. */
+  flex: 0 0 auto;
+  overflow-y: visible; }
+body.prof-trail #main { overflow-y: auto; -webkit-overflow-scrolling: touch; }
 body.prof-trail #trailHero { display: flex !important; }
 body.prof-trail #wx { padding: 14px 16px; }
 body.prof-trail .wxbig { font-size: 32px; }
@@ -398,11 +422,13 @@ body.prof-trail .hourcard { padding: 8px 6px; }
 /* In trail mode, only the small accessory compass is shown — its parent
    #compassWrap retains the same id so the existing render JS still works. */
 
-/* Trail trip strip — distance/elevation tracking front and center */
+/* Trail trip strip — only shown when a trip is actively recording.
+   Without a trip, the row of dashes was just dead space taking up
+   prime real estate above the weather block. */
 #trailTripStrip{display:none;width:100%;background:var(--card);
   border:1px solid var(--border);border-radius:12px;padding:12px 16px;
   flex-direction:row;justify-content:space-around;align-items:center;gap:8px}
-body.prof-trail #trailTripStrip{display:flex}
+body.prof-trail.trip-active #trailTripStrip{display:flex}
 .tripStat{display:flex;flex-direction:column;align-items:center;flex:1;min-width:0}
 .tripStatLbl{font-family:var(--fd);font-size:9px;letter-spacing:1.5px;
   text-transform:uppercase;color:var(--txt2)}
@@ -572,6 +598,10 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
       <span class="onbDot" data-i="2"></span>
       <span class="onbDot" data-i="3"></span>
     </div>
+    <label id="onbDontShow">
+      <input type="checkbox" id="onbDontShowCb" />
+      <span>Got it — don't show this again</span>
+    </label>
     <div id="onbBtns">
       <button id="onbSkip" class="modalbtn ghost">Skip</button>
       <button id="onbNext" class="modalbtn primary">Next</button>
@@ -2940,9 +2970,11 @@ applyProfile(_savedProf);
 /* ─── ONBOARDING ──────────────────────────────────────────
    First-launch 3-card walkthrough. Shown only once — controlled by
    localStorage flag tg_onboarded_v1. Swipe via Next button or dot tap. */
-// Key bumped to v3 in the build that added the share-feature card.
-// Anyone with the v1/v2 flag has not seen the 4th card; bumping forces fresh.
-const ONB_KEY = 'tg_onboarded_v3';
+// Key bumped to v4 in the build that introduced the explicit "don't show
+// again" checkbox. Anyone with v1/v2/v3 set should see the cards once more
+// since they may have dismissed under the old auto-persist behavior without
+// realizing it would silence the cards forever.
+const ONB_KEY = 'tg_onboarded_v4';
 const onb = document.getElementById('onb');
 const onbCards = document.getElementById('onbCards');   // viewport (touch target)
 const onbTrack = document.getElementById('onbTrack');   // sliding track (transform target)
@@ -2960,7 +2992,14 @@ function setOnbStep(i){
 
 function dismissOnboarding(){
   onb.classList.remove('show');
-  try { localStorage.setItem(ONB_KEY, '1'); } catch(_){}
+  // Only persist the "don't show again" flag when the user explicitly checks
+  // the box. Without it, dismissing just closes for this session — they'll
+  // see the cards on next launch until they're ready to acknowledge they've
+  // got it. Lets users decide when the info is engrained.
+  const dontShowCb = document.getElementById('onbDontShowCb');
+  if(dontShowCb && dontShowCb.checked){
+    try { localStorage.setItem(ONB_KEY, '1'); } catch(_){}
+  }
 }
 
 document.getElementById('onbNext').addEventListener('click', () => {
@@ -2987,10 +3026,14 @@ onbCards.addEventListener('touchend', e => {
   _onbTouchStart = null;
 }, {passive:true});
 
-// Show on first launch only
+// Show on first launch only — and on every subsequent launch until the
+// user checks "Don't show again" and dismisses.
 let _onboarded = false;
 try { _onboarded = localStorage.getItem(ONB_KEY) === '1'; } catch(_){}
 if(!_onboarded){
+  // Reset checkbox state so each session starts unchecked
+  const _cb = document.getElementById('onbDontShowCb');
+  if(_cb) _cb.checked = false;
   onb.classList.add('show');
   setOnbStep(0);
 }
@@ -3744,6 +3787,9 @@ function tripStart(){
   tripLive.classList.add('show');
   document.getElementById('tripPauseBtn').style.display = '';
   document.getElementById('tripPauseBtn').textContent = '⏸';
+  // Body class drives CSS for trip-conditional UI (e.g. trail trip strip
+  // only appears when there's actually a trip to display)
+  document.body.classList.add('trip-active');
   refreshTripLive();
 }
 
@@ -3807,6 +3853,7 @@ function tripReset(){
   document.getElementById('tripPauseBtn').style.display = 'none';
   document.getElementById('liveBanner').classList.remove('show');
   document.getElementById('liveBanner').classList.remove('paused');
+  document.body.classList.remove('trip-active');
   TRIP.paused=false;
   TRIP.pausedAt=0;
   TRIP.pausedTotalMs=0;
@@ -4487,6 +4534,7 @@ setInterval(()=>{if(S.wxTs)setWDot((Date.now()-S.wxTs)>S.wxStale?'stale':'cached
     tripLive.classList.add('show');
     document.getElementById('tripPauseBtn').style.display = '';
     document.getElementById('tripPauseBtn').textContent = '⏸';
+    document.body.classList.add('trip-active');
     refreshTripLive();
     rcp.classList.remove('open');
   }, {once:true});
