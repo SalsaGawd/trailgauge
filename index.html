@@ -264,15 +264,19 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 @keyframes onbFadeIn{from{opacity:0}to{opacity:1}}
 #onbInner{width:100%;max-width:420px;display:flex;flex-direction:column;
   align-items:center;gap:18px;height:100%;justify-content:center}
-#onbCards{position:relative;width:100%;flex:1;max-height:520px;overflow:hidden;
-  display:flex;transition:transform .35s cubic-bezier(.34,1.2,.64,1)}
-#onbCards.onb-pos-0{transform:translateX(0)}
-#onbCards.onb-pos-1{transform:translateX(-100%)}
-#onbCards.onb-pos-2{transform:translateX(-200%)}
-.onbCard{flex:0 0 100%;display:flex;flex-direction:column;align-items:center;
+#onbCards{position:relative;width:100%;flex:1;max-height:520px;overflow:hidden}
+/* Inner track holds all three cards side-by-side. The cards container
+   above is the viewport; this track is what slides. Width 300% so each
+   card can claim a real 100% of the viewport via flex-basis 33.333%. */
+#onbTrack{display:flex;width:300%;height:100%;
+  transition:transform .35s cubic-bezier(.34,1.2,.64,1)}
+#onbTrack.onb-pos-0{transform:translateX(0)}
+#onbTrack.onb-pos-1{transform:translateX(-33.3333%)}
+#onbTrack.onb-pos-2{transform:translateX(-66.6666%)}
+.onbCard{flex:0 0 33.3333%;width:33.3333%;display:flex;flex-direction:column;align-items:center;
   text-align:center;padding:30px 18px;background:var(--card);
   border:1px solid var(--border);border-radius:18px;justify-content:center;
-  overflow-y:auto;-webkit-overflow-scrolling:touch}
+  overflow-y:auto;-webkit-overflow-scrolling:touch;box-sizing:border-box}
 .onbHero{font-size:64px;line-height:1;margin-bottom:24px;letter-spacing:8px}
 .onbTitle{font-family:var(--fd);font-size:24px;font-weight:700;color:var(--accent);
   margin-bottom:18px;letter-spacing:.5px}
@@ -474,21 +478,23 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
      shown only when localStorage flag tg_onboarded_v1 is unset. -->
 <div id="onb">
   <div id="onbInner">
-    <div id="onbCards" class="onb-pos-0">
-      <div class="onbCard">
-        <div class="onbHero">📐</div>
-        <div class="onbTitle">Welcome to TrailGauge</div>
-        <div class="onbBody">A trail tool for off-road drivers and hikers. Pitch and roll readings, weather, GPS, trip recording, and saved pins — all built for the dash or the trail.</div>
-      </div>
-      <div class="onbCard">
-        <div class="onbHero">🚙 🥾</div>
-        <div class="onbTitle">Two Modes</div>
-        <div class="onbBody"><b>Off-Road</b> shows the inclinometer with tilt alarm and max-angle tracking.<br><br><b>Trail</b> hides the gauge and surfaces a compass, weather, and elevation as the focus.<br><br>Switch anytime in Settings.</div>
-      </div>
-      <div class="onbCard">
-        <div class="onbHero">📍</div>
-        <div class="onbTitle">Calibrate &amp; Drop Pins</div>
-        <div class="onbBody"><b>ZERO/CALIBRATE</b> sets your phone's resting angle as the reference. Always recalibrate when you change the mount.<br><br>Tap the <b>coordinates</b> at any time to drop a pin or open in maps.</div>
+    <div id="onbCards">
+      <div id="onbTrack" class="onb-pos-0">
+        <div class="onbCard">
+          <div class="onbHero">📐</div>
+          <div class="onbTitle">Welcome to TrailGauge</div>
+          <div class="onbBody">A trail tool for off-road drivers and hikers. Pitch and roll readings, weather, GPS, trip recording, and saved pins — all built for the dash or the trail.</div>
+        </div>
+        <div class="onbCard">
+          <div class="onbHero">🚙 🥾</div>
+          <div class="onbTitle">Two Modes</div>
+          <div class="onbBody"><b>Off-Road</b> shows the inclinometer with tilt alarm and max-angle tracking.<br><br><b>Trail</b> hides the gauge and surfaces a compass, weather, and elevation as the focus.<br><br>Switch anytime in Settings.</div>
+        </div>
+        <div class="onbCard">
+          <div class="onbHero">📍</div>
+          <div class="onbTitle">Calibrate &amp; Drop Pins</div>
+          <div class="onbBody"><b>ZERO/CALIBRATE</b> sets your phone's resting angle as the reference. Always recalibrate when you change the mount.<br><br>Tap the <b>coordinates</b> at any time to drop a pin or open in maps.</div>
+        </div>
       </div>
     </div>
     <div id="onbDots">
@@ -2379,13 +2385,14 @@ applyProfile(_savedProf);
    localStorage flag tg_onboarded_v1. Swipe via Next button or dot tap. */
 const ONB_KEY = 'tg_onboarded_v1';
 const onb = document.getElementById('onb');
-const onbCards = document.getElementById('onbCards');
+const onbCards = document.getElementById('onbCards');   // viewport (touch target)
+const onbTrack = document.getElementById('onbTrack');   // sliding track (transform target)
 let _onbStep = 0;
 const ONB_STEPS = 3;
 
 function setOnbStep(i){
   _onbStep = Math.max(0, Math.min(ONB_STEPS - 1, i));
-  onbCards.className = 'onb-pos-' + _onbStep;
+  onbTrack.className = 'onb-pos-' + _onbStep;
   document.querySelectorAll('.onbDot').forEach(d => {
     d.classList.toggle('active', parseInt(d.dataset.i, 10) === _onbStep);
   });
