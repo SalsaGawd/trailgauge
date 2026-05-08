@@ -2422,90 +2422,148 @@ function renderPinShareCard(pin){
     c.width = W; c.height = H;
     const ctx = c.getContext('2d');
 
-    // Background: dark gradient matching the app aesthetic
-    const grad = ctx.createLinearGradient(0, 0, 0, H);
-    grad.addColorStop(0, '#0a0c0f');
-    grad.addColorStop(1, '#161b22');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, W, H);
-
     function drawCardContent(photoImg){
-      // Photo (if any) — top half
-      const photoH = photoImg ? 540 : 0;
       if(photoImg){
-        // Cover-fit the photo into the top area
+        // PHOTO-DOMINANT LAYOUT — photo fills the entire 1080x1080 frame.
+        // Text overlays the bottom third with a soft gradient fade from
+        // transparent (top) to near-opaque (bottom) so the photo stays
+        // the hero and text is legible.
         const ar = photoImg.width / photoImg.height;
-        const targetAr = W / photoH;
         let sx, sy, sw, sh;
-        if(ar > targetAr){
-          // photo wider than target — crop sides
+        if(ar > 1){
           sh = photoImg.height;
-          sw = photoImg.height * targetAr;
+          sw = photoImg.height;
           sx = (photoImg.width - sw) / 2;
           sy = 0;
         } else {
           sw = photoImg.width;
-          sh = photoImg.width / targetAr;
+          sh = photoImg.width;
           sx = 0;
           sy = (photoImg.height - sh) / 2;
         }
-        ctx.drawImage(photoImg, sx, sy, sw, sh, 0, 0, W, photoH);
-        // Subtle gradient overlay at bottom of photo for text legibility
-        const ovl = ctx.createLinearGradient(0, photoH - 80, 0, photoH);
-        ovl.addColorStop(0, 'rgba(10,12,15,0)');
-        ovl.addColorStop(1, 'rgba(10,12,15,.7)');
-        ctx.fillStyle = ovl;
-        ctx.fillRect(0, photoH - 80, W, 80);
+        ctx.drawImage(photoImg, sx, sy, sw, sh, 0, 0, W, H);
+
+        // Bottom gradient — tall enough to anchor the text but short enough
+        // to leave most of the photo unobscured. ~45% of the frame.
+        const gradStart = H * 0.55;
+        const grad = ctx.createLinearGradient(0, gradStart, 0, H);
+        grad.addColorStop(0,    'rgba(10,12,15,0)');
+        grad.addColorStop(0.45, 'rgba(10,12,15,.55)');
+        grad.addColorStop(1,    'rgba(10,12,15,.92)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, gradStart, W, H - gradStart);
+
+        // Top corner badge — small TrailGauge mark with a subtle pill bg
+        // so it reads on busy photos but doesn't dominate.
+        drawTopBadge(ctx, W);
+      } else {
+        // No-photo fallback — dark gradient with centered content.
+        // Less common case; happens when user saved a pin without a photo.
+        const grad = ctx.createLinearGradient(0, 0, 0, H);
+        grad.addColorStop(0, '#0a0c0f');
+        grad.addColorStop(1, '#161b22');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, W, H);
+        // Subtle decorative grid for visual interest
+        ctx.strokeStyle = 'rgba(61,220,151,.08)';
+        ctx.lineWidth = 1;
+        for(let x = 0; x < W; x += 60){
+          ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke();
+        }
+        for(let y = 0; y < H; y += 60){
+          ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke();
+        }
+        // Big pin emoji as visual anchor
+        ctx.fillStyle = '#1f2630';
+        ctx.font = '300px serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('📍', W/2, H * 0.32);
+        drawTopBadge(ctx, W);
       }
 
-      const textY = photoH + 80;
+      // ── TEXT BLOCK (anchored to bottom) ─────────────────────
+      const padX = 60;
+      const bottomPad = 70;
+      // Build lines from bottom up so positioning is stable regardless of
+      // whether elevation/notes are present.
 
-      // Label
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '700 64px "Rajdhani", sans-serif';
+      // Compute total text-block height first, then place from bottom up.
       ctx.textAlign = 'left';
-      ctx.textBaseline = 'top';
-      const label = pin.label || 'Saved Pin';
-      // Word-wrap the label if it's too long
-      const labelLines = wrapText(ctx, label, W - 120);
-      let y = textY;
-      labelLines.slice(0, 2).forEach((line, i) => {
-        ctx.fillText(line, 60, y + i * 76);
-      });
-      y += Math.min(2, labelLines.length) * 76 + 20;
+      ctx.textBaseline = 'alphabetic';
 
-      // Coordinates
-      ctx.fillStyle = '#3ddc97';
-      ctx.font = '500 36px "Share Tech Mono", monospace';
-      ctx.fillText(`${pin.lat.toFixed(5)}, ${pin.lon.toFixed(5)}`, 60, y);
-      y += 56;
-
-      // Elevation if present
-      if(pin.elev != null){
-        ctx.fillStyle = '#8899aa';
-        ctx.font = '400 28px "Share Tech Mono", monospace';
-        ctx.fillText(`${Math.round(pin.elev * 3.28084)} ft elevation`, 60, y);
-        y += 50;
+      // Optional notes — only show if short. Long notes don't fit a card.
+      let notesLines = [];
+      if(pin.notes && pin.notes.length <= 80){
+        ctx.font = '400 26px "Exo 2", sans-serif';
+        notesLines = wrapText(ctx, pin.notes, W - padX*2).slice(0, 2);
       }
 
-      // Notes (truncated)
-      if(pin.notes){
-        ctx.fillStyle = '#cccccc';
-        ctx.font = '400 30px "Exo 2", sans-serif';
-        const notesLines = wrapText(ctx, pin.notes, W - 120);
-        notesLines.slice(0, 4).forEach((line, i) => {
-          ctx.fillText(line, 60, y + i * 42);
+      // Heights per line (with line spacing already baked in)
+      const labelLineH = 78;
+      const coordLineH = 50;
+      const elevLineH  = 38;
+      const notesLineH = 36;
+
+      // Word-wrap the label
+      ctx.font = '700 68px "Rajdhani", sans-serif';
+      const label = pin.label || 'Saved Pin';
+      const labelLines = wrapText(ctx, label, W - padX*2).slice(0, 2);
+
+      const hasElev = (pin.elev != null);
+      const totalH =
+        labelLines.length * labelLineH +
+        16 +  // gap before coords
+        coordLineH +
+        (hasElev ? 4 + elevLineH : 0) +
+        (notesLines.length ? 18 + notesLines.length * notesLineH : 0);
+
+      let y = H - bottomPad - totalH;
+      // Bump text up if it would collide with the top-badge (rare, but
+      // keeps short text from sitting too low and looking awkward)
+      if(y > H * 0.66) y = Math.floor(H * 0.66);
+
+      // LABEL — white, bold, big
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '700 68px "Rajdhani", sans-serif';
+      // soft shadow so text reads on bright photos
+      ctx.shadowColor = 'rgba(0,0,0,.55)';
+      ctx.shadowBlur = 12;
+      ctx.shadowOffsetY = 2;
+      labelLines.forEach((line, i) => {
+        // textBaseline alphabetic — y is the baseline. Add line height per index.
+        ctx.fillText(line, padX, y + (i+1) * labelLineH - 14);
+      });
+      y += labelLines.length * labelLineH + 16;
+
+      // COORDINATES — accent green, mono
+      ctx.fillStyle = '#3ddc97';
+      ctx.font = '500 38px "Share Tech Mono", monospace';
+      ctx.fillText(`${pin.lat.toFixed(5)}, ${pin.lon.toFixed(5)}`, padX, y + coordLineH - 8);
+      y += coordLineH;
+
+      // ELEVATION — subtle, smaller
+      if(hasElev){
+        y += 4;
+        ctx.fillStyle = 'rgba(220,228,238,.7)';
+        ctx.font = '400 26px "Share Tech Mono", monospace';
+        ctx.fillText(`${Math.round(pin.elev * 3.28084)} ft`, padX, y + elevLineH - 6);
+        y += elevLineH;
+      }
+
+      // NOTES — subtle white, sans
+      if(notesLines.length){
+        y += 18;
+        ctx.fillStyle = 'rgba(220,228,238,.85)';
+        ctx.font = '400 26px "Exo 2", sans-serif';
+        notesLines.forEach((line, i) => {
+          ctx.fillText(line, padX, y + (i+1) * notesLineH - 6);
         });
       }
 
-      // TrailGauge watermark — bottom right
-      ctx.fillStyle = '#3ddc97';
-      ctx.font = '700 28px "Rajdhani", sans-serif';
-      ctx.textAlign = 'right';
-      ctx.fillText('⬡ TrailGauge', W - 60, H - 90);
-      ctx.fillStyle = '#8899aa';
-      ctx.font = '400 20px "Share Tech Mono", monospace';
-      ctx.fillText('Off-Road Inclinometer', W - 60, H - 50);
+      ctx.shadowColor = 'transparent';
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetY = 0;
 
       c.toBlob(b => resolve(b), 'image/png');
     }
@@ -2519,6 +2577,42 @@ function renderPinShareCard(pin){
       drawCardContent(null);
     }
   });
+}
+
+// Top-right pill badge with the TrailGauge mark. Designed to be unobtrusive
+// on photos but always readable thanks to its own dark background pill.
+function drawTopBadge(ctx, W){
+  const padR = 36, padT = 36;
+  const text = '⬡ TrailGauge';
+  ctx.font = '700 24px "Rajdhani", sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  const tw = ctx.measureText(text).width;
+  const pillW = tw + 32;
+  const pillH = 44;
+  const pillX = W - padR - pillW;
+  const pillY = padT;
+  // Rounded rect background — semi-transparent dark with subtle accent border
+  ctx.fillStyle = 'rgba(10,12,15,.72)';
+  roundRect(ctx, pillX, pillY, pillW, pillH, pillH/2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(61,220,151,.45)';
+  ctx.lineWidth = 1.5;
+  roundRect(ctx, pillX, pillY, pillW, pillH, pillH/2);
+  ctx.stroke();
+  // Text inside
+  ctx.fillStyle = '#3ddc97';
+  ctx.fillText(text, pillX + 16, pillY + pillH/2 + 1);
+}
+
+function roundRect(ctx, x, y, w, h, r){
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
 }
 
 function wrapText(ctx, text, maxWidth){
@@ -2576,7 +2670,10 @@ applyProfile(_savedProf);
 /* ─── ONBOARDING ──────────────────────────────────────────
    First-launch 3-card walkthrough. Shown only once — controlled by
    localStorage flag tg_onboarded_v1. Swipe via Next button or dot tap. */
-const ONB_KEY = 'tg_onboarded_v1';
+// Key bumped from v1 to v2 in the build that fixed the broken card layout.
+// Anyone who hit Skip on the buggy version had their v1 flag set; bumping
+// the key forces a fresh onboarding so they actually see the working cards.
+const ONB_KEY = 'tg_onboarded_v2';
 const onb = document.getElementById('onb');
 const onbCards = document.getElementById('onbCards');   // viewport (touch target)
 const onbTrack = document.getElementById('onbTrack');   // sliding track (transform target)
