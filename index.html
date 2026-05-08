@@ -246,19 +246,73 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 .profBtn:active{transform:scale(.96)}
 .profBtn.active{border-color:var(--accent);color:var(--accent);box-shadow:0 0 12px var(--aglow)}
 
-/* Mode-driven layout: hide elements that don't fit each profile */
-body.prof-hiking #gwrap,
-body.prof-hiking #pcard,
-body.prof-hiking #rcard_el,
-body.prof-camping #gwrap,
-body.prof-camping #pcard,
-body.prof-camping #rcard_el { display: none !important; }
-body.prof-hiking #zbwrap,
-body.prof-camping #zbwrap { display: none !important; }
-body.prof-hiking #gsec,
-body.prof-camping #gsec { justify-content: flex-start; padding-top: 16px; gap: 12px; }
-/* Camping mode: emphasize the weather / sun strip */
-body.prof-camping #wx { flex: 1; }
+/* Trail Mode: hide inclinometer, surface compass + weather + coords as hero.
+   Layout swaps the gauge canvas for a #trailHero block that's only rendered
+   in trail mode. */
+body.prof-trail #gwrap,
+body.prof-trail #pcard,
+body.prof-trail #rcard_el,
+body.prof-trail #zbwrap,
+body.prof-trail #tripLive,
+body.prof-trail #maxAngleCard { display: none !important; }
+body.prof-trail #gsec { justify-content: flex-start; padding-top: 12px; gap: 14px; }
+body.prof-trail #trailHero { display: flex !important; }
+body.prof-trail #wx { padding: 14px 16px; }
+body.prof-trail .wxbig { font-size: 32px; }
+body.prof-trail #gps .gval { font-size: 16px; }
+body.prof-trail #gps .glbl { font-size: 11px; }
+body.prof-trail #gps .gchip { padding: 10px 14px; }
+body.prof-trail #gps .gico { font-size: 18px; }
+body.prof-trail #wxts { font-size: 12px; }
+body.prof-trail .hourcard { padding: 8px 6px; }
+
+/* Off-road only: Max angle card. Layout uses CSS grid with two rows on
+   narrow screens — values on top, reset buttons below — to avoid the four
+   flex children squishing on iPhone SE width. */
+#maxAngleCard{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;
+  padding:10px 12px;background:var(--card);border:1px solid var(--border);
+  border-radius:10px;margin-top:6px}
+.maxLbl{font-family:var(--fd);font-size:9px;letter-spacing:1.5px;
+  text-transform:uppercase;color:var(--txt2)}
+.maxVal{font-family:var(--fd);font-size:18px;font-weight:700;color:var(--accent);
+  letter-spacing:.5px;line-height:1;margin-top:2px}
+.maxBlock{display:flex;flex-direction:column}
+.maxBlock.alltime .maxVal{color:var(--warn);font-size:14px}
+.maxBlock.alltime .maxLbl{font-size:8px}
+.maxResetBtn{background:transparent;border:1px solid var(--border);
+  border-radius:6px;color:var(--txt3);font-family:var(--fm);font-size:9px;
+  padding:9px 6px;cursor:pointer;-webkit-tap-highlight-color:transparent;
+  transition:all var(--tr);letter-spacing:.5px;text-align:center;
+  min-height:34px}
+.maxResetBtn:active{transform:scale(.95);border-color:var(--accent);color:var(--accent)}
+
+/* Trail Hero: compass rose + central readouts. Rendered only in trail mode. */
+#trailHero{display:none;flex-direction:column;align-items:center;
+  width:100%;gap:14px}
+#compassWrap{position:relative;width:240px;height:240px;
+  display:flex;align-items:center;justify-content:center}
+#compassCanvas{width:240px;height:240px;display:block}
+#compassReadout{position:absolute;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;pointer-events:none}
+.compassDeg{font-family:var(--fd);font-size:42px;font-weight:700;color:var(--accent);
+  letter-spacing:1px;line-height:1}
+.compassCard{font-family:var(--fd);font-size:14px;letter-spacing:3px;
+  color:var(--txt2);margin-top:4px;text-transform:uppercase}
+.compassHint{font-family:var(--fm);font-size:8px;color:var(--txt3);
+  margin-top:4px;letter-spacing:.5px;text-align:center}
+
+/* Trail trip strip — distance/elevation tracking front and center */
+#trailTripStrip{display:none;width:100%;background:var(--card);
+  border:1px solid var(--border);border-radius:12px;padding:12px 16px;
+  flex-direction:row;justify-content:space-around;align-items:center;gap:8px}
+body.prof-trail #trailTripStrip{display:flex}
+.tripStat{display:flex;flex-direction:column;align-items:center;flex:1;min-width:0}
+.tripStatLbl{font-family:var(--fd);font-size:9px;letter-spacing:1.5px;
+  text-transform:uppercase;color:var(--txt2)}
+.tripStatVal{font-family:var(--fd);font-size:18px;font-weight:700;
+  color:var(--accent);margin-top:3px;line-height:1}
+.tripStatVal.muted{color:var(--txt3)}
+.tripStatSub{font-family:var(--fm);font-size:9px;color:var(--txt3);margin-top:2px}
 
 @keyframes cflash{
 0%{box-shadow:0 0 0 3px var(--border),0 0 0 5px var(--bg2),0 0 28px rgba(61,220,151,.1)}
@@ -352,12 +406,55 @@ body.prof-camping #wx { flex: 1; }
         </div>
       </div>
 
+      <!-- Trail Mode hero — compass rose with central degree readout -->
+      <div id="trailHero">
+        <div id="compassWrap">
+          <canvas id="compassCanvas"></canvas>
+          <div id="compassReadout">
+            <div class="compassDeg" id="compassDeg">—</div>
+            <div class="compassCard" id="compassCard">—</div>
+            <div class="compassHint" id="compassHint">Waiting for sensor</div>
+          </div>
+        </div>
+      </div>
+
       <div id="gps">
         <div class="gchip" id="gcoordsChip" role="button" tabindex="0"><span class="gico">📍</span><div class="gdata"><span class="glbl">Coords · tap to share</span><span class="gval" id="gcoords">Locating…</span></div></div>
         <div class="gchip"><span class="gico">⛰️</span><div class="gdata"><span class="glbl">Elevation</span><span class="gval" id="gelev">—</span></div></div>
         <div class="gchip"><span class="gico">🧭</span><div class="gdata"><span class="glbl">Heading</span><span class="gval" id="ghead">—</span></div></div>
       </div>
       <div id="nogps">⚠ GPS unavailable — enable location access for full features</div>
+
+      <!-- Trail Mode trip strip — large distance/elevation readout -->
+      <div id="trailTripStrip">
+        <div class="tripStat">
+          <span class="tripStatLbl">Distance</span>
+          <span class="tripStatVal muted" id="ttDist">—</span>
+          <span class="tripStatSub" id="ttDistSub"></span>
+        </div>
+        <div class="tripStat">
+          <span class="tripStatLbl">Elev Gain</span>
+          <span class="tripStatVal muted" id="ttGain">—</span>
+        </div>
+        <div class="tripStat">
+          <span class="tripStatLbl">Time</span>
+          <span class="tripStatVal muted" id="ttTime">—</span>
+        </div>
+      </div>
+
+      <!-- Off-Road only: max angle session + all-time tracker -->
+      <div id="maxAngleCard">
+        <div class="maxBlock">
+          <div class="maxLbl">Session Max</div>
+          <div class="maxVal" id="maxSession">0.0°</div>
+        </div>
+        <div class="maxBlock alltime">
+          <div class="maxLbl">All-Time</div>
+          <div class="maxVal" id="maxAllTime">0.0°</div>
+        </div>
+        <button class="maxResetBtn" id="maxResetSession">RESET SESSION</button>
+        <button class="maxResetBtn" id="maxResetAllTime">RESET ALL-TIME</button>
+      </div>
 
       <div id="zbwrap">
         <button id="zbtn">ZERO / CALIBRATE</button>
@@ -407,8 +504,7 @@ body.prof-camping #wx { flex: 1; }
     </div>
     <div class="profSelect">
       <button class="profBtn" data-prof="offroad">🚙<span>Off-Road</span></button>
-      <button class="profBtn" data-prof="hiking">🥾<span>Hiking</span></button>
-      <button class="profBtn" data-prof="camping">⛺<span>Camping</span></button>
+      <button class="profBtn" data-prof="trail">🥾<span>Trail</span></button>
     </div>
     <div class="srow">
       <div class="sinfo"><span class="sname">Tilt Alarm</span><span class="sdesc">Sound + vibration when threshold exceeded</span></div>
@@ -579,9 +675,22 @@ function smooth(){
 
 function loop(){
   smooth();
-  S.analog ? drawAnalog(S.pitch,S.roll) : drawHorizon(S.pitch,S.roll);
-  updateCards();
-  checkAlarm();
+  // Off-road profile renders the inclinometer canvas + max angle.
+  // Trail profile renders the compass + trail trip strip.
+  // Both run cheaply enough to update every frame; CSS handles visibility.
+  const isOffroad = document.body.classList.contains('prof-offroad');
+  const isTrail   = document.body.classList.contains('prof-trail');
+  if(isOffroad){
+    S.analog ? drawAnalog(S.pitch,S.roll) : drawHorizon(S.pitch,S.roll);
+    updateCards();
+    checkAlarm();
+    updateMaxAngle();
+  }
+  if(isTrail){
+    drawCompass();
+    refreshCompassReadout();
+    refreshTrailTrip();
+  }
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
@@ -1066,6 +1175,15 @@ function hidePermOverlay(){
 
 function attachOrientationListener(){
   window.addEventListener('deviceorientation', handleOri, true);
+  // Compass uses the SAME event as inclinometer (same iOS permission grants both).
+  window.addEventListener('deviceorientation', handleCompass, true);
+  // Some Android devices expose true-north absolute orientation as a separate
+  // event. We route those directly to the absolute handler rather than the
+  // generic dispatch, since deviceorientationabsolute events don't always
+  // expose e.absolute=true and we'd misclassify them as relative.
+  if('ondeviceorientationabsolute' in window){
+    window.addEventListener('deviceorientationabsolute', handleCompassAbsolute, true);
+  }
 }
 
 async function requestMotionPermission(){
@@ -1196,23 +1314,21 @@ function checkAlarm(){
 }
 // Audio: AudioContext starts suspended on iOS Safari and modern Chrome.
 // We must call resume() from a user gesture before it'll produce sound.
-// ensureAudio() lazy-creates the context, and a one-shot gesture handler
-// resumes it the first time the user touches the screen.
+//
+// Important: we don't preemptively create the AudioContext on first user
+// gesture. On iOS, instantiating a context can interrupt other audio
+// playing on the device (e.g. user's music). Instead, we lazy-create it
+// inside doAlarm() only when an alarm needs to fire — at which point the
+// user has been interacting with the app long enough that resume() works.
 function ensureAudio(){
   if(!S.audio){
-    try{ S.audio = new (window.AudioContext||window.webkitAudioContext)(); }
+    try{
+      S.audio = new (window.AudioContext||window.webkitAudioContext)();
+    }
     catch(e){ return null; }
   }
   return S.audio;
 }
-function _audioGestureResume(){
-  const ctx = ensureAudio();
-  if(ctx && ctx.state === 'suspended') ctx.resume().catch(()=>{});
-  window.removeEventListener('pointerdown', _audioGestureResume);
-  window.removeEventListener('keydown',     _audioGestureResume);
-}
-window.addEventListener('pointerdown', _audioGestureResume, {once:true});
-window.addEventListener('keydown',     _audioGestureResume, {once:true});
 
 function doAlarm(){
   if(S.vib&&navigator.vibrate) navigator.vibrate([200,100,200]);
@@ -1413,7 +1529,9 @@ async function copyCoordsToClipboard(){
 const PROF_KEY = 'tg_profile_v1';
 
 function applyProfile(prof){
-  document.body.classList.remove('prof-offroad','prof-hiking','prof-camping');
+  // Remove all known profile classes (including legacy hiking/camping in case
+  // they linger on body from a hot reload during this session).
+  document.body.classList.remove('prof-offroad','prof-trail','prof-hiking','prof-camping');
   document.body.classList.add('prof-' + prof);
   document.querySelectorAll('.profBtn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.prof === prof);
@@ -1427,10 +1545,271 @@ document.querySelectorAll('.profBtn').forEach(btn => {
   btn.addEventListener('click', () => applyProfile(btn.dataset.prof));
 });
 
-// Restore saved profile on load (default: offroad)
+// Restore saved profile on load (default: offroad). Migrate legacy
+// 'hiking' / 'camping' values from earlier builds → 'trail'.
 let _savedProf = 'offroad';
-try { _savedProf = localStorage.getItem(PROF_KEY) || 'offroad'; } catch(_){}
+try {
+  const raw = localStorage.getItem(PROF_KEY);
+  if(raw === 'hiking' || raw === 'camping') _savedProf = 'trail';
+  else if(raw === 'offroad' || raw === 'trail') _savedProf = raw;
+} catch(_){}
 applyProfile(_savedProf);
+
+/* ─── MAX ANGLE RECORDER ──────────────────────────────────────
+   Tracks the highest absolute pitch/roll seen. Two scopes:
+   - Session: resets when app reloads OR user taps reset.
+   - All-time: persists across sessions, only resets on manual tap.
+   Off-road profile only — element is hidden in trail mode via CSS. */
+const MAX_KEY = 'tg_max_angle_v1';
+const MAX = { session: 0, allTime: 0 };
+try {
+  const v = parseFloat(localStorage.getItem(MAX_KEY));
+  if(Number.isFinite(v) && v >= 0 && v <= 90) MAX.allTime = v;
+} catch(_){}
+
+function updateMaxAngle(){
+  // Highest absolute angle currently shown (uses smoothed/calibrated values)
+  const cur = Math.max(Math.abs(S.pitch), Math.abs(S.roll));
+  if(cur > MAX.session){
+    MAX.session = cur;
+    document.getElementById('maxSession').textContent = MAX.session.toFixed(1) + '°';
+  }
+  if(cur > MAX.allTime){
+    MAX.allTime = cur;
+    document.getElementById('maxAllTime').textContent = MAX.allTime.toFixed(1) + '°';
+    try { localStorage.setItem(MAX_KEY, String(MAX.allTime)); } catch(_){}
+  }
+}
+// Initial render
+document.getElementById('maxSession').textContent = MAX.session.toFixed(1) + '°';
+document.getElementById('maxAllTime').textContent = MAX.allTime.toFixed(1) + '°';
+
+document.getElementById('maxResetSession').addEventListener('click', () => {
+  MAX.session = 0;
+  document.getElementById('maxSession').textContent = '0.0°';
+});
+document.getElementById('maxResetAllTime').addEventListener('click', () => {
+  if(!confirm('Reset all-time max angle? This cannot be undone.')) return;
+  MAX.allTime = 0;
+  document.getElementById('maxAllTime').textContent = '0.0°';
+  try { localStorage.removeItem(MAX_KEY); } catch(_){}
+});
+
+/* ─── COMPASS ────────────────────────────────────────────────
+   Stationary heading from device orientation sensor (uses webkitCompassHeading
+   on iOS for true north, falls back to alpha for Android). Updates the trail
+   mode hero when in trail profile. Permission is the same as the inclinometer
+   (DeviceOrientationEvent.requestPermission), so it's already granted if the
+   user enabled motion sensors at any point. */
+const COMPASS = { heading: null, lastUpdate: 0, hasAbsolute: false };
+const compCanvas = document.getElementById('compassCanvas');
+const compCtx = compCanvas ? compCanvas.getContext('2d') : null;
+
+// iOS-specific handler: webkitCompassHeading is true north magnetic.
+function handleCompassIOS(e){
+  if(typeof e.webkitCompassHeading !== 'number' || !Number.isFinite(e.webkitCompassHeading)) return;
+  COMPASS.heading = e.webkitCompassHeading;
+  COMPASS.lastUpdate = Date.now();
+}
+
+// Android absolute orientation: alpha is true north heading.
+function handleCompassAbsolute(e){
+  if(typeof e.alpha !== 'number' || !Number.isFinite(e.alpha)) return;
+  COMPASS.hasAbsolute = true;
+  COMPASS.heading = (360 - e.alpha) % 360;
+  COMPASS.lastUpdate = Date.now();
+}
+
+// Fallback: relative alpha (Android browsers without absolute event).
+// Only used if we never heard from the absolute event — otherwise we'd
+// overwrite a true-north reading with relative-to-start data on alternating
+// frames, making the compass jitter.
+function handleCompassRelative(e){
+  if(COMPASS.hasAbsolute) return;
+  if(typeof e.alpha !== 'number' || !Number.isFinite(e.alpha)) return;
+  COMPASS.heading = (360 - e.alpha) % 360;
+  COMPASS.lastUpdate = Date.now();
+}
+
+// Single dispatch entry point — picks the best available method per event.
+function handleCompass(e){
+  if(typeof e.webkitCompassHeading === 'number'){
+    handleCompassIOS(e);
+  } else if(e.absolute === true){
+    // The HTML5 spec exposes e.absolute=true on absolute events and on some
+    // browsers that fold absolute orientation into the regular event.
+    handleCompassAbsolute(e);
+  } else {
+    handleCompassRelative(e);
+  }
+}
+
+function compassCardinal(deg){
+  const dirs = ['N','NE','E','SE','S','SW','W','NW'];
+  return dirs[Math.round(deg / 45) % 8];
+}
+
+function drawCompass(){
+  if(!compCtx) return;
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = 240, cssH = 240;
+  if(compCanvas.width !== cssW * dpr){
+    compCanvas.width = cssW * dpr;
+    compCanvas.height = cssH * dpr;
+    compCanvas.style.width = cssW + 'px';
+    compCanvas.style.height = cssH + 'px';
+  }
+  compCtx.setTransform(1,0,0,1,0,0);
+  compCtx.scale(dpr, dpr);
+  compCtx.clearRect(0, 0, cssW, cssH);
+
+  // Hoist color reads — getComputedStyle is expensive in a per-frame loop.
+  const cs = getComputedStyle(document.body);
+  const colBorder = cs.getPropertyValue('--border').trim() || '#2a3342';
+  const colAccent = cs.getPropertyValue('--accent').trim() || '#3ddc97';
+  const colTxt2   = cs.getPropertyValue('--txt2').trim()   || '#8899aa';
+  const colTxt3   = cs.getPropertyValue('--txt3').trim()   || '#4a5568';
+
+  const cx = cssW / 2, cy = cssH / 2;
+  const R = Math.min(cx, cy) - 6;
+
+  // Outer ring
+  compCtx.strokeStyle = colBorder;
+  compCtx.lineWidth = 2;
+  compCtx.beginPath();
+  compCtx.arc(cx, cy, R, 0, Math.PI * 2);
+  compCtx.stroke();
+
+  // Cardinal markings rotate based on heading (so North arrow points to true north
+  // relative to phone orientation)
+  const heading = COMPASS.heading != null ? COMPASS.heading : 0;
+  compCtx.save();
+  compCtx.translate(cx, cy);
+  compCtx.rotate(-heading * Math.PI / 180);
+
+  // Tick marks every 15°
+  for(let deg = 0; deg < 360; deg += 15){
+    const isCardinal = (deg % 90 === 0);
+    const isMajor = (deg % 30 === 0);
+    const len = isCardinal ? 14 : (isMajor ? 9 : 5);
+    const rad = (deg - 90) * Math.PI / 180;
+    const x1 = Math.cos(rad) * (R - len);
+    const y1 = Math.sin(rad) * (R - len);
+    const x2 = Math.cos(rad) * (R - 2);
+    const y2 = Math.sin(rad) * (R - 2);
+    compCtx.strokeStyle = isCardinal ? colAccent : (isMajor ? colTxt2 : colTxt3);
+    compCtx.lineWidth = isCardinal ? 2.5 : (isMajor ? 1.5 : 1);
+    compCtx.beginPath();
+    compCtx.moveTo(x1, y1);
+    compCtx.lineTo(x2, y2);
+    compCtx.stroke();
+  }
+
+  // Cardinal letters
+  const letters = [['N',0],['E',90],['S',180],['W',270]];
+  compCtx.font = '600 14px "Rajdhani",sans-serif';
+  compCtx.textAlign = 'center';
+  compCtx.textBaseline = 'middle';
+  letters.forEach(([letter, deg]) => {
+    const rad = (deg - 90) * Math.PI / 180;
+    const r = R - 28;
+    const x = Math.cos(rad) * r;
+    const y = Math.sin(rad) * r;
+    compCtx.fillStyle = (letter === 'N') ? colAccent : colTxt2;
+    compCtx.save();
+    compCtx.translate(x, y);
+    compCtx.rotate(heading * Math.PI / 180);
+    compCtx.fillText(letter, 0, 0);
+    compCtx.restore();
+  });
+  compCtx.restore();
+
+  // Top center indicator (the direction the phone is "pointing")
+  compCtx.fillStyle = colAccent;
+  compCtx.beginPath();
+  compCtx.moveTo(cx, cy - R + 2);
+  compCtx.lineTo(cx - 6, cy - R + 14);
+  compCtx.lineTo(cx + 6, cy - R + 14);
+  compCtx.closePath();
+  compCtx.fill();
+}
+
+function refreshCompassReadout(){
+  const degEl = document.getElementById('compassDeg');
+  const cardEl = document.getElementById('compassCard');
+  const hintEl = document.getElementById('compassHint');
+  // If iOS permission is needed but not granted, show a tappable prompt
+  // (clicking it triggers the same permission flow as the gauge overlay).
+  if(needsIOSPermission && COMPASS.heading == null){
+    const granted = (function(){ try{ return localStorage.getItem(PERM_KEY) === 'granted'; }catch(_){ return false; }})();
+    if(!granted){
+      degEl.textContent = '—';
+      cardEl.textContent = '—';
+      // Inject the button only once — RAF runs at 60fps, and re-writing
+      // innerHTML each frame would discard the wired click handler and
+      // create a fresh unwired DOM node every 16ms.
+      if(!hintEl._showingPermBtn){
+        hintEl.innerHTML = '<button id="compassPermBtn" style="background:var(--accent);color:#000;border:none;border-radius:14px;padding:6px 14px;font-family:var(--fd);font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;cursor:pointer;-webkit-tap-highlight-color:transparent">Enable Compass</button>';
+        hintEl._showingPermBtn = true;
+        const cpb = document.getElementById('compassPermBtn');
+        if(cpb) cpb.addEventListener('click', requestMotionPermission);
+      }
+      return;
+    }
+  }
+  // Permission OK or not needed — clear any prompt state so a future
+  // re-render (e.g. heading goes null again) can re-inject if needed.
+  if(hintEl._showingPermBtn){
+    hintEl.innerHTML = '';
+    hintEl._showingPermBtn = false;
+  }
+  if(COMPASS.heading == null){
+    degEl.textContent = '—';
+    cardEl.textContent = '—';
+    if(hintEl.textContent !== 'Move phone to acquire heading'){
+      hintEl.textContent = 'Move phone to acquire heading';
+    }
+    return;
+  }
+  degEl.textContent = Math.round(COMPASS.heading) + '°';
+  cardEl.textContent = compassCardinal(COMPASS.heading);
+  if(hintEl.textContent !== '') hintEl.textContent = '';
+}
+
+/* ─── TRAIL TRIP STRIP ──────────────────────────────────────
+   Mirrors trip data into the larger Trail-mode display. Same TRIP object,
+   just rendered with bigger numbers and unit-aware distance. */
+function refreshTrailTrip(){
+  const ttDist = document.getElementById('ttDist');
+  const ttGain = document.getElementById('ttGain');
+  const ttTime = document.getElementById('ttTime');
+  const ttSub  = document.getElementById('ttDistSub');
+  if(!TRIP.active && TRIP.distM === 0){
+    ttDist.textContent = '—';
+    ttGain.textContent = '—';
+    ttTime.textContent = '—';
+    ttSub.textContent  = '';
+    ttDist.classList.add('muted');
+    ttGain.classList.add('muted');
+    ttTime.classList.add('muted');
+    return;
+  }
+  ttDist.classList.remove('muted');
+  ttGain.classList.remove('muted');
+  ttTime.classList.remove('muted');
+  // Distance: feet under 1000ft, then yards under 0.3mi, then miles
+  const ft = TRIP.distM * 3.28084;
+  if(ft < 1000){ ttDist.textContent = Math.round(ft) + ' ft'; ttSub.textContent = ''; }
+  else if(ft < 1584){ ttDist.textContent = Math.round(ft/3) + ' yd'; ttSub.textContent = (ft/5280).toFixed(2) + ' mi'; }
+  else{ ttDist.textContent = (ft/5280).toFixed(2) + ' mi'; ttSub.textContent = Math.round(ft) + ' ft'; }
+  ttGain.textContent = Math.round(TRIP.gainM * 3.28084) + ' ft';
+  if(TRIP.startMs){
+    const elapsed = Date.now() - TRIP.startMs;
+    const min = Math.floor(elapsed / 60000);
+    const sec = Math.floor((elapsed % 60000) / 1000);
+    ttTime.textContent = min + ':' + String(sec).padStart(2, '0');
+  }
+}
 
 const WK='tg_wx_v1';
 let _wxInflight = false;
@@ -1463,10 +1842,9 @@ function setWDot(st){
   d.className='';
   const scr = document.getElementById('hscroll');
   if(st==='live') l.textContent='Live Weather';
-  else if(st==='cached'){const m=Math.round((Date.now()-S.wxTs)/60000);l.textContent=`Cached ${m}m ago`;}
-  else if(st==='stale'){d.classList.add('stale');const m=Math.round((Date.now()-S.wxTs)/60000);l.textContent=`⚠ Stale ${m}m ago`;}
+  else if(st==='cached'){const m=Math.round((Date.now()-S.wxTs)/60000);l.textContent = m<1 ? 'Updated just now' : `Updated ${m} min ago`;}
+  else if(st==='stale'){d.classList.add('stale');const m=Math.round((Date.now()-S.wxTs)/60000);l.textContent=`⚠ Stale · last update ${m} min ago`;}
   else{
-    // Offline / no cache yet — show a clearer placeholder than "Acquiring location…"
     d.classList.add('off');
     l.textContent='⚠ Offline';
     if(scr && scr.children.length===1 && scr.firstChild.textContent && scr.firstChild.textContent.includes('Acquiring')){
