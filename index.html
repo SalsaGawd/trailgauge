@@ -263,7 +263,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 #onb.show{display:flex;animation:onbFadeIn .4s ease both}
 @keyframes onbFadeIn{from{opacity:0}to{opacity:1}}
 #onbInner{width:100%;max-width:420px;display:flex;flex-direction:column;
-  align-items:center;gap:18px;height:100%;justify-content:center}
+  align-items:stretch;gap:18px;height:100%;justify-content:center}
 #onbCards{position:relative;width:100%;flex:1;max-height:520px;overflow:hidden}
 /* Inner track holds all three cards side-by-side. The cards container
    above is the viewport; this track is what slides. Width 300% so each
@@ -283,7 +283,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 .onbBody{font-family:var(--fm);font-size:14px;color:var(--txt);line-height:1.6;
   max-width:340px}
 .onbBody b{color:var(--accent)}
-#onbDots{display:flex;gap:8px}
+#onbDots{display:flex;gap:8px;justify-content:center;align-self:center}
 .onbDot{width:8px;height:8px;border-radius:50%;background:var(--border);
   transition:all var(--tr);cursor:pointer}
 .onbDot.active{background:var(--accent);width:24px;border-radius:4px}
@@ -470,7 +470,38 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
 .tdStat:last-of-type{border-bottom:none}
 .tdStat .lbl{color:var(--txt2);text-transform:uppercase;letter-spacing:1px;font-size:10px}
 .tdStat .val{color:var(--txt);font-family:var(--fd);font-size:14px;font-weight:600}
+
+/* ─── PIN MAP (Leaflet) ──────────────────────────────────────
+   Small map preview shown inside pin detail when user taps Show Map.
+   Leaflet is loaded lazily on first use — keeps initial page weight low. */
+.pinMapWrap{position:relative;width:100%;height:240px;border-radius:8px;
+  overflow:hidden;margin-top:12px;background:var(--bg2);
+  border:1px solid var(--border);display:none}
+.pinMapWrap.show{display:block}
+.pinMap{width:100%;height:100%}
+/* Tile-style toggle floats over the map, top right */
+.mapTileToggle{position:absolute;top:8px;right:8px;z-index:401;
+  display:flex;background:var(--card);border:1px solid var(--border);
+  border-radius:6px;padding:2px;font-family:var(--fd);font-size:9px;
+  letter-spacing:1px;text-transform:uppercase;
+  -webkit-user-select:none;user-select:none;
+  box-shadow:0 2px 8px rgba(0,0,0,.4)}
+.mapTileBtn{background:transparent;border:none;padding:5px 10px;
+  color:var(--txt2);cursor:pointer;border-radius:4px;font-weight:600;
+  -webkit-tap-highlight-color:transparent;font-family:inherit;font-size:inherit;
+  letter-spacing:inherit;text-transform:inherit}
+.mapTileBtn.active{background:var(--accent);color:#000}
+/* Loading state shown briefly during first-time tile fetch */
+.mapLoading{position:absolute;inset:0;display:flex;align-items:center;
+  justify-content:center;color:var(--txt3);font-family:var(--fm);font-size:11px;
+  pointer-events:none;z-index:400}
+/* Dark theme tweak — Leaflet's default attribution is dark-on-light;
+   lighten it so it stays readable on top of OSM tiles in our app context. */
+.leaflet-container{background:var(--bg2)}
+.leaflet-control-attribution{font-size:9px;background:rgba(0,0,0,.5)!important;color:#ccc!important}
+.leaflet-control-attribution a{color:var(--accent)!important}
 </style>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
 </head>
 <body>
 
@@ -815,6 +846,7 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
     <div class="mtl"><span id="pdTitle">Pin</span></div>
     <div id="pdContent"></div>
     <div style="display:flex;flex-direction:column;gap:8px;margin-top:16px">
+      <button class="modalbtn ghost"   id="pdToggleMap">Show Map</button>
       <button class="modalbtn primary" id="pdShareCard">Share as Image Card</button>
       <button class="modalbtn ghost"   id="pdOpenMaps">Open in Maps…</button>
       <button class="modalbtn ghost"   id="pdEdit">Edit Pin</button>
@@ -2135,15 +2167,174 @@ function openPinDetail(pin){
       <div class="pdLabel">Saved</div>
       <div class="pdValue" style="font-size:11px;color:var(--txt3)">${createdStr}</div>
     </div>`;
+  // Map container — hidden by default. Lazy-rendered on Show Map tap so
+  // initial pin-detail open isn't blocked on Leaflet load. The .show class
+  // toggles visibility, and we instantiate the actual L.map() on first reveal.
+  html += `
+    <div class="pinMapWrap" id="pinMapWrap">
+      <div class="mapTileToggle">
+        <button class="mapTileBtn active" data-tile="osm">Map</button>
+        <button class="mapTileBtn" data-tile="topo">Topo</button>
+      </div>
+      <div class="mapLoading" id="pinMapLoading">Loading map…</div>
+      <div class="pinMap" id="pinMap"></div>
+    </div>`;
   c.innerHTML = html;
+  // Reset map state for the new pin — destroy previous instance if open
+  destroyPinMap();
+  document.getElementById('pdToggleMap').textContent = 'Show Map';
   pdp.classList.add('open');
 }
 
-pdp.addEventListener('click', e => { if(e.target === pdp) pdp.classList.remove('open'); });
+/* ─── PIN MAP LIFECYCLE ──────────────────────────────────────
+   Leaflet is lazy-loaded on first map open. We keep _pinMap as the live
+   instance so we can reuse it (e.g. tile toggle). Destroyed when leaving
+   pin detail to free memory. */
+let _leafletReady = null;       // promise — resolves once L is on window
+let _pinMap = null;             // current Leaflet map instance, or null
+let _pinTileLayer = null;       // current tile layer (swappable on toggle)
+let _pinMarker = null;
+let _pinTileStyle = 'osm';      // 'osm' or 'topo' — last user choice persists across opens
+
+function loadLeaflet(){
+  if(window.L) return Promise.resolve();
+  if(_leafletReady) return _leafletReady;
+  _leafletReady = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    // No SRI hash here intentionally — version is pinned in URL, and
+    // unpkg ships immutable artifacts for pinned versions. Adding an
+    // unverified integrity= would silently fail if it didn't match.
+    // If/when this gets bundled locally for App Store packaging, we'll
+    // bake in a verified hash from the build pipeline.
+    s.crossOrigin = '';
+    s.onload = () => {
+      // Leaflet's default marker icon resolves paths relative to the page,
+      // not the loaded CSS. On a single-file HTML with no asset directory,
+      // the default icon fails to render. Point it at the CDN explicitly.
+      try {
+        delete L.Icon.Default.prototype._getIconUrl;
+        L.Icon.Default.mergeOptions({
+          iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+          iconUrl:       'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+          shadowUrl:     'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png'
+        });
+      } catch(e){ console.warn('Leaflet icon defaults could not be set:', e); }
+      resolve();
+    };
+    s.onerror = () => { _leafletReady = null; reject(new Error('Leaflet failed to load')); };
+    document.head.appendChild(s);
+  });
+  return _leafletReady;
+}
+
+// Returns a Leaflet tileLayer for the given style. Centralized so trip-route
+// code in v21 can reuse the same toggle without duplicating attribution / urls.
+function makeTileLayer(style){
+  if(style === 'topo'){
+    return L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+      maxZoom: 17,
+      attribution: '© OpenTopoMap (CC-BY-SA), © OpenStreetMap'
+    });
+  }
+  // default: OSM standard
+  return L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '© OpenStreetMap'
+  });
+}
+
+async function showPinMap(){
+  const wrap = document.getElementById('pinMapWrap');
+  if(!wrap || !_currentPin) return;
+  wrap.classList.add('show');
+  document.getElementById('pdToggleMap').textContent = 'Hide Map';
+  try {
+    await loadLeaflet();
+  } catch(err){
+    document.getElementById('pinMapLoading').textContent = 'Map unavailable — check connection.';
+    return;
+  }
+  // Hide the loading overlay once Leaflet is on window. Tile fetches will
+  // still proceed in background; the user will see them paint in.
+  document.getElementById('pinMapLoading').style.display = 'none';
+  if(_pinMap){
+    // Reusing instance from a previous open — fix size in case modal reflowed
+    _pinMap.invalidateSize();
+    return;
+  }
+  const lat = _currentPin.lat, lon = _currentPin.lon;
+  _pinMap = L.map('pinMap', {
+    center: [lat, lon],
+    zoom: 14,
+    zoomControl: false,            // saves space; user can pinch-zoom
+    attributionControl: true,
+    // Better feel for a small embedded map: snap to integer zooms,
+    // disable inertial pan jitter that can fight with modal scroll
+    zoomSnap: 0.5
+  });
+  _pinTileLayer = makeTileLayer(_pinTileStyle).addTo(_pinMap);
+  _pinMarker = L.marker([lat, lon]).addTo(_pinMap);
+  // Sync the toggle to whichever style is active
+  document.querySelectorAll('.mapTileBtn').forEach(b => {
+    b.classList.toggle('active', b.dataset.tile === _pinTileStyle);
+  });
+  // Wire tile toggle — uses delegation since buttons are re-rendered
+  // each pin open inside pdContent.innerHTML.
+  wrap.querySelectorAll('.mapTileBtn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const style = btn.dataset.tile;
+      if(style === _pinTileStyle) return;
+      _pinTileStyle = style;
+      if(_pinTileLayer) _pinMap.removeLayer(_pinTileLayer);
+      _pinTileLayer = makeTileLayer(style).addTo(_pinMap);
+      document.querySelectorAll('.mapTileBtn').forEach(b => {
+        b.classList.toggle('active', b.dataset.tile === style);
+      });
+    });
+  });
+  // Modal sheet has overflow that can confuse Leaflet's initial size detection.
+  // After a tick, force a recalc so tiles render at the correct dimensions.
+  setTimeout(() => { if(_pinMap) _pinMap.invalidateSize(); }, 60);
+}
+
+function hidePinMap(){
+  const wrap = document.getElementById('pinMapWrap');
+  if(wrap) wrap.classList.remove('show');
+  document.getElementById('pdToggleMap').textContent = 'Show Map';
+  // Don't destroy the instance — collapsing should be cheap so user can
+  // toggle back without re-fetching tiles. Cleanup happens on detail close.
+}
+
+function destroyPinMap(){
+  if(_pinMap){
+    try { _pinMap.remove(); } catch(_){}
+    _pinMap = null;
+    _pinTileLayer = null;
+    _pinMarker = null;
+  }
+}
+
+document.getElementById('pdToggleMap').addEventListener('click', () => {
+  const wrap = document.getElementById('pinMapWrap');
+  if(!wrap) return;
+  if(wrap.classList.contains('show')) hidePinMap();
+  else showPinMap();
+});
+
+pdp.addEventListener('click', e => {
+  if(e.target === pdp){
+    pdp.classList.remove('open');
+    // Leaflet keeps DOM listeners; destroy the instance when leaving so
+    // tiles aren't held in memory and event handlers don't accumulate.
+    destroyPinMap();
+  }
+});
 
 document.getElementById('pdEdit').addEventListener('click', () => {
   if(!_currentPin) return;
   pdp.classList.remove('open');
+  destroyPinMap();
   setTimeout(() => openPinSaveModal(_currentPin), 200);
 });
 
@@ -2153,6 +2344,7 @@ document.getElementById('pdDelete').addEventListener('click', async () => {
   try {
     await pinDelete(_currentPin.id);
     pdp.classList.remove('open');
+    destroyPinMap();
     // Refresh the list view if it's still open
     if(plp.classList.contains('open')) openPinList();
   } catch(err){
@@ -2167,6 +2359,7 @@ document.getElementById('pdOpenMaps').addEventListener('click', () => {
   _shareLat = _currentPin.lat;
   _shareLon = _currentPin.lon;
   pdp.classList.remove('open');
+  destroyPinMap();
   setTimeout(() => {
     shCoords.innerHTML = `<b>${_currentPin.lat.toFixed(6)}, ${_currentPin.lon.toFixed(6)}</b>`;
     document.getElementById('shHint').textContent = '';
