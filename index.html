@@ -288,22 +288,25 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 .onbDot{width:8px;height:8px;border-radius:50%;background:var(--border);
   transition:all var(--tr);cursor:pointer}
 .onbDot.active{background:var(--accent);width:24px;border-radius:4px}
-#onbDontShow{display:flex;align-items:center;gap:8px;justify-content:center;
+#onbDontShow{display:flex;align-items:center;gap:10px;justify-content:center;
   align-self:center;font-family:var(--fm);font-size:11px;color:var(--txt2);
   cursor:pointer;-webkit-user-select:none;user-select:none;
-  -webkit-tap-highlight-color:transparent;padding:4px 0}
+  -webkit-tap-highlight-color:transparent;padding:12px 16px;
+  /* 44px minimum tap target per Apple HIG. The padding + 16px checkbox
+     and 13px text height gets us comfortably above the threshold. */
+  min-height:44px;box-sizing:border-box}
 #onbDontShow input[type="checkbox"]{
   /* Custom checkbox so it matches the dark theme — default browser
      checkboxes look out of place in the onboarding. */
   appearance:none;-webkit-appearance:none;
-  width:16px;height:16px;border:1.5px solid var(--border);
+  width:18px;height:18px;border:1.5px solid var(--border);
   border-radius:3px;background:var(--bg2);cursor:pointer;
   transition:all var(--tr);position:relative;flex-shrink:0;margin:0}
 #onbDontShow input[type="checkbox"]:checked{
   background:var(--accent);border-color:var(--accent)}
 #onbDontShow input[type="checkbox"]:checked::after{
-  content:"";position:absolute;left:4px;top:0px;
-  width:4px;height:9px;border:solid #000;
+  content:"";position:absolute;left:5px;top:1px;
+  width:5px;height:10px;border:solid #000;
   border-width:0 2px 2px 0;transform:rotate(45deg)}
 #onbBtns{display:flex;gap:10px;width:100%}
 #onbSkip{flex:1}
@@ -838,6 +841,7 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
     <div id="tdBody"></div>
     <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
       <button class="modalbtn ghost"   id="tdToggleMap">Show Route Map</button>
+      <button class="modalbtn ghost"   id="tdSavePin">Save Spot as Pin</button>
       <button class="modalbtn primary" id="tdShareCard">Share as Image Card</button>
       <button class="modalbtn ghost" id="tdRename">Rename</button>
       <button class="modalbtn ghost" id="tdExport">Export GPX</button>
@@ -1411,28 +1415,65 @@ function median3(a, b, c){
 }
 
 function handleOri(e){
-  let beta = e.beta ?? 0;
-  let gamma= e.gamma?? 0;
+  // Use proper rotation-matrix math instead of direct beta/gamma mapping.
+  //
+  // PROBLEM with the previous direct mapping:
+  // The DeviceOrientationEvent gives us alpha (yaw), beta (front-back tilt),
+  // and gamma (side-to-side tilt) as Euler angles. These ARE coupled:
+  // when alpha changes (vehicle turns), the beta/gamma readings can swing
+  // even though the physical pitch/roll relative to gravity hasn't changed.
+  // This caused the "inclinometer goes crazy when turning east → north" bug.
+  //
+  // FIX:
+  // Build the device rotation matrix from alpha/beta/gamma, then rotate the
+  // world gravity vector (0,0,-1) into the device's reference frame. The
+  // resulting vector tells us where "down" is from the phone's POV. From
+  // that we extract pitch and roll using atan2 — yaw drops out entirely.
+  //
+  // Reference: W3C DeviceOrientation spec, intrinsic Tait-Bryan ZX'Y''.
+  const alpha = e.alpha ?? 0;
+  const beta  = e.beta  ?? 0;
+  const gamma = e.gamma ?? 0;
   if(!Number.isFinite(beta) || !Number.isFinite(gamma)) return;
 
-  // Beta wraparound fix: when phone tips past vertical (face-down), beta jumps
-  // from +90 toward -90 instead of continuing past 90. For an off-road app
-  // this matters at extreme tilts. If gamma is also large, we know we're
-  // beyond vertical and can correct.
-  if(Math.abs(gamma) > 90){
-    if(beta > 0)  beta = 180 - beta;
-    else          beta = -180 - beta;
-  }
+  const _x = beta  * Math.PI / 180;   // X rotation (front-back tilt)
+  const _y = gamma * Math.PI / 180;   // Y rotation (side tilt)
+  const _z = alpha * Math.PI / 180;   // Z rotation (yaw)
 
+  const cX = Math.cos(_x), sX = Math.sin(_x);
+  const cY = Math.cos(_y), sY = Math.sin(_y);
+  const cZ = Math.cos(_z), sZ = Math.sin(_z);
+
+  // Rotation matrix R = Rz(alpha) * Rx(beta) * Ry(gamma) per the spec.
+  // We only need the third column (R · world_z) since gravity points -Z in
+  // world space — that's the device's "down" vector.
+  // After algebra: world Z axis (0,0,1) transformed into device frame =
+  //   gx = -cX*sY
+  //   gy =  sX
+  //   gz =  cX*cY
+  // (Sign convention: positive gy means phone is tilted forward / pitched up.)
+  const gx = -cX * sY;
+  const gy =  sX;
+  const gz =  cX * cY;
+
+  // Pitch = angle between gravity and the device's Y axis when projected onto YZ plane.
+  // Roll  = angle between gravity and the device's X axis when projected onto XZ plane.
+  // atan2 over a wide range gives correct sign and avoids the wraparound issues
+  // we previously had to patch with the "if abs(gamma) > 90" hack.
+  let pitch = Math.atan2(gy, gz) * 180 / Math.PI;
+  let roll  = Math.atan2(-gx, gz) * 180 / Math.PI;
+
+  // Map to screen orientation. The device might be in landscape — adjust which
+  // axis is "pitch" and which is "roll" from the user's perspective.
   const ang = getScreenAngle();
-  let pitch, roll;
-  if(ang === 90){           pitch =  gamma; roll = -beta; }
-  else if(ang === -90 || ang === 270){ pitch = -gamma; roll =  beta; }
-  else if(ang === 180){     pitch = -beta;  roll = -gamma; }
-  else {                    pitch =  beta;  roll =  gamma; }
+  let p, r;
+  if(ang === 90){           p =  roll;  r = -pitch; }
+  else if(ang === -90 || ang === 270){ p = -roll;  r =  pitch; }
+  else if(ang === 180){     p = -pitch; r = -roll;  }
+  else {                    p =  pitch; r =  roll;  }
 
-  pitch = Math.max(-90, Math.min(90, pitch));
-  roll  = Math.max(-90, Math.min(90, roll));
+  p = Math.max(-90, Math.min(90, p));
+  r = Math.max(-90, Math.min(90, r));
 
   // Warmup: discard the first 300ms of sensor readings — the OS hasn't
   // settled its sensor fusion yet and early values can be wildly wrong.
@@ -1447,19 +1488,19 @@ function handleOri(e){
   // Median-of-3 spike rejection: write the new reading into a 3-slot ring
   // buffer, then take the median. Removes single-frame jumps without
   // affecting responsiveness to real movement.
-  _pBuf[_bufIdx] = pitch;
-  _rBuf[_bufIdx] = roll;
+  _pBuf[_bufIdx] = p;
+  _rBuf[_bufIdx] = r;
   _bufIdx = (_bufIdx + 1) % 3;
-  pitch = median3(_pBuf[0], _pBuf[1], _pBuf[2]);
-  roll  = median3(_rBuf[0], _rBuf[1], _rBuf[2]);
+  p = median3(_pBuf[0], _pBuf[1], _pBuf[2]);
+  r = median3(_rBuf[0], _rBuf[1], _rBuf[2]);
 
-  S.rawPitch = pitch;
-  S.rawRoll  = roll;
+  S.rawPitch = p;
+  S.rawRoll  = r;
 
   // Deadband: snap micro-jitter at level to exactly 0. Only applies in a
   // tight ±0.5° window, so any real tilt shows immediately.
-  let tp = pitch - S.pOff;
-  let tr = roll  - S.rOff;
+  let tp = p - S.pOff;
+  let tr = r - S.rOff;
   if(Math.abs(tp) < 0.5) tp = 0;
   if(Math.abs(tr) < 0.5) tr = 0;
   S.tPitch = tp;
@@ -1720,7 +1761,24 @@ function startGPS(){
     document.getElementById('gcoords').textContent='Unavailable';
     return;
   }
-  navigator.geolocation.watchPosition(pos=>{
+  startGpsWatch();
+}
+
+/* GPS watch lifecycle — broken out so we can RE-ARM the watch after iOS
+   may have killed it during background suspend, or after a watch error
+   that didn't recover on its own. */
+let _gpsWatchId = null;
+let _lastGpsFixMs = 0;          // timestamp of last successful fix — used to detect silent GPS death
+
+function startGpsWatch(){
+  if(!navigator.geolocation) return;
+  // If a watch is already active, clear it first to avoid duplicate handlers.
+  if(_gpsWatchId !== null){
+    try { navigator.geolocation.clearWatch(_gpsWatchId); } catch(_){}
+    _gpsWatchId = null;
+  }
+  _gpsWatchId = navigator.geolocation.watchPosition(pos=>{
+    _lastGpsFixMs = Date.now();
     S.lat=pos.coords.latitude; S.lon=pos.coords.longitude;
     S.elev=pos.coords.altitude; S.hdg=pos.coords.heading;
     document.getElementById('gcoords').textContent=S.lat.toFixed(5)+', '+S.lon.toFixed(5);
@@ -1756,6 +1814,15 @@ function startGPS(){
       if(tlDist) tlDist.textContent = '⚠ GPS lost';
     }
     loadCachedWx();
+    // Permission errors (code 1) won't fix themselves — don't retry.
+    // Position unavailable (code 2) and timeout (code 3) might recover —
+    // re-arm the watch after a delay so we have a chance to come back.
+    if(err.code !== 1){
+      setTimeout(() => {
+        // Only re-arm if the watch hasn't already been replaced
+        if(_gpsWatchId !== null) startGpsWatch();
+      }, 5000);
+    }
   },{enableHighAccuracy:true,timeout:15000,maximumAge:5000});
 }
 function btoc(b){return['N','NE','E','SE','S','SW','W','NW'][Math.round(b/45)%8];}
@@ -2509,6 +2576,16 @@ document.getElementById('pdShareCard').addEventListener('click', async () => {
 // label, coordinates, and TrailGauge watermark. Returns a Promise<Blob|null>.
 function renderPinShareCard(pin){
   return new Promise(resolve => {
+    // Wait for custom fonts (Rajdhani, Share Tech Mono, Exo 2) to be ready
+    // before rendering. Otherwise the canvas falls back to system fonts and
+    // the card looks off-brand. document.fonts.ready resolves immediately
+    // if fonts are already loaded — no perf cost on warm runs.
+    const start = (document.fonts && document.fonts.ready) ? document.fonts.ready : Promise.resolve();
+    start.then(() => doRenderPinShareCard(pin, resolve));
+  });
+}
+
+function doRenderPinShareCard(pin, resolve){
     const W = 1080, H = 1080;
     const c = document.createElement('canvas');
     c.width = W; c.height = H;
@@ -2668,7 +2745,6 @@ function renderPinShareCard(pin){
     } else {
       drawCardContent(null);
     }
-  });
 }
 
 // Top-right pill badge with the TrailGauge mark. Designed to be unobtrusive
@@ -2725,6 +2801,14 @@ function projectMercator(lat, lon){
 
 function renderTripShareCard(trip){
   return new Promise(resolve => {
+    // Same font-readiness wait as pin share card — keeps the brand fonts
+    // applied to the canvas instead of falling back to system defaults.
+    const start = (document.fonts && document.fonts.ready) ? document.fonts.ready : Promise.resolve();
+    start.then(() => doRenderTripShareCard(trip, resolve));
+  });
+}
+
+function doRenderTripShareCard(trip, resolve){
     const W = 1080, H = 1080;
     const c = document.createElement('canvas');
     c.width = W; c.height = H;
@@ -2893,7 +2977,6 @@ function renderTripShareCard(trip){
     ctx.fillText(dateStr, W/2, H - 70);
 
     c.toBlob(b => resolve(b), 'image/png');
-  });
 }
 
 // Small label badge for start/finish markers on the route share card
@@ -2966,6 +3049,114 @@ try {
   else if(raw === 'offroad' || raw === 'trail') _savedProf = raw;
 } catch(_){}
 applyProfile(_savedProf);
+
+/* ─── SERVICE WORKER REGISTRATION ─────────────────────────
+   Registered on every page load. The SW handles offline support and
+   reliable updates — see sw.js for caching strategies.
+
+   Update flow: when a new SW is detected, we don't auto-reload (jarring).
+   Instead we show a small notice with a "Reload" button. User clicks it,
+   we tell the new SW to skipWaiting, then reload.
+
+   IMPORTANT: SW only registers in production-like environments. We skip
+   when running inside an iframe (claude.ai preview) or on localhost
+   served from a non-HTTP origin to avoid noisy errors during dev. */
+if('serviceWorker' in navigator
+   && (location.protocol === 'https:' || location.hostname === 'localhost')
+   && window.self === window.top){
+  // Defer registration until after page is idle so we don't compete
+  // with critical first-paint work.
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js', {
+      // Bypass HTTP cache when checking for sw.js updates. Without this,
+      // browsers may use the cached sw.js for up to 24 hours, delaying
+      // updates significantly. With 'none', every check fetches fresh.
+      updateViaCache: 'none'
+    }).then(reg => {
+      // Force an update check when the user returns to a backgrounded PWA.
+      // Browsers don't check for SW updates as often as you'd think — they
+      // only do it on navigation events. Without this prompt, a long-lived
+      // PWA may stay on an old version for days. update() is async and
+      // safe to call repeatedly; the browser dedupes concurrent checks.
+      document.addEventListener('visibilitychange', () => {
+        if(document.visibilityState === 'visible'){
+          reg.update().catch(() => {});   // network failure is non-fatal
+        }
+      });
+      // Also check every hour as a fallback for users who keep the PWA
+      // open continuously without ever backgrounding (rare but possible
+      // for long road trips with the dash mount).
+      setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000);
+      // If a waiting SW already exists at registration time, the user
+      // dismissed the notice on a previous launch without reloading.
+      // Surface the notice again so they don't get permanently stranded
+      // on an old version.
+      if(reg.waiting && navigator.serviceWorker.controller){
+        showUpdateNotice(reg.waiting);
+      }
+      // When a new SW is found and finishes installing, prompt the user.
+      reg.addEventListener('updatefound', () => {
+        const newSW = reg.installing;
+        if(!newSW) return;
+        newSW.addEventListener('statechange', () => {
+          if(newSW.state === 'installed' && navigator.serviceWorker.controller){
+            // There's already a controller, meaning this is an UPDATE
+            // (not a fresh install). Show the reload notice.
+            showUpdateNotice(newSW);
+          }
+        });
+      });
+    }).catch(err => {
+      console.warn('Service worker registration failed:', err);
+    });
+
+    // Listen for the new SW taking control. When skipWaiting completes,
+    // reload to pick up the new shell.
+    let _reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if(_reloading) return;
+      _reloading = true;
+      location.reload();
+    });
+  });
+}
+
+function showUpdateNotice(newSW){
+  // Avoid stacking multiple notices if updatefound fires more than once
+  if(document.getElementById('updateNotice')) return;
+  const notice = document.createElement('div');
+  notice.id = 'updateNotice';
+  notice.style.cssText =
+    'position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));'+
+    'transform:translateX(-50%);z-index:300;'+
+    'background:var(--card);border:1px solid var(--accent);border-radius:24px;'+
+    'padding:10px 14px 10px 18px;display:flex;align-items:center;gap:10px;'+
+    'box-shadow:0 8px 24px rgba(0,0,0,.5);font-family:var(--fm);font-size:12px;'+
+    'color:var(--txt);max-width:calc(100% - 32px);animation:upSlide .4s ease both';
+  notice.innerHTML =
+    '<span>New version ready</span>'+
+    '<button id="updateNoticeBtn" style="background:var(--accent);color:#000;border:none;'+
+    'border-radius:18px;padding:6px 14px;font-family:var(--fd);font-size:11px;font-weight:700;'+
+    'letter-spacing:1px;text-transform:uppercase;cursor:pointer;'+
+    '-webkit-tap-highlight-color:transparent">Reload</button>'+
+    '<button id="updateNoticeDismiss" style="background:transparent;color:var(--txt3);'+
+    'border:none;padding:4px 6px;cursor:pointer;font-size:16px;line-height:1">×</button>';
+  document.body.appendChild(notice);
+  // Inject the slide-in keyframes once
+  if(!document.getElementById('updateNoticeStyles')){
+    const s = document.createElement('style');
+    s.id = 'updateNoticeStyles';
+    s.textContent = '@keyframes upSlide{from{opacity:0;transform:translate(-50%,20px)}to{opacity:1;transform:translate(-50%,0)}}';
+    document.head.appendChild(s);
+  }
+  document.getElementById('updateNoticeBtn').addEventListener('click', () => {
+    // Tell the new SW to take over now — controllerchange listener will reload
+    newSW.postMessage({ type: 'SKIP_WAITING' });
+  });
+  document.getElementById('updateNoticeDismiss').addEventListener('click', () => {
+    notice.remove();
+  });
+}
 
 /* ─── ONBOARDING ──────────────────────────────────────────
    First-launch 3-card walkthrough. Shown only once — controlled by
@@ -3725,6 +3916,12 @@ function tripIngestFix(pos){
     }
     TRIP.lastFixMs=fix.t;
     refreshTripLive();
+    // Persist draft on every accepted fix. IndexedDB writes are async and
+    // queued by the browser, so this is cheap — but it means we never lose
+    // more than a single fix's worth of trip data even if iOS kills the
+    // page suddenly. Previously the autosave was every 30s, which lost up
+    // to 30s of recent data on unexpected suspend.
+    saveDraft();
   }
 }
 
@@ -3873,8 +4070,62 @@ document.getElementById('tripPauseBtn').addEventListener('click', tripPause);
 
 // Live tick for time display (since GPS may not fire every second)
 setInterval(()=>{ if(TRIP.active) refreshTripLive(); }, 1000);
-// Autosave draft every 30s while recording — survives tab close / crash
+// Autosave draft every 30s while recording — survives tab close / crash.
+// We ALSO save on every accepted GPS fix (in tripIngestFix) and on
+// visibilitychange/pagehide, so this 30s timer is a backup for the case
+// where GPS is silent but the trip is still running (e.g. user paused).
 setInterval(()=>{ if(TRIP.active) saveDraft(); }, 30000);
+
+// GPS silence watchdog — if a trip is recording but no GPS fixes have
+// arrived in 90s, surface a warning. iOS sometimes silently kills the
+// watchPosition handler when the page has been backgrounded; this catches
+// the case where errors didn't fire either, and re-arms the watch.
+setInterval(() => {
+  if(!TRIP.active || TRIP.paused) return;
+  if(_lastGpsFixMs === 0) return;          // never had a fix yet
+  const silentMs = Date.now() - _lastGpsFixMs;
+  if(silentMs > 90000){
+    // Show warning on the live readout
+    const tlDist = document.getElementById('tlDist');
+    if(tlDist && !tlDist.textContent.startsWith('⚠')){
+      tlDist.textContent = '⚠ GPS silent';
+    }
+    // Try to re-arm the watch in case iOS killed it without firing the
+    // error callback. If GPS is genuinely unavailable, the new watch will
+    // just error out and we'll keep waiting.
+    startGpsWatch();
+  }
+}, 15000);
+
+// Save the draft IMMEDIATELY when the page is hidden or about to unload.
+// The 30s autosave isn't enough — iOS can suspend a backgrounded PWA at
+// any moment, and any unsaved trip data after the last 30s tick would be
+// lost. This handler runs synchronously enough to get the data into
+// IndexedDB before iOS freezes JS execution.
+document.addEventListener('visibilitychange', () => {
+  if(document.visibilityState === 'hidden' && TRIP.active){
+    // Don't await — we want to fire-and-forget; await would let the page
+    // suspend before the write completes. IndexedDB transactions are
+    // queued and will complete even if JS pauses immediately after.
+    saveDraft();
+  } else if(document.visibilityState === 'visible' && TRIP.active){
+    // Returning to a backgrounded recording trip: re-arm the GPS watch
+    // proactively in case iOS killed it. Cheap if it's still alive
+    // (clearWatch + watchPosition is fast). This also resets _lastGpsFixMs
+    // expectations — if the trip was paused for 30 minutes while the
+    // user did something else, we don't want the watchdog to immediately
+    // flag silence.
+    startGpsWatch();
+    _lastGpsFixMs = Date.now();   // give the new watch ~90s grace period
+  }
+});
+
+// pagehide is more reliable than beforeunload on iOS Safari for catching
+// the "user is leaving" event. Fires for tab close, navigation, and PWA
+// backgrounding on some iOS versions.
+window.addEventListener('pagehide', () => {
+  if(TRIP.active) saveDraft();
+});
 
 /* ─── INDEXEDDB ──────────────────────────────────────────── */
 const DB_NAME='trailgauge', DB_VER=2, STORE='trips', PIN_STORE='pins';
@@ -4234,6 +4485,9 @@ function openTripDetail(trip){
   const hasRoute = (trip.pts && trip.pts.length >= 2);
   document.getElementById('tdToggleMap').style.display = hasRoute ? '' : 'none';
   document.getElementById('tdShareCard').style.display = hasRoute ? '' : 'none';
+  // Save-as-Pin needs at least one GPS point (start of trip). hasRoute is the
+  // same condition (which requires >=2 points), so use it here too.
+  document.getElementById('tdSavePin').style.display = hasRoute ? '' : 'none';
   tdp.classList.add('open');
 }
 
@@ -4305,6 +4559,52 @@ async function showTripMap(){
     });
   });
   setTimeout(() => { if(_tripMap) _tripMap.invalidateSize(); }, 60);
+
+  // Long-press on the map drops a pin at the tapped location. We use 'click'
+  // (which fires after a short tap on Leaflet maps) — tap-and-hold isn't
+  // distinguished by Leaflet, but a regular click vs a drag IS. Drag → pan,
+  // click → pin. Show a small hint above the map so users know this is possible.
+  const hint = document.createElement('div');
+  hint.style.cssText = 'position:absolute;bottom:8px;left:8px;z-index:401;'+
+    'background:rgba(10,12,15,.75);color:var(--txt2);padding:4px 8px;'+
+    'border-radius:4px;font-family:var(--fm);font-size:9px;letter-spacing:.5px;'+
+    'pointer-events:none;border:1px solid var(--border)';
+  hint.textContent = 'Tap any spot to save as pin';
+  wrap.appendChild(hint);
+  // Snap clicks to the nearest GPS point on the route (within ~50m). That way
+  // user gets pin coords that came from real recorded GPS, not arbitrary map
+  // taps that might be in the middle of a forest. Outside the route, drop at
+  // the tapped location as-is.
+  _tripMap.on('click', (ev) => {
+    if(!_currentTrip || !_currentTrip.pts) return;
+    const lat = ev.latlng.lat, lon = ev.latlng.lng;
+    let useLat = lat, useLon = lon, useElev = null;
+    // Find nearest recorded GPS point — meters via haversine
+    let bestDist = Infinity, bestIdx = -1;
+    for(let i = 0; i < _currentTrip.pts.length; i++){
+      const p = _currentTrip.pts[i];
+      const d = haversineM({lat: lat, lon: lon}, p);
+      if(d < bestDist){ bestDist = d; bestIdx = i; }
+    }
+    if(bestIdx >= 0 && bestDist < 50){
+      // Snap to recorded point
+      const p = _currentTrip.pts[bestIdx];
+      useLat = p.lat; useLon = p.lon; useElev = p.elev;
+    }
+    // Close trip detail and open pin save with these coords
+    const tripName = _currentTrip.name;
+    tdp.classList.remove('open');
+    destroyTripMap();
+    setTimeout(() => {
+      openPinSaveModal(null, useLat, useLon);
+      _pinDraftElev = useElev;
+      const elText = (useElev != null) ? ` · ${Math.round(useElev * 3.28084)} ft` : '';
+      document.getElementById('pnsCoords').textContent =
+        `${useLat.toFixed(6)}, ${useLon.toFixed(6)}${elText}`;
+      // Don't pre-fill label here — user picked a specific spot, they know
+      // what they want to call it. Geocoding will run as usual.
+    }, 200);
+  });
 }
 
 function hideTripMap(){
@@ -4375,6 +4675,39 @@ document.getElementById('tdDelete').addEventListener('click', async ()=>{
 document.getElementById('tdExport').addEventListener('click',()=>{
   if(!_currentTrip) return;
   exportGPX(_currentTrip);
+});
+
+// Save a point from the saved trip as a new pin. Default behavior: uses
+// the trip's starting GPS point. Power users can also tap any spot on the
+// trip's route map to drop a pin at that exact map location (wired in
+// showTripMap below).
+document.getElementById('tdSavePin').addEventListener('click', () => {
+  if(!_currentTrip || !_currentTrip.pts || _currentTrip.pts.length === 0) return;
+  const start = _currentTrip.pts[0];
+  // Snapshot trip name so the pin label can default to it
+  const tripName = _currentTrip.name;
+  // Close trip detail FIRST — pin save modal needs cleaner state. Give it a
+  // small delay so the slide-down animation finishes before pin modal slides up.
+  tdp.classList.remove('open');
+  destroyTripMap();
+  setTimeout(() => {
+    // Open the pin save modal with explicit coords (the trip's start, not
+    // live GPS). Pre-fill label with the trip name so user can keep it as-is
+    // or edit. _pinDraftElev is set by openPinSaveModal from S.elev (live),
+    // but we want the trip's recorded elevation. Patch it after the open.
+    openPinSaveModal(null, start.lat, start.lon);
+    _pinDraftElev = (start.elev != null) ? start.elev : null;
+    // Override the auto-coords display string with the saved elevation
+    const elText = (start.elev != null) ? ` · ${Math.round(start.elev * 3.28084)} ft` : '';
+    document.getElementById('pnsCoords').textContent =
+      `${start.lat.toFixed(6)}, ${start.lon.toFixed(6)}${elText}`;
+    // Suggest the trip name as the label so user just confirms
+    const lbl = document.getElementById('pnsLabel');
+    if(lbl.value === '' && tripName){
+      lbl.value = tripName;
+      try { lbl.setSelectionRange(0, tripName.length); } catch(_){}
+    }
+  }, 200);
 });
 
 document.getElementById('tdShareCard').addEventListener('click', async () => {
