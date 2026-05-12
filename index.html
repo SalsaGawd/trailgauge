@@ -31,24 +31,119 @@ body.light{
 html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--txt);
   font-family:var(--fb);-webkit-font-smoothing:antialiased;touch-action:none;
   user-select:none;-webkit-user-select:none}
-#app{width:100vw;height:100vh;height:100dvh;display:flex;flex-direction:column;
+
+/* ─── AMBIENT ALERT PULSE OVERLAY ────────────────────────────
+   Full-viewport overlay that pulses a colored glow inward from the edges.
+   Designed to grab peripheral attention WITHOUT obscuring the gauge or
+   trip readout — a popup would block content; this just frames it.
+   pointer-events:none so taps pass through to whatever's underneath.
+   Color is controlled via a CSS variable so JS can swap between alert
+   types (red weather, yellow sunset, custom user color) without
+   recompiling the keyframes. */
+#ambientPulse{position:fixed;inset:0;pointer-events:none;z-index:90;
+  opacity:0;transition:opacity .4s ease;
+  --pulseR:239; --pulseG:68; --pulseB:68;
+  --pulseSpeed:1.6s}
+#ambientPulse.show{opacity:1;animation:ambientPulse var(--pulseSpeed) ease-in-out infinite}
+/* DnD/driving mode dims the pulse so it's still detectable in peripheral
+   vision but doesn't draw the eye. Pulse stays — vibration mutes. */
+#ambientPulse.dnd{opacity:.45}
+/* The glow itself is achieved with two stacked box-shadows:
+   - Inner soft glow inset from the edges (the "atmosphere")
+   - Hard inset border at the very edge (the "alarm rim")
+   Both pulse together but at different intensities. */
+@keyframes ambientPulse{
+  0%,100%{box-shadow:
+    inset 0 0 80px 10px rgba(var(--pulseR),var(--pulseG),var(--pulseB),.18),
+    inset 0 0 0 3px rgba(var(--pulseR),var(--pulseG),var(--pulseB),.35);}
+  50%   {box-shadow:
+    inset 0 0 120px 20px rgba(var(--pulseR),var(--pulseG),var(--pulseB),.45),
+    inset 0 0 0 6px rgba(var(--pulseR),var(--pulseG),var(--pulseB),.75);}
+}
+/* Respect users who have asked their OS to reduce motion. The pulse still
+   appears (it's a real safety signal) but doesn't animate — just a soft
+   steady glow. */
+@media (prefers-reduced-motion:reduce){
+  #ambientPulse.show{animation:none;
+    box-shadow:
+      inset 0 0 100px 16px rgba(var(--pulseR),var(--pulseG),var(--pulseB),.3),
+      inset 0 0 0 4px rgba(var(--pulseR),var(--pulseG),var(--pulseB),.55);}
+}
+
+/* ─── FEEDBACK MODAL ─────────────────────────────────────────
+   In-app feedback form for "tell us before you leave a 1-star review"
+   moments. Submits to a Formspree-style endpoint if configured, falls
+   back to a mailto link otherwise. */
+#fbp{position:fixed;inset:0;z-index:115;display:none;align-items:center;justify-content:center;
+  background:rgba(0,0,0,.6);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+  padding:20px}
+#fbp.open{display:flex}
+#fbsheet{background:var(--card);border:1px solid var(--border);border-radius:18px;
+  width:100%;max-width:440px;max-height:88vh;overflow-y:auto;
+  padding:22px 22px calc(22px + var(--sb));display:flex;flex-direction:column;gap:14px}
+#fbttl{font-family:var(--fd);font-size:18px;font-weight:700;color:var(--txt);
+  letter-spacing:1px;text-transform:uppercase;line-height:1.2}
+#fbsub{font-family:var(--fm);font-size:12px;color:var(--txt2);line-height:1.5}
+#fbCategory{background:var(--bg2);border:1px solid var(--border);color:var(--txt);
+  padding:10px 12px;border-radius:8px;font-family:var(--fm);font-size:14px;
+  -webkit-appearance:none;appearance:none}
+#fbBody{background:var(--bg2);border:1px solid var(--border);color:var(--txt);
+  padding:12px;border-radius:8px;font-family:var(--fm);font-size:14px;
+  min-height:120px;resize:vertical;line-height:1.5}
+#fbBody:focus,#fbCategory:focus{outline:none;border-color:var(--accent)}
+#fbStatus{font-family:var(--fm);font-size:12px;color:var(--txt3);min-height:16px}
+#fbStatus.success{color:var(--accent)}
+#fbStatus.error{color:var(--danger)}
+
+
   padding-top:var(--st);padding-bottom:var(--sb);background:var(--bg);
   transition:background var(--tr),color var(--tr);animation:fadeUp .4s ease both}
 @keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 
 #hdr{display:flex;align-items:center;justify-content:space-between;padding:8px 16px;
-  background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0;z-index:10}
+  background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0;z-index:10;
+  /* Honor the iOS notch/dynamic-island safe area at the top so the header
+     content isn't pushed under system UI on newer iPhones. */
+  padding-top:max(8px, env(safe-area-inset-top, 0px));
+  /* Allow the left brand block to shrink if needed; the right control cluster
+     must NEVER shrink — those buttons are the navigation, can't be cut off. */
+  gap:8px}
+/* Brand block (TrailGauge + subtitle) — shrinks first on narrow screens.
+   The subtitle is decorative and disappears below ~360px width so the
+   button cluster always fits. */
+#hdr > div:first-child{display:flex;align-items:baseline;min-width:0;flex:1 1 auto;overflow:hidden}
 .brand{font-family:var(--fd);font-size:20px;font-weight:700;color:var(--accent);
-  letter-spacing:1px;text-transform:uppercase}
+  letter-spacing:1px;text-transform:uppercase;white-space:nowrap;flex-shrink:0}
 .sub{font-family:var(--fm);font-size:9px;color:var(--txt2);letter-spacing:1px;
-  text-transform:uppercase;margin-left:8px}
-#hctl{display:flex;align-items:center;gap:8px}
+  text-transform:uppercase;margin-left:8px;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;min-width:0}
+/* Button cluster — pinned to right, never shrinks. Buttons themselves
+   shrink on small screens via media queries below. */
+#hctl{display:flex;align-items:center;gap:8px;flex-shrink:0}
 .ibtn{background:var(--card);border:1px solid var(--border);color:var(--txt2);
   width:34px;height:34px;border-radius:8px;display:flex;align-items:center;
   justify-content:center;cursor:pointer;font-size:14px;font-family:var(--fm);
-  font-weight:600;transition:all var(--tr);-webkit-tap-highlight-color:transparent}
+  font-weight:600;transition:all var(--tr);-webkit-tap-highlight-color:transparent;
+  flex-shrink:0;padding:0}
 .ibtn:active{transform:scale(.92)}
 .ibtn.on{border-color:var(--accent);color:var(--accent)}
+
+/* iPhone SE / small Android: hide the subtitle entirely — the brand alone
+   communicates identity, and the 5 control buttons need every pixel. */
+@media (max-width:380px){
+  #hdr{padding:8px 10px;padding-top:max(8px, env(safe-area-inset-top, 0px));gap:6px}
+  .sub{display:none}
+  .brand{font-size:17px;letter-spacing:.5px}
+  #hctl{gap:5px}
+  .ibtn{width:30px;height:30px;font-size:13px;border-radius:7px}
+}
+/* Even narrower (iPhone SE 1st gen at 320px): squeeze further. The header
+   becomes just the brand mark on the left + 5 compact buttons on the right. */
+@media (max-width:340px){
+  .brand{font-size:15px}
+  #hctl{gap:4px}
+  .ibtn{width:28px;height:28px;font-size:12px;border-radius:6px}
+}
 
 #main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0}
 
@@ -129,43 +224,128 @@ body.light #permOverlay{background:rgba(240,244,248,0.94)}
 #nogps{display:none;font-family:var(--fm);font-size:10px;color:var(--warn);text-align:center;padding:4px}
 #nogps.show{display:block}
 
-#zbwrap{display:flex;flex-direction:column;align-items:center;gap:4px;margin-top:14px}
-#zbtn{background:var(--card);border:2px solid var(--border);color:var(--txt2);
-  padding:10px 32px;border-radius:50px;font-family:var(--fd);font-size:14px;
-  font-weight:600;letter-spacing:2px;text-transform:uppercase;cursor:pointer;
-  transition:all var(--tr);-webkit-tap-highlight-color:transparent;position:relative;overflow:hidden}
+/* Unified action bar — three primary actions (Zero/Calibrate, Pin Angle,
+   Start Trip) live side-by-side as equal-width siblings. Replaces the
+   previous stacked-row layout that pushed the gauge content uncomfortably
+   far down the screen and left dead vertical space. */
+#actionBar{display:flex;align-items:stretch;gap:8px;margin-top:14px;
+  width:100%;max-width:480px;align-self:center}
+.actBtn{flex:1;background:var(--card);border:2px solid var(--border);color:var(--txt2);
+  padding:10px 6px;border-radius:14px;font-family:var(--fd);font-size:11px;
+  font-weight:700;letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;
+  transition:all var(--tr);-webkit-tap-highlight-color:transparent;
+  position:relative;overflow:hidden;line-height:1.15;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  min-height:60px;text-align:center}
+.actBtn:active{transform:scale(.97)}
+.actBtnSub{font-size:10px;font-weight:600;color:var(--txt3);letter-spacing:1.2px;
+  margin-top:3px;display:block}
+.actBtnMain{font-size:13px;font-weight:700;letter-spacing:1.5px;
+  margin-top:3px;display:block}
+/* Primary action — Pin Angle uses solid green to lead the eye */
+.actBtn.primary{background:var(--accent);border-color:var(--accent);color:#000}
+.actBtn.primary .actBtnMain{color:#000}
+.actBtn.primary:active{transform:scale(.96)}
+.actBtn.primary:disabled,
+.actBtn.primary.disabled{opacity:.45;cursor:not-allowed}
+/* Disabled-but-tappable state — we still let the click fire so we can show
+   the "Motion sensor not active" toast, but the button reads as inactive. */
+.actBtn.disabled{opacity:.45;cursor:not-allowed}
+/* Calibrate hold-progress fill — same animated bar as before, just on the
+   shared button class. The ::after keyframe-style scale stays. */
 #zbtn::after{content:'';position:absolute;inset:0;background:var(--accent);transform:scaleX(0);
-  transform-origin:left;border-radius:inherit;transition:transform 1.5s linear;opacity:.18}
+  transform-origin:left;border-radius:inherit;transition:transform 1.5s linear;opacity:.18;
+  pointer-events:none}
 #zbtn.hld::after{transform:scaleX(1)}
 #zbtn.hld{border-color:var(--accent);color:var(--accent)}
 #zbtn.zd{border-color:var(--accent);color:var(--accent);box-shadow:0 0 12px var(--aglow)}
-#zhint{font-family:var(--fm);font-size:9px;color:var(--txt3);letter-spacing:1px;text-transform:uppercase}
-
-#tripbar{display:flex;flex-direction:column;align-items:center;gap:6px;margin-top:6px;width:100%;max-width:480px}
-#tripBtnRow{display:flex;align-items:center;gap:8px;width:100%;justify-content:center}
-#tripBtn{background:var(--card);border:2px solid var(--border);color:var(--txt2);
-  padding:7px 22px;border-radius:50px;font-family:var(--fd);font-size:12px;
-  font-weight:600;letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;
-  transition:all var(--tr);-webkit-tap-highlight-color:transparent}
-#tripBtn:active{transform:scale(.96)}
+/* Recording state on START TRIP — unchanged behavior */
 #tripBtn.rec{border-color:var(--danger);color:var(--danger);
   animation:recPulse 1.4s ease-in-out infinite}
 #tripBtn.paused{border-color:var(--warn);color:var(--warn);animation:none}
-#tripPauseBtn{background:var(--card);border:2px solid var(--border);color:var(--txt2);
-  width:38px;height:38px;border-radius:50%;font-size:14px;cursor:pointer;
-  -webkit-tap-highlight-color:transparent;transition:all var(--tr);
-  display:flex;align-items:center;justify-content:center;padding:0}
-#tripPauseBtn:active{transform:scale(.92)}
 @keyframes recPulse{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,0)}50%{box-shadow:0 0 12px rgba(239,68,68,.4)}}
+/* Pause button — circular, sits to the right of START TRIP when active */
+#tripPauseBtn{background:var(--card);border:2px solid var(--border);color:var(--txt2);
+  width:48px;height:60px;border-radius:14px;font-size:14px;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;transition:all var(--tr);
+  display:flex;align-items:center;justify-content:center;padding:0;
+  flex-shrink:0}
+#tripPauseBtn:active{transform:scale(.94)}
+
+/* Hint row below the action bar — used for the calibrate "hold" instruction.
+   Kept as a separate row instead of inside the button so it doesn't crowd
+   the button text. */
+#zhintRow{display:flex;justify-content:center;margin-top:6px;min-height:14px}
+#zhint{font-family:var(--fm);font-size:9px;color:var(--txt3);
+  letter-spacing:1px;text-transform:uppercase}
+
+/* Trip live readout — full-width row that appears below the action bar
+   when a trip is recording. Hidden otherwise. */
 #tripLive{display:none;gap:10px;align-items:center;justify-content:center;
   background:var(--card);border:1px solid var(--border);border-radius:10px;
-  padding:5px 12px;width:100%}
+  padding:5px 12px;width:100%;max-width:480px;align-self:center;margin-top:8px}
 #tripLive.show{display:flex}
 .tlive{display:flex;flex-direction:column;align-items:center;gap:1px;flex:1}
 .tllbl{font-family:var(--fm);font-size:7px;color:var(--txt3);letter-spacing:1px;text-transform:uppercase}
 .tlval{font-family:var(--fd);font-size:14px;font-weight:600;color:var(--accent);line-height:1}
 
-#wx{flex-shrink:0;background:var(--bg2);border-top:1px solid var(--border);display:flex;flex-direction:column}
+#wx{flex-shrink:0;background:var(--bg2);border-top:1px solid var(--border);display:flex;flex-direction:column;
+  /* Make the weather strip itself tappable as an expand affordance — pointer
+     on it so users discover the swipe-up panel. */
+  cursor:pointer;-webkit-tap-highlight-color:transparent;position:relative;
+  transition:background var(--tr)}
+#wx:active{background:var(--card)}
+/* Drag handle indicator at the top of the weather strip — subtle pill that
+   tells users "this expands". */
+#wxHandle{position:absolute;top:3px;left:50%;transform:translateX(-50%);
+  width:36px;height:3px;border-radius:2px;background:var(--border);
+  pointer-events:none;opacity:.6}
+
+/* Full weather panel — slides up over the rest of the UI when user taps
+   or swipes up the weather strip. Contains larger hourly cards in a
+   scrollable column for easier browsing. */
+#wxPanel{position:fixed;left:0;right:0;bottom:0;
+  height:88vh;max-height:88vh;background:var(--bg2);
+  border-top-left-radius:18px;border-top-right-radius:18px;
+  border-top:1px solid var(--border);
+  box-shadow:0 -8px 30px rgba(0,0,0,.4);
+  z-index:120;transform:translateY(100%);
+  transition:transform .35s cubic-bezier(.34,1.2,.64,1);
+  display:flex;flex-direction:column;
+  padding-bottom:env(safe-area-inset-bottom,0px)}
+#wxPanel.show{transform:translateY(0)}
+#wxPanelHandle{flex-shrink:0;display:flex;justify-content:center;padding:10px 0 6px;
+  cursor:pointer;-webkit-tap-highlight-color:transparent}
+#wxPanelHandle::before{content:"";width:48px;height:4px;border-radius:2px;background:var(--border)}
+#wxPanelHdr{display:flex;align-items:center;justify-content:space-between;
+  padding:0 18px 12px;border-bottom:1px solid var(--border)}
+#wxPanelTitle{font-family:var(--fd);font-size:18px;font-weight:700;
+  color:var(--txt);letter-spacing:1px}
+#wxPanelClose{background:transparent;border:none;color:var(--txt2);
+  font-size:24px;line-height:1;padding:4px 8px;cursor:pointer;
+  -webkit-tap-highlight-color:transparent}
+#wxPanelMeta{display:flex;justify-content:space-around;padding:14px 18px;
+  border-bottom:1px solid var(--border);gap:10px;flex-wrap:wrap}
+.wxMetaItem{display:flex;flex-direction:column;align-items:center;gap:2px;flex:1;min-width:60px}
+.wxMetaLbl{font-family:var(--fm);font-size:9px;color:var(--txt3);
+  letter-spacing:1px;text-transform:uppercase}
+.wxMetaVal{font-family:var(--fd);font-size:15px;font-weight:700;color:var(--accent)}
+#wxPanelHourly{flex:1;overflow-y:auto;padding:14px 16px;-webkit-overflow-scrolling:touch}
+.wxBigCard{display:flex;align-items:center;gap:14px;padding:12px 14px;
+  background:var(--card);border:1px solid var(--border);border-radius:12px;
+  margin-bottom:8px;transition:border-color var(--tr)}
+.wxBigCard.cur{border-color:var(--accent);box-shadow:0 0 8px var(--aglow)}
+.wxBigCard.ww{border-color:var(--warn)} .wxBigCard.dw{border-color:var(--danger)}
+.wxBigTime{font-family:var(--fm);font-size:11px;color:var(--txt2);
+  letter-spacing:1px;width:54px;flex-shrink:0;text-align:center}
+.wxBigIco{font-size:28px;width:36px;text-align:center;flex-shrink:0;line-height:1}
+.wxBigTemp{font-family:var(--fd);font-size:24px;font-weight:700;color:var(--txt);
+  flex-shrink:0;width:60px}
+.wxBigDetails{flex:1;display:flex;flex-direction:column;gap:2px;min-width:0;font-family:var(--fm);font-size:11px;color:var(--txt2)}
+.wxBigDetailRow{display:flex;align-items:center;gap:6px}
+.wxBigDetailRow .lbl{color:var(--txt3);font-size:9px;letter-spacing:.5px;text-transform:uppercase;width:48px;flex-shrink:0}
+.wxBigDetailRow .val{color:var(--txt);font-size:11px}
+
 #wxhdr{display:flex;align-items:center;justify-content:space-between;padding:6px 12px 4px;flex-wrap:wrap;gap:4px}
 #wstat{display:flex;align-items:center;gap:6px}
 #wdot{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 6px var(--accent);flex-shrink:0}
@@ -213,7 +393,11 @@ body.light #permOverlay{background:rgba(240,244,248,0.94)}
 .hcard{flex-direction:row;min-width:unset;width:100%;justify-content:space-between;padding:5px 8px;flex-shrink:0}
 }
 @media (min-width:768px) and (orientation:portrait){
-.brand{font-size:24px} .rval{font-size:38px} #zbtn{padding:12px 48px;font-size:16px}
+/* Tablet portrait: keep the brand and inclinometer numbers larger.
+   The old rule here also bumped #zbtn padding to 12px 48px, but that
+   pre-dated the unified action bar — pumping zbtn padding up would now
+   unbalance the equal-width row. Removed. */
+.brand{font-size:24px} .rval{font-size:38px}
 }
 @media (min-width:900px) and (orientation:landscape){
 #wx{width:260px} .rval{font-size:30px}
@@ -224,12 +408,34 @@ body.light #permOverlay{background:rgba(240,244,248,0.94)}
 #stp.open{opacity:1;pointer-events:all}
 #stsh{width:100%;background:var(--card);border-radius:20px 20px 0 0;border-top:1px solid var(--border);
   padding:16px 20px calc(20px + var(--sb));transform:translateY(100%);
-  transition:transform .35s cubic-bezier(.34,1.56,.64,1)}
+  transition:transform .35s cubic-bezier(.34,1.56,.64,1);
+  /* Cap the sheet height and let it scroll internally if there's more
+     content than fits. With 9+ rows of settings (theme, alarm, threshold,
+     vibration, angle pin section, wake lock) this matters on smaller
+     iPhones — without overflow:auto the bottom rows get cut off below
+     the home indicator. */
+  max-height:88vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
 #stp.open #stsh{transform:translateY(0)}
 #sthdl{width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 16px}
 #sttl{font-family:var(--fd);font-size:18px;font-weight:700;color:var(--txt);letter-spacing:1px;
   text-transform:uppercase;margin-bottom:16px}
 .srow{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border)}
+/* Section divider in settings — used to group related rows visually
+   without adding visual noise. */
+.sectionDivider{font-family:var(--fd);font-size:10px;letter-spacing:2px;
+  color:var(--accent);text-transform:uppercase;
+  margin:18px 0 0;padding-top:14px;border-top:1px solid var(--border);
+  opacity:.85}
+/* Color picker: 5 tappable color swatches inline, the selected one shows
+   a ring of the same color. Used for ambient alert customization. */
+.colorPicker{display:flex;gap:8px;align-items:center;flex-shrink:0}
+.colorSwatch{width:26px;height:26px;border-radius:50%;border:2px solid transparent;
+  background:rgb(var(--c));cursor:pointer;padding:0;
+  -webkit-tap-highlight-color:transparent;
+  transition:transform var(--tr),box-shadow var(--tr)}
+.colorSwatch:active{transform:scale(.88)}
+.colorSwatch.active{border-color:#fff;box-shadow:0 0 0 2px rgb(var(--c)),0 0 12px rgba(var(--c),.6)}
+.colorRow .sinfo{flex:1;min-width:0}
 .srow:last-child{border-bottom:none}
 .sinfo{display:flex;flex-direction:column;gap:2px}
 .sname{font-family:var(--fb);font-size:14px;font-weight:600;color:var(--txt)}
@@ -266,15 +472,17 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
   align-items:stretch;gap:18px;height:100%;justify-content:center}
 #onbCards{position:relative;width:100%;flex:1;max-height:520px;overflow:hidden}
 /* Inner track holds all four cards side-by-side. The cards container
-   above is the viewport; this track is what slides. Width 400% so each
-   card can claim a real 100% of the viewport via flex-basis 25%. */
-#onbTrack{display:flex;width:400%;height:100%;
+   above is the viewport; this track is what slides. Width 600% so each
+   card can claim a real 100% of the viewport via flex-basis 1/6. */
+#onbTrack{display:flex;width:600%;height:100%;
   transition:transform .35s cubic-bezier(.34,1.2,.64,1)}
 #onbTrack.onb-pos-0{transform:translateX(0)}
-#onbTrack.onb-pos-1{transform:translateX(-25%)}
-#onbTrack.onb-pos-2{transform:translateX(-50%)}
-#onbTrack.onb-pos-3{transform:translateX(-75%)}
-.onbCard{flex:0 0 25%;width:25%;display:flex;flex-direction:column;align-items:center;
+#onbTrack.onb-pos-1{transform:translateX(-16.6667%)}
+#onbTrack.onb-pos-2{transform:translateX(-33.3333%)}
+#onbTrack.onb-pos-3{transform:translateX(-50%)}
+#onbTrack.onb-pos-4{transform:translateX(-66.6667%)}
+#onbTrack.onb-pos-5{transform:translateX(-83.3333%)}
+.onbCard{flex:0 0 16.6667%;width:16.6667%;display:flex;flex-direction:column;align-items:center;
   text-align:center;padding:30px 18px;background:var(--card);
   border:1px solid var(--border);border-radius:18px;justify-content:center;
   overflow-y:auto;-webkit-overflow-scrolling:touch;box-sizing:border-box}
@@ -334,12 +542,23 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 /* Trail Mode: hide inclinometer, surface compass + weather + coords as hero.
    Layout swaps the gauge canvas for a #trailHero block that's only rendered
    in trail mode. */
+/* Off-road-only UI elements hidden in trail mode. The action bar itself
+   stays visible in trail mode — but its non-trail buttons (Zero/Calibrate
+   and Pin Angle) are hidden, leaving just START TRIP centered. */
 body.prof-trail #gwrap,
 body.prof-trail #pcard,
 body.prof-trail #rcard_el,
-body.prof-trail #zbwrap,
 body.prof-trail #tripLive,
-body.prof-trail #maxAngleCard { display: none !important; }
+body.prof-trail #maxAngleCard,
+body.prof-trail #zhintRow,
+body.prof-trail #actionBar #zbtn,
+body.prof-trail #actionBar #anglePinBtn { display: none !important; }
+/* In trail mode the remaining trip button + pause button group together
+   centered. Without this the pause button floats awkwardly to the right
+   of the centered trip button as a stray sibling. */
+body.prof-trail #actionBar { justify-content: center; gap: 8px; }
+body.prof-trail #actionBar #tripBtn { max-width: 240px; flex: 0 1 240px; }
+body.prof-trail #actionBar #tripPauseBtn { flex: 0 0 48px; }
 body.prof-trail #gsec { justify-content: flex-start; padding-top: 12px; gap: 14px;
   /* In trail mode, let gsec size to its actual content rather than filling
      the available height. This eliminates the dead space between the trip
@@ -363,22 +582,84 @@ body.prof-trail .hourcard { padding: 8px 6px; }
 /* Off-road only: Max angle card. Layout uses CSS grid with two rows on
    narrow screens — values on top, reset buttons below — to avoid the four
    flex children squishing on iPhone SE width. */
-#maxAngleCard{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;
+/* Max angle card — redesigned in v20.x. The all-time number was removed
+   in favor of explicit angle pins. Layout is now compact: session max
+   readout on left, RESET button on the right. The PIN ANGLE button
+   moved out into the unified action bar with Zero and Start Trip. */
+#maxAngleCard{display:grid;grid-template-columns:1fr auto;gap:8px 14px;
   padding:10px 12px;background:var(--card);border:1px solid var(--border);
   border-radius:10px;margin-top:6px}
 .maxLbl{font-family:var(--fd);font-size:9px;letter-spacing:1.5px;
   text-transform:uppercase;color:var(--txt2)}
-.maxVal{font-family:var(--fd);font-size:18px;font-weight:700;color:var(--accent);
+.maxVal{font-family:var(--fd);font-size:22px;font-weight:700;color:var(--accent);
   letter-spacing:.5px;line-height:1;margin-top:2px}
-.maxBlock{display:flex;flex-direction:column}
-.maxBlock.alltime .maxVal{color:var(--warn);font-size:14px}
-.maxBlock.alltime .maxLbl{font-size:8px}
+.maxBlock{display:flex;flex-direction:column;justify-content:center}
 .maxResetBtn{background:transparent;border:1px solid var(--border);
   border-radius:6px;color:var(--txt3);font-family:var(--fm);font-size:9px;
-  padding:9px 6px;cursor:pointer;-webkit-tap-highlight-color:transparent;
+  padding:9px 14px;cursor:pointer;-webkit-tap-highlight-color:transparent;
   transition:all var(--tr);letter-spacing:.5px;text-align:center;
-  min-height:34px}
+  min-height:34px;align-self:center}
 .maxResetBtn:active{transform:scale(.95);border-color:var(--accent);color:var(--accent)}
+/* (Pin Angle button styling moved to .actBtn.primary in the unified
+   action bar — see #actionBar block above. The old .anglePinMainBtn
+   class was retired when Pin Angle moved out of the session-max card.) */
+
+/* Mid-drive toast for angle pin feedback. Top-of-screen banner that doesn't
+   block the gauge. Has an "Add photo now" button when a pin was saved
+   successfully — taps that to open the pin save modal in edit mode. */
+#anglePinToast{position:fixed;top:calc(60px + env(safe-area-inset-top,0px));
+  left:50%;transform:translate(-50%,-20px);z-index:250;
+  background:var(--card);border:1px solid var(--accent);border-radius:24px;
+  padding:8px 8px 8px 16px;display:none;align-items:center;gap:8px;
+  font-family:var(--fm);font-size:12px;color:var(--txt);
+  box-shadow:0 8px 24px rgba(0,0,0,.5);
+  max-width:calc(100% - 24px);opacity:0;
+  transition:opacity .25s ease, transform .25s ease}
+#anglePinToast.show{display:flex;opacity:1;transform:translate(-50%,0)}
+#anglePinToast .apt-msg{flex:1;font-weight:500}
+#anglePinToast .apt-btn{background:var(--accent);color:#000;border:none;
+  border-radius:14px;padding:5px 11px;font-family:var(--fd);font-size:10px;
+  font-weight:700;letter-spacing:1px;text-transform:uppercase;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;flex-shrink:0}
+#anglePinToast .apt-x{background:transparent;border:none;color:var(--txt3);
+  font-size:18px;line-height:1;padding:2px 6px;cursor:pointer;flex-shrink:0;
+  -webkit-tap-highlight-color:transparent}
+
+/* ─── "What's New" one-time toast ──────────────────────────
+   Appears once for returning users who updated to v20 and haven't yet
+   seen the angle pins + ambient alerts explainer. Full-screen backdrop
+   (semi-transparent) with a card centered, since the content needs more
+   real estate than the slim status toasts. Dismissed via the X button,
+   the CTA button, or tapping the backdrop. Marks tg_whatsnew_alerts_v1
+   on dismiss so it never reshows. */
+#whatsNewToast{position:fixed;inset:0;z-index:260;
+  background:rgba(0,0,0,.6);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+  display:flex;align-items:center;justify-content:center;padding:20px;
+  opacity:0;transition:opacity .35s ease;
+  /* Hidden initially so the requestAnimationFrame transition trigger works
+     when we add .show after appending the element. */
+  pointer-events:none}
+#whatsNewToast.show{opacity:1;pointer-events:auto}
+#whatsNewToast > *{background:var(--card);border:1px solid var(--accent);
+  border-radius:18px;width:100%;max-width:420px;
+  padding:18px 20px calc(18px + var(--sb));display:flex;flex-direction:column;gap:12px;
+  box-shadow:0 16px 48px rgba(0,0,0,.6),0 0 0 1px rgba(61,220,151,.18);
+  transform:translateY(20px);transition:transform .35s cubic-bezier(.34,1.2,.64,1)}
+#whatsNewToast.show > *{transform:translateY(0)}
+.wnt-hdr{display:flex;align-items:center;justify-content:space-between}
+.wnt-title{font-family:var(--fd);font-size:16px;font-weight:700;color:var(--accent);
+  letter-spacing:1.5px;text-transform:uppercase}
+.wnt-x{background:transparent;border:none;color:var(--txt3);font-size:22px;
+  line-height:1;padding:4px 8px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.wnt-body{display:flex;flex-direction:column;gap:12px;
+  font-family:var(--fm);font-size:13px;color:var(--txt);line-height:1.55}
+.wnt-row{display:flex;gap:12px;align-items:flex-start}
+.wnt-icon{font-size:22px;line-height:1.3;flex-shrink:0;width:28px;text-align:center}
+.wnt-cta{background:var(--accent);color:#000;border:none;border-radius:10px;
+  padding:11px;font-family:var(--fd);font-size:13px;font-weight:700;
+  letter-spacing:1.5px;cursor:pointer;-webkit-tap-highlight-color:transparent;
+  text-transform:uppercase;margin-top:4px}
+.wnt-cta:active{transform:scale(.97)}
 
 /* Trail Hero: compass rose + central readouts. Rendered only in trail mode. */
 /* Trail mode hero block — redesigned in v20.x to put location/elevation as
@@ -484,8 +765,15 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
 .pinRow:last-child{border-bottom:none}
 .pinThumb{width:48px;height:48px;border-radius:8px;background:var(--bg2);
   display:flex;align-items:center;justify-content:center;font-size:22px;
-  flex-shrink:0;overflow:hidden}
-.pinThumb img{width:100%;height:100%;object-fit:cover}
+  flex-shrink:0;overflow:visible;position:relative}
+.pinThumb img{width:100%;height:100%;object-fit:cover;border-radius:8px}
+/* Small kind badge in the bottom-right of the thumbnail — only rendered
+   for angle pins, gives a quick visual cue when scanning the list. */
+.pinKindBadge{position:absolute;right:-4px;bottom:-4px;
+  width:20px;height:20px;border-radius:50%;background:var(--accent);color:#000;
+  display:flex;align-items:center;justify-content:center;
+  font-size:10px;line-height:1;border:2px solid var(--card);
+  box-shadow:0 1px 3px rgba(0,0,0,.4);overflow:hidden}
 .pinMeta{flex:1;min-width:0}
 .pinName{font-family:var(--fd);font-size:14px;font-weight:600;color:var(--txt);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2}
@@ -502,6 +790,24 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
   word-break:break-word}
 .pdPhoto{width:100%;max-height:240px;object-fit:cover;border-radius:8px;
   display:block;margin-bottom:14px}
+/* Angle pin hero — large peak angle readout shown at the top of pin detail
+   for angle-kind pins. Pitch and roll split into two halves below. */
+.pdAngleHero{background:linear-gradient(135deg,rgba(61,220,151,.12),rgba(61,220,151,.04));
+  border:1px solid rgba(61,220,151,.35);border-radius:14px;
+  padding:18px 16px;margin-bottom:14px;text-align:center}
+.pdAngleBig{font-family:var(--fd);font-size:48px;font-weight:700;color:var(--accent);
+  letter-spacing:1px;line-height:1;font-feature-settings:"tnum"}
+.pdAngleLbl{font-family:var(--fd);font-size:10px;letter-spacing:2px;
+  color:var(--txt2);text-transform:uppercase;margin-top:4px;margin-bottom:14px}
+.pdAngleSplit{display:grid;grid-template-columns:1fr 1fr;gap:14px;
+  padding-top:12px;border-top:1px solid rgba(61,220,151,.18)}
+.pdAngleHalf{display:flex;flex-direction:column;align-items:center}
+.pdAngleSide{font-family:var(--fd);font-size:9px;letter-spacing:1.5px;
+  color:var(--txt3);text-transform:uppercase}
+.pdAngleSideVal{font-family:var(--fd);font-size:20px;font-weight:700;
+  color:var(--txt);font-feature-settings:"tnum";margin-top:2px}
+.pdAngleMode{font-family:var(--fm);font-size:10px;color:var(--txt3);
+  margin-top:12px;letter-spacing:.5px}
 .mhdl{width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 16px}
 .mtl{font-family:var(--fd);font-size:18px;font-weight:700;color:var(--txt);letter-spacing:1px;
   text-transform:uppercase;margin-bottom:16px;display:flex;align-items:baseline;justify-content:space-between;
@@ -593,6 +899,16 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
           <div class="onbTitle">Share Your Adventures</div>
           <div class="onbBody">Snap a photo when you save a pin or finish a trip. TrailGauge generates a <b>shareable image card</b> with your photo, location, and stats — perfect for Instagram, Reddit, or your group chat.<br><br>Open any saved pin → <b>Share as Image Card</b>.</div>
         </div>
+        <div class="onbCard">
+          <div class="onbHero">📐</div>
+          <div class="onbTitle">Angle Pins</div>
+          <div class="onbBody">Hit a gnarly obstacle? TrailGauge can save the moment for you.<br><br>Tap <b>PIN ANGLE</b> manually, or let it auto-capture peaks above your threshold (default 15°). Each pin records pitch, roll, location, and elevation — review them later in your pin list.<br><br>Hands-free trail diary, no phone-tapping mid-climb.</div>
+        </div>
+        <div class="onbCard">
+          <div class="onbHero">🚨</div>
+          <div class="onbTitle">Ambient Alerts</div>
+          <div class="onbBody">A soft <b>colored pulse</b> around your screen warns you about incoming weather (red) or approaching sunset (yellow) — visible from your peripheral vision without blocking the gauge.<br><br>Driving / Do-Not-Disturb mode dims the pulse so it stays helpful, not distracting. Customize colors, lead time, and haptics in <b>Settings → Ambient Alerts</b>.</div>
+        </div>
       </div>
     </div>
     <div id="onbDots">
@@ -600,6 +916,8 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
       <span class="onbDot" data-i="1"></span>
       <span class="onbDot" data-i="2"></span>
       <span class="onbDot" data-i="3"></span>
+      <span class="onbDot" data-i="4"></span>
+      <span class="onbDot" data-i="5"></span>
     </div>
     <label id="onbDontShow">
       <input type="checkbox" id="onbDontShowCb" />
@@ -608,6 +926,33 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
     <div id="onbBtns">
       <button id="onbSkip" class="modalbtn ghost">Skip</button>
       <button id="onbNext" class="modalbtn primary">Next</button>
+    </div>
+  </div>
+</div>
+
+<!-- Ambient alert overlay — sits above all app content but below modals.
+     Driven entirely by JS class toggles; CSS handles the animation. -->
+<div id="ambientPulse"></div>
+
+<!-- User feedback modal — accessible from settings. Submits to a Formspree
+     endpoint if configured (FEEDBACK_ENDPOINT below), otherwise opens a
+     pre-filled mailto link. Either path lets the user vent BEFORE the
+     App Store review. -->
+<div id="fbp" role="dialog" aria-label="Send feedback">
+  <div id="fbsheet">
+    <div id="fbttl">Send Feedback</div>
+    <div id="fbsub">Found a bug, have an idea, or just want to say hi? Drop a note — it goes straight to the developer.</div>
+    <select id="fbCategory">
+      <option value="bug">🐞 Bug or crash</option>
+      <option value="feature">💡 Feature request</option>
+      <option value="praise">❤️ Compliment</option>
+      <option value="other">💬 Other</option>
+    </select>
+    <textarea id="fbBody" placeholder="Describe what happened, what you'd like to see, or anything else…"></textarea>
+    <div id="fbStatus"></div>
+    <div style="display:flex;gap:8px;margin-top:6px">
+      <button class="modalbtn ghost" id="fbCancel" style="flex:1">Cancel</button>
+      <button class="modalbtn primary" id="fbSend" style="flex:1">Send</button>
     </div>
   </div>
 </div>
@@ -711,39 +1056,39 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
         </div>
       </div>
 
-      <!-- Off-Road only: max angle session + all-time tracker -->
+      <!-- Off-Road only: session max angle readout + reset button -->
       <div id="maxAngleCard">
         <div class="maxBlock">
           <div class="maxLbl">Session Max</div>
           <div class="maxVal" id="maxSession">0.0°</div>
         </div>
-        <div class="maxBlock alltime">
-          <div class="maxLbl">All-Time</div>
-          <div class="maxVal" id="maxAllTime">0.0°</div>
-        </div>
-        <button class="maxResetBtn" id="maxResetSession">RESET SESSION</button>
-        <button class="maxResetBtn" id="maxResetAllTime">RESET ALL-TIME</button>
+        <button class="maxResetBtn" id="maxResetSession">RESET</button>
       </div>
 
-      <div id="zbwrap">
-        <button id="zbtn">ZERO / CALIBRATE</button>
-        <span id="zhint">Hold 1.5s to set reference plane</span>
+      <!-- Unified action bar: three primary actions side by side.
+           ZERO/CALIBRATE on the left, PIN ANGLE in the center as the
+           visual hero, START TRIP on the right. Single hint line below
+           applies to whichever button needs context (currently zero-hold). -->
+      <div id="actionBar">
+        <button id="zbtn" class="actBtn">ZERO<br><span class="actBtnSub">CALIBRATE</span></button>
+        <button id="anglePinBtn" class="actBtn primary">📍<br><span class="actBtnMain">PIN ANGLE</span></button>
+        <button id="tripBtn" class="actBtn">▶<br><span class="actBtnSub">START TRIP</span></button>
+        <button id="tripPauseBtn" style="display:none">⏸</button>
+      </div>
+      <div id="zhintRow">
+        <span id="zhint">Hold ZERO 1.5s to calibrate</span>
       </div>
 
-      <div id="tripbar">
-        <div id="tripBtnRow">
-          <button id="tripBtn">▶ START TRIP</button>
-          <button id="tripPauseBtn" style="display:none">⏸</button>
-        </div>
-        <div id="tripLive">
-          <div class="tlive"><span class="tllbl">Dist</span><span class="tlval" id="tlDist">0.0 mi</span></div>
-          <div class="tlive"><span class="tllbl">Time</span><span class="tlval" id="tlTime">0:00</span></div>
-          <div class="tlive"><span class="tllbl">Gain</span><span class="tlval" id="tlGain">0 ft</span></div>
-        </div>
+      <!-- Trip live stats — moved out of tripbar, shown only during recording -->
+      <div id="tripLive">
+        <div class="tlive"><span class="tllbl">Dist</span><span class="tlval" id="tlDist">0.0 mi</span></div>
+        <div class="tlive"><span class="tllbl">Time</span><span class="tlval" id="tlTime">0:00</span></div>
+        <div class="tlive"><span class="tllbl">Gain</span><span class="tlval" id="tlGain">0 ft</span></div>
       </div>
     </div>
 
     <div id="wx">
+      <div id="wxHandle"></div>
       <div id="wxhdr">
         <div id="wstat"><div id="wdot"></div><span id="wlbl">Live Weather</span></div>
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
@@ -767,6 +1112,24 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
       </div>
     </div>
   </div>
+</div>
+
+<!-- Full weather panel — slides up over the rest of the UI when user taps
+     or swipes up the weather strip. Contains larger hourly cards in a
+     scrollable column. -->
+<div id="wxPanel">
+  <div id="wxPanelHandle"></div>
+  <div id="wxPanelHdr">
+    <span id="wxPanelTitle">Hourly Weather</span>
+    <button id="wxPanelClose" aria-label="Close">×</button>
+  </div>
+  <div id="wxPanelMeta">
+    <div class="wxMetaItem"><span class="wxMetaLbl">Now</span><span class="wxMetaVal" id="wxpNow">—</span></div>
+    <div class="wxMetaItem"><span class="wxMetaLbl">Feels</span><span class="wxMetaVal" id="wxpFeels">—</span></div>
+    <div class="wxMetaItem"><span class="wxMetaLbl">UV</span><span class="wxMetaVal" id="wxpUV">—</span></div>
+    <div class="wxMetaItem"><span class="wxMetaLbl">Sunset</span><span class="wxMetaVal" id="wxpSunset">—</span></div>
+  </div>
+  <div id="wxPanelHourly"></div>
 </div>
 
 <div id="stp">
@@ -795,9 +1158,93 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
       <div class="sinfo"><span class="sname">Vibration Alert</span><span class="sdesc">Vibrate on threshold breach</span></div>
       <label class="tgl"><input type="checkbox" id="vibTgl" checked><span class="tsl"></span></label>
     </div>
+
+    <!-- Angle pin auto-capture -->
+    <div class="sectionDivider">Angle Pins</div>
+    <div class="srow">
+      <div class="sinfo"><span class="sname">Auto-Pin Peaks</span><span class="sdesc">Automatically save a pin when pitch or roll exceeds the threshold</span></div>
+      <label class="tgl"><input type="checkbox" id="anglePinAutoTgl" checked><span class="tsl"></span></label>
+    </div>
+    <div class="srow">
+      <div class="sinfo"><span class="sname">Auto-Pin Threshold</span><span class="sdesc">Trigger angle for auto-capture</span></div>
+      <div class="thrwrap">
+        <input type="range" id="anglePinThrSlider" min="5" max="45" value="15" step="1">
+        <span id="anglePinThrVal">15°</span>
+      </div>
+    </div>
+    <div class="srow">
+      <div class="sinfo"><span class="sname">Cooldown</span><span class="sdesc">Minimum seconds between auto-pins</span></div>
+      <div class="thrwrap">
+        <input type="range" id="anglePinCdSlider" min="5" max="180" value="30" step="5">
+        <span id="anglePinCdVal">30s</span>
+      </div>
+    </div>
+
+    <!-- Ambient alert system: pulse the screen edges for safety warnings -->
+    <div class="sectionDivider">Ambient Alerts</div>
+    <div class="srow">
+      <div class="sinfo"><span class="sname">Pulse Border</span><span class="sdesc">Edge-of-screen color pulse for alerts (no popups)</span></div>
+      <label class="tgl"><input type="checkbox" id="alPulseTgl" checked><span class="tsl"></span></label>
+    </div>
+    <div class="srow">
+      <div class="sinfo"><span class="sname">Haptic Buzz</span><span class="sdesc">Gentle vibration when alerts fire (good for in-pocket hiking)</span></div>
+      <label class="tgl"><input type="checkbox" id="alVibTgl"><span class="tsl"></span></label>
+    </div>
+    <div class="srow">
+      <div class="sinfo"><span class="sname">Driving / DnD Mode</span><span class="sdesc">Dims pulses, mutes haptics — visual safety signals only</span></div>
+      <label class="tgl"><input type="checkbox" id="alDndTgl"><span class="tsl"></span></label>
+    </div>
+
+    <div class="sectionDivider">Sunset Alert</div>
+    <div class="srow">
+      <div class="sinfo"><span class="sname">Sunset Warning</span><span class="sdesc">Alert before sunset</span></div>
+      <label class="tgl"><input type="checkbox" id="alSunTgl" checked><span class="tsl"></span></label>
+    </div>
+    <div class="srow">
+      <div class="sinfo"><span class="sname">Lead Time</span><span class="sdesc">How many minutes before sunset to start alerting</span></div>
+      <div class="thrwrap">
+        <input type="range" id="alSunMinSlider" min="5" max="90" value="30" step="5">
+        <span id="alSunMinVal">30m</span>
+      </div>
+    </div>
+    <div class="srow colorRow">
+      <div class="sinfo"><span class="sname">Sunset Color</span><span class="sdesc">Pulse color for sunset alerts</span></div>
+      <div class="colorPicker" data-target="sunsetColor">
+        <button class="colorSwatch" data-color="red" aria-label="Red"    style="--c:239,68,68"></button>
+        <button class="colorSwatch active" data-color="yellow" aria-label="Yellow" style="--c:234,179,8"></button>
+        <button class="colorSwatch" data-color="green" aria-label="Green"  style="--c:61,220,151"></button>
+        <button class="colorSwatch" data-color="blue" aria-label="Blue"   style="--c:59,130,246"></button>
+        <button class="colorSwatch" data-color="purple" aria-label="Purple" style="--c:168,85,247"></button>
+      </div>
+    </div>
+
+    <div class="sectionDivider">Weather Alert</div>
+    <div class="srow">
+      <div class="sinfo"><span class="sname">Inclement Weather Warning</span><span class="sdesc">Alert when storms or precipitation are within 3 hours</span></div>
+      <label class="tgl"><input type="checkbox" id="alWxTgl" checked><span class="tsl"></span></label>
+    </div>
+    <div class="srow colorRow">
+      <div class="sinfo"><span class="sname">Weather Color</span><span class="sdesc">Pulse color for weather alerts</span></div>
+      <div class="colorPicker" data-target="weatherColor">
+        <button class="colorSwatch active" data-color="red" aria-label="Red" style="--c:239,68,68"></button>
+        <button class="colorSwatch" data-color="yellow" aria-label="Yellow" style="--c:234,179,8"></button>
+        <button class="colorSwatch" data-color="green" aria-label="Green"  style="--c:61,220,151"></button>
+        <button class="colorSwatch" data-color="blue" aria-label="Blue"   style="--c:59,130,246"></button>
+        <button class="colorSwatch" data-color="purple" aria-label="Purple" style="--c:168,85,247"></button>
+      </div>
+    </div>
+
     <div class="srow">
       <div class="sinfo"><span class="sname">Screen Wake Lock</span><span class="sdesc">Keep screen on while app is open</span></div>
       <label class="tgl"><input type="checkbox" id="wlTgl" checked><span class="tsl"></span></label>
+    </div>
+
+    <!-- Feedback section — sits at the bottom of settings as a parking
+         spot for "tell us what's wrong" before users leave reviews. -->
+    <div class="sectionDivider">Help &amp; Feedback</div>
+    <div class="srow" style="border-bottom:none">
+      <div class="sinfo"><span class="sname">Send Feedback</span><span class="sdesc">Found a bug or want to suggest a feature? Tell us.</span></div>
+      <button class="modalbtn ghost" id="fbOpenBtn" style="padding:8px 14px;font-size:11px">Open</button>
     </div>
   </div>
 </div>
@@ -896,8 +1343,15 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
     <textarea id="pnsNotes" placeholder="Anything worth remembering..." maxlength="500" rows="3" class="pinInput"></textarea>
     <label class="pinFieldLbl">Photo (optional)</label>
     <div id="pnsPhotoArea">
+      <!-- Two file inputs share the same change handler. Camera one keeps
+           the capture attribute (forces camera). Library one omits it
+           (shows native picker which lets user choose any photo). -->
       <input type="file" id="pnsPhotoInput" accept="image/*" capture="environment" style="display:none" />
-      <button class="modalbtn ghost" id="pnsPhotoBtn" style="width:100%">📷 Add Photo</button>
+      <input type="file" id="pnsPhotoInputLib" accept="image/*" style="display:none" />
+      <div id="pnsPhotoBtns" style="display:flex;gap:8px;width:100%">
+        <button class="modalbtn ghost" id="pnsPhotoBtn" style="flex:1">📷 Take Photo</button>
+        <button class="modalbtn ghost" id="pnsPhotoLibBtn" style="flex:1">🖼 Choose Photo</button>
+      </div>
       <div id="pnsPhotoPreview" style="display:none;position:relative;margin-top:8px">
         <img id="pnsPhotoImg" style="width:100%;max-height:200px;object-fit:cover;border-radius:8px;display:block" />
         <button id="pnsPhotoRemove" style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,.7);color:#fff;border:none;border-radius:50%;width:26px;height:26px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center">✕</button>
@@ -1969,11 +2423,14 @@ let _pinPhotoCompress = null;
 function openPinSaveModal(prefilledPin, overrideLat, overrideLon){
   _pinFormDirty = false;       // reset interaction tracker on every open
   _pinModalSeq++;              // invalidate any in-flight photo compress from previous open
-  // Reset photo button to its baseline state in case a previous modal closed
-  // mid-compress and left it as "Processing photo…"
-  const _photoBtn = document.getElementById('pnsPhotoBtn');
-  _photoBtn.textContent = '📷 Add Photo';
-  _photoBtn.disabled = false;
+  // Reset photo buttons to their baseline state in case a previous modal closed
+  // mid-compress and left them as "Processing photo…"
+  const _camBtn = document.getElementById('pnsPhotoBtn');
+  const _libBtn = document.getElementById('pnsPhotoLibBtn');
+  _camBtn.textContent = '📷 Take Photo';
+  _libBtn.textContent = '🖼 Choose Photo';
+  _camBtn.disabled = false;
+  _libBtn.disabled = false;
   // Same for Save button — could have been left disabled / "Waiting for photo…"
   // if the previous modal was closed mid-save-flow.
   const _saveBtn = document.getElementById('pnsSave');
@@ -1981,20 +2438,28 @@ function openPinSaveModal(prefilledPin, overrideLat, overrideLon){
   _saveBtn.disabled = false;
   if(prefilledPin){
     _editingPin = prefilledPin;
-    document.getElementById('pnsTitle').textContent = 'Edit Pin';
+    // Title reflects the kind of pin being edited
+    document.getElementById('pnsTitle').textContent = (prefilledPin.kind === 'angle') ? 'Edit Angle Pin' : 'Edit Pin';
     document.getElementById('pnsLabel').value = prefilledPin.label || '';
     document.getElementById('pnsNotes').value = prefilledPin.notes || '';
-    document.getElementById('pnsCoords').textContent =
-      `${prefilledPin.lat.toFixed(6)}, ${prefilledPin.lon.toFixed(6)}`;
+    // Coords line — for angle pins, also show the captured P/R values
+    let coordsText = `${prefilledPin.lat.toFixed(6)}, ${prefilledPin.lon.toFixed(6)}`;
+    if(prefilledPin.elev != null){
+      coordsText += ` · ${Math.round(prefilledPin.elev * 3.28084)} ft`;
+    }
+    if(prefilledPin.kind === 'angle' && prefilledPin.peakAngle != null){
+      coordsText += `\n📐 Peak ${prefilledPin.peakAngle.toFixed(1)}° · Pitch ${(prefilledPin.pitch ?? 0).toFixed(1)}° · Roll ${(prefilledPin.roll ?? 0).toFixed(1)}°`;
+    }
+    document.getElementById('pnsCoords').textContent = coordsText;
     if(prefilledPin.photo){
       _pinPhotoData = prefilledPin.photo;
       document.getElementById('pnsPhotoImg').src = prefilledPin.photo;
       document.getElementById('pnsPhotoPreview').style.display = 'block';
-      document.getElementById('pnsPhotoBtn').style.display = 'none';
+      document.getElementById('pnsPhotoBtns').style.display = 'none';
     } else {
       _pinPhotoData = null;
       document.getElementById('pnsPhotoPreview').style.display = 'none';
-      document.getElementById('pnsPhotoBtn').style.display = '';
+      document.getElementById('pnsPhotoBtns').style.display = 'flex';
     }
   } else {
     // For new pins, prefer explicitly passed coords (e.g. snapshotted from
@@ -2015,7 +2480,7 @@ function openPinSaveModal(prefilledPin, overrideLat, overrideLon){
     document.getElementById('pnsNotes').value = '';
     _pinPhotoData = null;
     document.getElementById('pnsPhotoPreview').style.display = 'none';
-    document.getElementById('pnsPhotoBtn').style.display = '';
+    document.getElementById('pnsPhotoBtns').style.display = 'flex';
     document.getElementById('pnsCoords').textContent =
       `${useLat.toFixed(6)}, ${useLon.toFixed(6)}` +
       (S.elev != null ? ` · ${Math.round(S.elev * 3.28084)} ft` : '');
@@ -2069,8 +2534,13 @@ pnsp.addEventListener('click', e => { /* swallow backdrop taps to prevent data l
 document.getElementById('pnsPhotoBtn').addEventListener('click', () => {
   document.getElementById('pnsPhotoInput').click();
 });
+document.getElementById('pnsPhotoLibBtn').addEventListener('click', () => {
+  // Library picker — same flow as camera, just no capture attribute on input
+  document.getElementById('pnsPhotoInputLib').click();
+});
 
-document.getElementById('pnsPhotoInput').addEventListener('change', async e => {
+// Both inputs run through the same handler logic. Centralizing avoids drift.
+async function handlePinPhotoChange(e){
   const file = e.target.files && e.target.files[0];
   if(!file) return;
   // Capture the modal sequence at the start of compress. If the user closes
@@ -2079,12 +2549,18 @@ document.getElementById('pnsPhotoInput').addEventListener('change', async e => {
   // wrong pin. Without this, a slow compress from a cancelled modal would
   // populate the next modal's _pinPhotoData and the wrong photo would save.
   const mySeq = _pinModalSeq;
-  // Show "Processing..." state on the Photo button so the user knows a
-  // compress is in flight. Save will also await this if tapped during.
-  const photoBtn = document.getElementById('pnsPhotoBtn');
-  const origPhotoLabel = photoBtn.textContent;
-  photoBtn.textContent = 'Processing photo…';
-  photoBtn.disabled = true;
+  // Show "Processing..." state on whichever button was tapped so the user
+  // knows a compress is in flight. Save will also await this if tapped during.
+  // Both buttons (camera + library) get disabled to prevent double-source.
+  const camBtn = document.getElementById('pnsPhotoBtn');
+  const libBtn = document.getElementById('pnsPhotoLibBtn');
+  const origCamLabel = camBtn.textContent;
+  const origLibLabel = libBtn.textContent;
+  // Indicate which button is "active" — whichever input fired
+  if(e.target.id === 'pnsPhotoInput'){ camBtn.textContent = 'Processing photo…'; }
+  else { libBtn.textContent = 'Processing photo…'; }
+  camBtn.disabled = true;
+  libBtn.disabled = true;
   // Resize / compress to keep IndexedDB lean. ~1024px max dimension is plenty
   // for a phone-sized share card and keeps each pin around 100-200KB.
   // Stash the promise so Save can await it (prevents race where user picks
@@ -2098,7 +2574,7 @@ document.getElementById('pnsPhotoInput').addEventListener('change', async e => {
     _pinFormDirty = true;        // photo counts as meaningful interaction
     document.getElementById('pnsPhotoImg').src = compressed;
     document.getElementById('pnsPhotoPreview').style.display = 'block';
-    photoBtn.style.display = 'none';
+    document.getElementById('pnsPhotoBtns').style.display = 'none';
   } catch(err){
     if(mySeq !== _pinModalSeq) return;   // stale: don't alert in a closed modal
     console.warn('Photo compress failed:', err);
@@ -2106,19 +2582,23 @@ document.getElementById('pnsPhotoInput').addEventListener('change', async e => {
   } finally {
     if(_pinPhotoCompress === compressPromise) _pinPhotoCompress = null;
     if(mySeq === _pinModalSeq){
-      photoBtn.textContent = origPhotoLabel;
-      photoBtn.disabled = false;
+      camBtn.textContent = origCamLabel;
+      libBtn.textContent = origLibLabel;
+      camBtn.disabled = false;
+      libBtn.disabled = false;
     }
   }
   // Reset the input so picking the same file again still triggers change
   e.target.value = '';
-});
+}
+document.getElementById('pnsPhotoInput').addEventListener('change', handlePinPhotoChange);
+document.getElementById('pnsPhotoInputLib').addEventListener('change', handlePinPhotoChange);
 
 document.getElementById('pnsPhotoRemove').addEventListener('click', () => {
   _pinPhotoData = null;
   _pinFormDirty = true;          // removal also counts (different from initial state)
   document.getElementById('pnsPhotoPreview').style.display = 'none';
-  document.getElementById('pnsPhotoBtn').style.display = '';
+  document.getElementById('pnsPhotoBtns').style.display = 'flex';
 });
 
 document.getElementById('pnsSave').addEventListener('click', async () => {
@@ -2126,7 +2606,12 @@ document.getElementById('pnsSave').addEventListener('click', async () => {
   if(btn.disabled) return;       // already saving — prevent double-tap duplicates
   const label = document.getElementById('pnsLabel').value.trim();
   const notes = document.getElementById('pnsNotes').value.trim();
-  if(!label){
+  // Spot pins require a label so they're findable later. Angle pins can
+  // have an empty label — the peak angle itself serves as the identity
+  // ("25.3° tilt" displays as the title in lists/detail). User can still
+  // add a custom label if they want a memorable name.
+  const isEditingAngle = (_editingPin && _editingPin.kind === 'angle');
+  if(!label && !isEditingAngle){
     alert('Add a label so you can find this pin later.');
     return;
   }
@@ -2142,6 +2627,10 @@ document.getElementById('pnsSave').addEventListener('click', async () => {
     btn.textContent = origLabel;
   }
   let pin;
+  // Capture editing state BEFORE pinPut runs — closePinSaveModal nullifies
+  // _editingPin, but the auto-share-after-save flow needs to know whether
+  // this was a new pin (auto-share) or an edit (don't auto-share).
+  const _wasEditing = !!_editingPin;
   if(_editingPin){
     pin = Object.assign({}, _editingPin, {
       label, notes,
@@ -2166,10 +2655,54 @@ document.getElementById('pnsSave').addEventListener('click', async () => {
   }
   try {
     await pinPut(pin);
+    // Capture the saved pin object so we can immediately open detail / auto-share.
+    const savedPin = pin;
     closePinSaveModal();
     // If the pin list is currently open behind us (user came from list → edit),
-    // refresh it so the new/updated pin shows immediately
+    // refresh it so the new/updated pin shows immediately.
     if(plp.classList.contains('open')) openPinList();
+    // Auto-share flow: ONLY for new pins with a photo (skip edits + skip
+    // photoless pins since the share card looks bare without a photo).
+    // Edits (where _editingPin was set on entry) should NOT auto-share.
+    if(!_wasEditing && savedPin.photo){
+      // Auto-share path. We fire navigator.share() INLINE within this same
+      // click handler so iOS treats it as a continuation of the user's tap
+      // gesture. Previously we used setTimeout to open pin detail first and
+      // then "click" the share button programmatically — but iOS Safari
+      // requires share() be called directly from a user gesture, and the
+      // setTimeout chain broke that requirement, causing the share sheet
+      // to silently fail to appear.
+      //
+      // Trade-off: pin detail doesn't auto-open (user lands back on the
+      // gauge after share sheet closes). User can tap the pin in the list
+      // to open it again. That's a small price for share that actually
+      // works reliably.
+      try {
+        const blob = await renderPinShareCard(savedPin);
+        if(blob){
+          const file = new File([blob], `${safeFilename(savedPin.label, 'pin')}.png`, { type: 'image/png' });
+          if(navigator.canShare && navigator.canShare({ files: [file] })){
+            try {
+              await navigator.share({
+                files: [file],
+                title: savedPin.label || 'TrailGauge Pin',
+                text: `${savedPin.lat.toFixed(5)}, ${savedPin.lon.toFixed(5)}`
+              });
+            } catch(shareErr){
+              // Common rejections: user dismissed the share sheet (AbortError),
+              // iOS denied the gesture chain (NotAllowedError). Either way,
+              // not actionable for us. Fall through silently.
+            }
+          } else {
+            // Fallback: open the saved pin's detail so user can manually share
+            openPinDetail(savedPin);
+          }
+        }
+      } catch(shareErr){
+        console.warn('Auto-share failed:', shareErr);
+        // Don't block save success on share failure
+      }
+    }
   } catch(err){
     console.warn('Pin save failed:', err);
     alert('Could not save the pin. Storage may be full.');
@@ -2261,13 +2794,41 @@ async function openPinList(){
       let dateStr;
       try { dateStr = date.toLocaleDateString(undefined, {month:'short', day:'numeric'}); }
       catch(_) { dateStr = `${date.getMonth()+1}/${date.getDate()}`; }
-      const subParts = [`${pin.lat.toFixed(4)}, ${pin.lon.toFixed(4)}`];
-      if(pin.elev != null) subParts.push(`${Math.round(pin.elev*3.28084)} ft`);
+      const isAngle = (pin.kind === 'angle');
+      // Compose the subtitle differently per kind. Spot pins show coords/elev;
+      // angle pins lead with the peak angle since that's the defining info.
+      let subParts;
+      if(isAngle){
+        const pa = (pin.peakAngle != null) ? `📐 ${pin.peakAngle.toFixed(1)}°` : '📐 —';
+        const pStr = (pin.pitch != null) ? `P${Math.round(Math.abs(pin.pitch))}°` : '';
+        const rStr = (pin.roll  != null) ? `R${Math.round(Math.abs(pin.roll ))}°` : '';
+        const angleSummary = [pa, pStr, rStr].filter(Boolean).join(' ');
+        subParts = [angleSummary, `${pin.lat.toFixed(4)}, ${pin.lon.toFixed(4)}`];
+      } else {
+        subParts = [`${pin.lat.toFixed(4)}, ${pin.lon.toFixed(4)}`];
+        if(pin.elev != null) subParts.push(`${Math.round(pin.elev*3.28084)} ft`);
+      }
+      // Fallback label: angle pins without a user-set label show the angle
+      // as the headline so the list doesn't look like a sea of "(unnamed)" rows.
+      let nameDisplay = pin.label;
+      if(!nameDisplay && isAngle && pin.peakAngle != null){
+        nameDisplay = `${pin.peakAngle.toFixed(1)}° tilt`;
+      }
+      if(!nameDisplay) nameDisplay = '(unnamed)';
+      // Thumbnail: photo if present, else a kind-appropriate icon
+      const thumbContent = pin.photo
+        ? `<img src="${pin.photo}" alt="">`
+        : (isAngle ? '📐' : '📍');
+      // Tiny badge in the row corner for angle pins so they're identifiable
+      // even when the list is scrolled fast
+      const kindBadge = isAngle
+        ? '<div class="pinKindBadge" title="Angle pin">📐</div>'
+        : '';
       row.innerHTML = `
-        <div class="pinThumb">${pin.photo ? `<img src="${pin.photo}" alt="">` : '📍'}</div>
+        <div class="pinThumb">${thumbContent}${kindBadge}</div>
         <div class="pinMeta">
-          <div class="pinName">${escapeHtml(pin.label || '(unnamed)')}</div>
-          <div class="pinSub">${subParts.join(' · ')}</div>
+          <div class="pinName">${escapeHtml(nameDisplay)}</div>
+          <div class="pinSub">${escapeHtml(subParts.join(' · '))}</div>
         </div>
         <div class="pinDate">${dateStr}</div>
       `;
@@ -2286,6 +2847,18 @@ function escapeHtml(s){
   })[c]);
 }
 
+// Sanitize a user-provided string for use as a filename. Used when
+// generating share-card PNGs — a label like "Trail / Day 1" embedded
+// directly in a filename can confuse certain apps in the iOS share sheet.
+// Keep alphanumerics, dashes, underscores, and spaces. Cap at 60 chars.
+function safeFilename(input, fallback){
+  const cleaned = String(input || '')
+    .replace(/[^a-zA-Z0-9\- _]/g, '')
+    .trim()
+    .slice(0, 60);
+  return cleaned || fallback || 'file';
+}
+
 document.getElementById('pinsBtn').addEventListener('click', openPinList);
 plp.addEventListener('click', e => { if(e.target === plp) plp.classList.remove('open'); });
 
@@ -2294,9 +2867,38 @@ let _currentPin = null;
 
 function openPinDetail(pin){
   _currentPin = pin;
-  document.getElementById('pdTitle').textContent = pin.label || 'Pin';
+  const isAngle = (pin.kind === 'angle');
+  // Title — fall back to angle summary for unlabeled angle pins
+  let title = pin.label;
+  if(!title && isAngle && pin.peakAngle != null) title = `${pin.peakAngle.toFixed(1)}° tilt`;
+  if(!title) title = 'Pin';
+  document.getElementById('pdTitle').textContent = title;
   const c = document.getElementById('pdContent');
   let html = '';
+  // Angle pin hero — leads with the captured angle data since that's what
+  // the pin is for. Bigger and more visual than just listing it as a field.
+  if(isAngle && pin.peakAngle != null){
+    const pa = pin.peakAngle.toFixed(1);
+    const pStr = (pin.pitch != null) ? pin.pitch.toFixed(1) : '—';
+    const rStr = (pin.roll  != null) ? pin.roll .toFixed(1) : '—';
+    const captureMode = pin.auto ? 'Auto-captured' : 'Manually pinned';
+    html += `
+      <div class="pdAngleHero">
+        <div class="pdAngleBig">${pa}°</div>
+        <div class="pdAngleLbl">PEAK ANGLE</div>
+        <div class="pdAngleSplit">
+          <div class="pdAngleHalf">
+            <div class="pdAngleSide">PITCH</div>
+            <div class="pdAngleSideVal">${pStr}°</div>
+          </div>
+          <div class="pdAngleHalf">
+            <div class="pdAngleSide">ROLL</div>
+            <div class="pdAngleSideVal">${rStr}°</div>
+          </div>
+        </div>
+        <div class="pdAngleMode">${captureMode}</div>
+      </div>`;
+  }
   if(pin.photo) html += `<img class="pdPhoto" src="${pin.photo}" alt="">`;
   html += `
     <div class="pdField">
@@ -2317,13 +2919,20 @@ function openPinDetail(pin){
       <div class="pdValue">${escapeHtml(pin.notes)}</div>
     </div>`;
   }
+  // For angle pins without a user label, suggest adding one in the empty state
+  if(isAngle && !pin.label && !pin.notes && !pin.photo){
+    html += `
+      <div class="pdField" style="background:rgba(61,220,151,.08);border-radius:8px;padding:10px 12px">
+        <div class="pdValue" style="font-size:12px;color:var(--txt2)">Tap <b>Edit Pin</b> to add a name, photo, and notes — or share as-is.</div>
+      </div>`;
+  }
   const created = new Date(pin.createdAt);
   let createdStr;
   try { createdStr = created.toLocaleString(); }
   catch(_) { createdStr = created.toString(); }
   html += `
     <div class="pdField">
-      <div class="pdLabel">Saved</div>
+      <div class="pdLabel">${isAngle ? 'Captured' : 'Saved'}</div>
       <div class="pdValue" style="font-size:11px;color:var(--txt3)">${createdStr}</div>
     </div>`;
   // Map container — hidden by default. Lazy-rendered on Show Map tap so
@@ -2543,7 +3152,7 @@ document.getElementById('pdShareCard').addEventListener('click', async () => {
       alert('Could not generate the share card.');
       return;
     }
-    const file = new File([blob], `${_currentPin.label || 'pin'}.png`, { type: 'image/png' });
+    const file = new File([blob], `${safeFilename(_currentPin.label, 'pin')}.png`, { type: 'image/png' });
     if(navigator.canShare && navigator.canShare({ files: [file] })){
       try {
         await navigator.share({
@@ -2642,13 +3251,22 @@ function doRenderPinShareCard(pin, resolve){
         for(let y = 0; y < H; y += 60){
           ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke();
         }
-        // Big pin emoji as visual anchor
+        // Big anchor emoji — varies by kind. Angle pins get a triangle
+        // (geometric, evokes inclinometer); spot pins get the location pin.
         ctx.fillStyle = '#1f2630';
         ctx.font = '300px serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText('📍', W/2, H * 0.32);
+        ctx.fillText((pin.kind === 'angle') ? '📐' : '📍', W/2, H * 0.32);
         drawTopBadge(ctx, W);
+      }
+
+      // ── ANGLE BADGE (angle pins only) ──────────────────────
+      // Big "30.5°" badge in the upper-left, paired with the brand badge
+      // top-right. Reads as the headline of the share card. Skipped for
+      // spot pins.
+      if(pin.kind === 'angle' && pin.peakAngle != null){
+        drawAngleBadge(ctx, pin);
       }
 
       // ── TEXT BLOCK (anchored to bottom) ─────────────────────
@@ -2674,9 +3292,17 @@ function doRenderPinShareCard(pin, resolve){
       const elevLineH  = 38;
       const notesLineH = 36;
 
-      // Word-wrap the label
+      // Word-wrap the label. For angle pins without a user label, use the
+      // peak angle as the headline so the card always has a clear title.
       ctx.font = '700 68px "Rajdhani", sans-serif';
-      const label = pin.label || 'Saved Pin';
+      let label = pin.label;
+      if(!label){
+        if(pin.kind === 'angle' && pin.peakAngle != null){
+          label = `${pin.peakAngle.toFixed(1)}° Tilt`;
+        } else {
+          label = 'Saved Pin';
+        }
+      }
       const labelLines = wrapText(ctx, label, W - padX*2).slice(0, 2);
 
       const hasElev = (pin.elev != null);
@@ -2771,6 +3397,45 @@ function drawTopBadge(ctx, W){
   // Text inside
   ctx.fillStyle = '#3ddc97';
   ctx.fillText(text, pillX + 16, pillY + pillH/2 + 1);
+}
+
+/* Big angle badge for angle-pin share cards. Drawn in the upper-left of
+   the canvas (mirroring the TrailGauge badge in upper-right). Visually
+   the most striking element on the card — the angle IS the moment. */
+function drawAngleBadge(ctx, pin){
+  const padL = 36, padT = 36;
+  // Two-line content: big angle number + tiny "PEAK" label
+  const angleText = `${pin.peakAngle.toFixed(1)}°`;
+  const sublabel = pin.auto ? 'AUTO PEAK' : 'PEAK';
+  // Measure to size the badge
+  ctx.font = '700 56px "Rajdhani", sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  const angleW = ctx.measureText(angleText).width;
+  ctx.font = '700 14px "Rajdhani", sans-serif';
+  const subW = ctx.measureText(sublabel).width;
+  const innerW = Math.max(angleW, subW);
+  const pillW = innerW + 36;
+  const pillH = 92;
+  const pillX = padL;
+  const pillY = padT;
+  // Background — same dark pill style as TrailGauge badge but rectangular
+  // (rounded corners, not pill) since content is two lines
+  ctx.fillStyle = 'rgba(10,12,15,.78)';
+  roundRect(ctx, pillX, pillY, pillW, pillH, 16);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(61,220,151,.6)';
+  ctx.lineWidth = 1.5;
+  roundRect(ctx, pillX, pillY, pillW, pillH, 16);
+  ctx.stroke();
+  // Big angle number
+  ctx.fillStyle = '#3ddc97';
+  ctx.font = '700 56px "Rajdhani", sans-serif';
+  ctx.fillText(angleText, pillX + 18, pillY + 60);
+  // Sublabel
+  ctx.fillStyle = 'rgba(220,228,238,.7)';
+  ctx.font = '700 14px "Rajdhani", sans-serif';
+  ctx.fillText(sublabel, pillX + 18, pillY + 80);
 }
 
 function roundRect(ctx, x, y, w, h, r){
@@ -3170,7 +3835,7 @@ const onb = document.getElementById('onb');
 const onbCards = document.getElementById('onbCards');   // viewport (touch target)
 const onbTrack = document.getElementById('onbTrack');   // sliding track (transform target)
 let _onbStep = 0;
-const ONB_STEPS = 4;
+const ONB_STEPS = 6;
 
 function setOnbStep(i){
   _onbStep = Math.max(0, Math.min(ONB_STEPS - 1, i));
@@ -3190,6 +3855,11 @@ function dismissOnboarding(){
   const dontShowCb = document.getElementById('onbDontShowCb');
   if(dontShowCb && dontShowCb.checked){
     try { localStorage.setItem(ONB_KEY, '1'); } catch(_){}
+    // Fresh users who completed the new 6-card onboarding have seen the
+    // angle pins + ambient alerts explanation already. Mark the "What's
+    // New" toast as seen too — otherwise it would redundantly appear on
+    // their next launch covering the same material they just read.
+    try { localStorage.setItem('tg_whatsnew_alerts_v1', '1'); } catch(_){}
   }
 }
 
@@ -3227,19 +3897,87 @@ if(!_onboarded){
   if(_cb) _cb.checked = false;
   onb.classList.add('show');
   setOnbStep(0);
+} else {
+  // User has already gone through onboarding at some point. They've now
+  // landed on an update that adds Angle Pins + Ambient Alerts — features
+  // that include behaviors they haven't been taught about (auto-pin
+  // toasts, edge-of-screen color pulses for weather/sunset). Without an
+  // explanation, the first time a yellow pulse fires they might think
+  // the app is broken or warning them about something critical.
+  //
+  // One-time "What's New" toast handles this. Persists a separate flag
+  // (tg_whatsnew_alerts_v1) so it never shows again after dismissal.
+  const WHATS_NEW_KEY = 'tg_whatsnew_alerts_v1';
+  let alreadySeen = false;
+  try { alreadySeen = localStorage.getItem(WHATS_NEW_KEY) === '1'; } catch(_){}
+  if(!alreadySeen){
+    // Slight delay so it doesn't fight with the app's own load animations
+    setTimeout(showWhatsNewToast, 1200);
+  }
+}
+
+// "What's New" one-time toast for returning users. Explains the two
+// newest user-visible behaviors (angle pins, ambient alert pulses) so
+// existing users aren't surprised when the screen edges start glowing.
+function showWhatsNewToast(){
+  // Defer if a more critical modal is on screen. The recovery modal in
+  // particular has trip data hanging in the balance — we don't want a
+  // "What's New" overlay covering the user's choice between Resume,
+  // Save, and Discard. If recovery is open, we just skip showing the
+  // toast this session. They'll see it next launch (flag still unset).
+  const rcp = document.getElementById('rcp');
+  if(rcp && rcp.classList.contains('open')) return;
+  // Build the element fresh each call. We auto-dismiss on tap anywhere
+  // on the toast, OR after the timeout.
+  let el = document.getElementById('whatsNewToast');
+  if(el) el.remove();   // shouldn't happen but defensive
+  el = document.createElement('div');
+  el.id = 'whatsNewToast';
+  el.innerHTML = `
+    <div class="wnt-hdr">
+      <span class="wnt-title">✨ What's New</span>
+      <button class="wnt-x" aria-label="Dismiss">×</button>
+    </div>
+    <div class="wnt-body">
+      <div class="wnt-row">
+        <span class="wnt-icon">📐</span>
+        <div><b>Angle Pins</b> — TrailGauge now auto-saves your peak tilt moments
+        with GPS, or tap the new <b>PIN ANGLE</b> button. Review in your pin list.</div>
+      </div>
+      <div class="wnt-row">
+        <span class="wnt-icon">🚨</span>
+        <div><b>Ambient Alerts</b> — a soft <b>red</b> pulse warns of incoming
+        weather, <b>yellow</b> for approaching sunset. Customize colors, lead
+        time, vibration, and Driving Mode in Settings.</div>
+      </div>
+    </div>
+    <button class="wnt-cta">Got it</button>
+  `;
+  document.body.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('show'));
+
+  // Mark seen and remove on dismiss
+  function dismiss(){
+    try { localStorage.setItem('tg_whatsnew_alerts_v1', '1'); } catch(_){}
+    el.classList.remove('show');
+    setTimeout(() => el.remove(), 350);
+  }
+  el.querySelector('.wnt-x').addEventListener('click', dismiss);
+  el.querySelector('.wnt-cta').addEventListener('click', dismiss);
+  // Backdrop tap (outside the card itself) also dismisses
+  el.addEventListener('click', e => { if(e.target === el) dismiss(); });
 }
 
 /* ─── MAX ANGLE RECORDER ──────────────────────────────────────
    Tracks the highest absolute pitch/roll seen. Two scopes:
    - Session: resets when app reloads OR user taps reset.
-   - All-time: persists across sessions, only resets on manual tap.
-   Off-road profile only — element is hidden in trail mode via CSS. */
-const MAX_KEY = 'tg_max_angle_v1';
-const MAX = { session: 0, allTime: 0 };
-try {
-  const v = parseFloat(localStorage.getItem(MAX_KEY));
-  if(Number.isFinite(v) && v >= 0 && v <= 90) MAX.allTime = v;
-} catch(_){}
+   Off-road profile only — element is hidden in trail mode via CSS.
+
+   v20.x: All-time storage was REMOVED. The all-time number was fragile
+   (calibration drift, accidental phone slips would inflate it forever
+   with no recovery). Replaced by ANGLE PINS — each peak gets saved as
+   a real GPS-tagged record, multiple per session, all reviewable later. */
+const MAX = { session: 0 };
 
 function updateMaxAngle(){
   // Highest absolute angle currently shown (uses smoothed/calibrated values)
@@ -3248,26 +3986,233 @@ function updateMaxAngle(){
     MAX.session = cur;
     document.getElementById('maxSession').textContent = MAX.session.toFixed(1) + '°';
   }
-  if(cur > MAX.allTime){
-    MAX.allTime = cur;
-    document.getElementById('maxAllTime').textContent = MAX.allTime.toFixed(1) + '°';
-    try { localStorage.setItem(MAX_KEY, String(MAX.allTime)); } catch(_){}
-  }
+  // Sync the manual Pin Angle button's disabled visual state — cheap
+  // (no-op if state hasn't changed since last frame).
+  if(typeof updateAnglePinBtnState === 'function') updateAnglePinBtnState();
+  // Feed the angle-pin auto-capture peak detector
+  anglePinTick();
 }
 // Initial render
 document.getElementById('maxSession').textContent = MAX.session.toFixed(1) + '°';
-document.getElementById('maxAllTime').textContent = MAX.allTime.toFixed(1) + '°';
 
 document.getElementById('maxResetSession').addEventListener('click', () => {
   MAX.session = 0;
   document.getElementById('maxSession').textContent = '0.0°';
 });
-document.getElementById('maxResetAllTime').addEventListener('click', () => {
-  if(!confirm('Reset all-time max angle? This cannot be undone.')) return;
-  MAX.allTime = 0;
-  document.getElementById('maxAllTime').textContent = '0.0°';
-  try { localStorage.removeItem(MAX_KEY); } catch(_){}
-});
+
+/* ─── ANGLE PINS ──────────────────────────────────────────────
+   A pin variant that captures peak pitch/roll moments. Two creation paths:
+     - AUTO: peak detector watches angles in real time. When pitch or roll
+       exceeds the threshold and then comes back down (or stays high for a
+       while), an angle pin is automatically saved at the peak moment.
+     - MANUAL: a button on the gauge lets the user save the current angles
+       at the current moment, regardless of threshold.
+   Cooldown prevents auto-spam during sustained tilts.
+   Designed for the "hands tied up at the wheel" use case — driver
+   doesn't have to look at or tap the phone to record the moment. */
+
+const ANGLE_PIN_KEY = 'tg_anglepin_settings_v1';
+const ANGLE_PIN = {
+  // User settings (persisted)
+  enabled: true,
+  thresholdDeg: 15,
+  cooldownSec: 30,
+  // Runtime state
+  peakAngle: 0,           // highest |pitch|/|roll| observed in the current event
+  peakPitch: 0,
+  peakRoll: 0,
+  peakAt: 0,              // timestamp when peak was observed
+  inEvent: false,         // currently inside a tilt event (above threshold)
+  lastSavedAt: 0          // timestamp of last auto-save (cooldown)
+};
+
+// Restore settings
+try {
+  const raw = localStorage.getItem(ANGLE_PIN_KEY);
+  if(raw){
+    const s = JSON.parse(raw);
+    if(typeof s.enabled === 'boolean') ANGLE_PIN.enabled = s.enabled;
+    if(typeof s.thresholdDeg === 'number' && s.thresholdDeg >= 5 && s.thresholdDeg <= 60) ANGLE_PIN.thresholdDeg = s.thresholdDeg;
+    if(typeof s.cooldownSec === 'number' && s.cooldownSec >= 5 && s.cooldownSec <= 300) ANGLE_PIN.cooldownSec = s.cooldownSec;
+  }
+} catch(_){}
+function saveAnglePinSettings(){
+  try {
+    localStorage.setItem(ANGLE_PIN_KEY, JSON.stringify({
+      enabled: ANGLE_PIN.enabled,
+      thresholdDeg: ANGLE_PIN.thresholdDeg,
+      cooldownSec: ANGLE_PIN.cooldownSec
+    }));
+  } catch(_){}
+}
+
+// Peak detector — called every frame from updateMaxAngle.
+// Tracks the highest absolute angle during a "tilt event" (period where
+// either pitch or roll exceeds threshold). When the event ends (angle
+// returns below threshold), saves the peak as an angle pin if cooldown
+// has expired.
+function anglePinTick(){
+  if(!ANGLE_PIN.enabled) return;
+  // Only run when we have real sensor data (avoid demo-mode fake spikes)
+  if(!S.sensorLive) return;
+  // Skip auto-capture entirely without a GPS lock — saving a pin without
+  // coordinates is useless, and the toast spam from repeated rejections
+  // would distract a driver who's busy on the trail. Manual button still
+  // works (it shows a clear 'No GPS fix' toast on tap).
+  if(S.lat == null || S.lon == null) return;
+  const ap = Math.abs(S.pitch);
+  const ar = Math.abs(S.roll);
+  const cur = Math.max(ap, ar);
+  if(cur >= ANGLE_PIN.thresholdDeg){
+    // Inside a tilt event — track the peak
+    if(!ANGLE_PIN.inEvent){
+      ANGLE_PIN.inEvent = true;
+      ANGLE_PIN.peakAngle = 0;
+    }
+    if(cur > ANGLE_PIN.peakAngle){
+      ANGLE_PIN.peakAngle = cur;
+      ANGLE_PIN.peakPitch = S.pitch;
+      ANGLE_PIN.peakRoll = S.roll;
+      ANGLE_PIN.peakAt = Date.now();
+    }
+  } else if(ANGLE_PIN.inEvent){
+    // Tilt event just ended — save if cooldown has expired
+    ANGLE_PIN.inEvent = false;
+    const sinceLast = (Date.now() - ANGLE_PIN.lastSavedAt) / 1000;
+    if(sinceLast >= ANGLE_PIN.cooldownSec && ANGLE_PIN.peakAngle >= ANGLE_PIN.thresholdDeg){
+      // Capture coords/elev at the moment the peak occurred. Use current GPS
+      // since fixes lag — within a few seconds of peak, so accurate enough.
+      saveAnglePin({
+        pitch: ANGLE_PIN.peakPitch,
+        roll:  ANGLE_PIN.peakRoll,
+        peakAngle: ANGLE_PIN.peakAngle,
+        capturedAt: ANGLE_PIN.peakAt,
+        auto: true
+      });
+      ANGLE_PIN.lastSavedAt = Date.now();
+    }
+  }
+}
+
+async function saveAnglePin(data){
+  // Manual saves bypass cooldown but still get logged
+  if(S.lat == null || S.lon == null){
+    showAnglePinToast('No GPS fix — pin not saved', null);
+    return;
+  }
+  const pin = {
+    id: 'angle_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+    kind: 'angle',
+    lat: S.lat,
+    lon: S.lon,
+    elev: (S.elev != null) ? S.elev : null,
+    pitch: data.pitch,
+    roll: data.roll,
+    peakAngle: data.peakAngle,
+    auto: !!data.auto,
+    label: '',                          // user can fill in later
+    notes: '',
+    photo: null,
+    createdAt: data.capturedAt || Date.now(),
+    updatedAt: Date.now(),
+    ownerId: null,
+    visibility: 'private'
+  };
+  try {
+    await pinPut(pin);
+    // Friendly summary for the toast
+    const pa = Math.abs(data.peakAngle).toFixed(1);
+    const pStr = Math.abs(data.pitch).toFixed(0) + '°';
+    const rStr = Math.abs(data.roll).toFixed(0) + '°';
+    const summary = `${data.auto ? 'Auto-pinned' : 'Pinned'} ${pa}° (P${pStr} R${rStr})`;
+    // In Driving/DnD mode, suppress the success toast for AUTO-captured pins.
+    // The driver explicitly asked for minimal distraction — the pin is still
+    // saved silently and viewable later in the pin list. MANUAL pins still
+    // show the toast because the user just tapped a button and expects
+    // confirmation that the tap registered.
+    const suppressToast = data.auto && (typeof ALERTS !== 'undefined') && ALERTS.dndMode;
+    if(!suppressToast){
+      showAnglePinToast(summary, pin);
+    }
+  } catch(err){
+    console.warn('Angle pin save failed:', err);
+    showAnglePinToast('Could not save angle pin', null);
+  }
+}
+
+// Mid-drive toast — appears at the top of the screen, dismisses on tap or
+// after timeout. If pin is provided, tapping opens the pin save modal so
+// the user can add a photo and notes (the "Add photo now" tap option).
+let _anglePinToastTimer = null;
+function showAnglePinToast(text, pin){
+  // Reuse the same toast element if it's already showing (don't stack)
+  let toast = document.getElementById('anglePinToast');
+  if(!toast){
+    toast = document.createElement('div');
+    toast.id = 'anglePinToast';
+    document.body.appendChild(toast);
+  }
+  // Defensive escape of the text param — current callers pass only static
+  // strings + numeric data, but escapeHtml here means any future caller
+  // that passes user content (a pin label, a notes field) won't introduce
+  // an XSS vector. Cheap insurance.
+  const safeText = escapeHtml(text);
+  toast.innerHTML = pin
+    ? `<span class="apt-msg">${safeText}</span><button class="apt-btn">Add photo</button><button class="apt-x" aria-label="Dismiss">×</button>`
+    : `<span class="apt-msg">${safeText}</span><button class="apt-x" aria-label="Dismiss">×</button>`;
+  toast.classList.add('show');
+  // Wire buttons
+  const btn = toast.querySelector('.apt-btn');
+  if(btn){
+    btn.addEventListener('click', () => {
+      hideAnglePinToast();
+      // Open pin save modal in EDIT mode for this pin so user can add photo+label
+      openPinSaveModal(pin);
+    });
+  }
+  toast.querySelector('.apt-x').addEventListener('click', hideAnglePinToast);
+  // Auto-dismiss after 6s
+  if(_anglePinToastTimer) clearTimeout(_anglePinToastTimer);
+  _anglePinToastTimer = setTimeout(hideAnglePinToast, 6000);
+  // Haptic feedback (iOS PWA support is limited; fails silently)
+  if(navigator.vibrate){ try { navigator.vibrate(40); } catch(_){} }
+}
+function hideAnglePinToast(){
+  const toast = document.getElementById('anglePinToast');
+  if(toast) toast.classList.remove('show');
+  if(_anglePinToastTimer){ clearTimeout(_anglePinToastTimer); _anglePinToastTimer = null; }
+}
+
+// Manual angle-pin button — saves whatever angles are showing right now.
+// The button reflects sensor readiness: when motion permission isn't granted
+// or the sensor hasn't sent data yet, it appears disabled (visually) so users
+// don't think it's broken when nothing happens. The disabled state is
+// updated each frame in updateMaxAngle (cheap class toggle).
+const _anglePinBtn = document.getElementById('anglePinBtn');
+function updateAnglePinBtnState(){
+  if(!_anglePinBtn) return;
+  const ready = !!S.sensorLive;
+  if(_anglePinBtn._wasReady === ready) return;     // skip redundant DOM writes
+  _anglePinBtn._wasReady = ready;
+  _anglePinBtn.classList.toggle('disabled', !ready);
+}
+if(_anglePinBtn){
+  _anglePinBtn.addEventListener('click', () => {
+    if(!S.sensorLive){
+      showAnglePinToast('Motion sensor not active', null);
+      return;
+    }
+    saveAnglePin({
+      pitch: S.pitch,
+      roll:  S.roll,
+      peakAngle: Math.max(Math.abs(S.pitch), Math.abs(S.roll)),
+      capturedAt: Date.now(),
+      auto: false
+    });
+    // Update lastSavedAt so an auto-pin doesn't fire seconds later for the same moment
+    ANGLE_PIN.lastSavedAt = Date.now();
+  });
+}
 
 /* ─── COMPASS ────────────────────────────────────────────────
    Stationary heading from device orientation sensor (uses webkitCompassHeading
@@ -3649,7 +4594,175 @@ function renderWx(data,ageMs){
     n.textContent=`Last updated ${Math.round(ageMs/60000)} min ago`;
     scr.appendChild(n);
   }
+  // Re-render the expanded panel if it's also showing the data (cheap since
+  // it just rebuilds the same DOM with a different layout).
+  renderWxPanel(data, ageMs, si);
+  // Re-evaluate ambient alerts whenever fresh weather arrives — a new
+  // forecast could activate or clear the weather hazard pulse without
+  // waiting for the next 30s daylight tick.
+  try { evaluateAlerts(); } catch(_){}
 }
+
+/* ─── EXPANDED WEATHER PANEL ──────────────────────────────────
+   A bottom-sheet style panel showing the same hourly data as the strip
+   but with bigger cards. Triggered by tapping or swiping up the strip. */
+function renderWxPanel(data, ageMs, si){
+  const el = document.getElementById('wxPanelHourly');
+  if(!el) return;
+  // Top meta block
+  document.getElementById('wxpNow').textContent = c2d(data.hourly.temperature_2m[si]);
+  if(data.hourly.apparent_temperature && Number.isFinite(data.hourly.apparent_temperature[si])){
+    document.getElementById('wxpFeels').textContent = c2d(data.hourly.apparent_temperature[si]);
+  } else {
+    document.getElementById('wxpFeels').textContent = '—';
+  }
+  if(data.hourly.uv_index && Number.isFinite(data.hourly.uv_index[si])){
+    document.getElementById('wxpUV').textContent = Math.round(data.hourly.uv_index[si]);
+  } else {
+    document.getElementById('wxpUV').textContent = '—';
+  }
+  if(data.daily?.sunset?.[0]){
+    document.getElementById('wxpSunset').textContent = fmtT(new Date(data.daily.sunset[0]));
+  }
+  // Hourly list — show 24h instead of 12h since the panel can scroll
+  el.innerHTML = '';
+  const times = data.hourly.time;
+  const cnt = Math.min(24, times.length - si);
+  for(let i = 0; i < cnt; i++){
+    const idx = si + i;
+    const t = new Date(times[idx]);
+    const tc = data.hourly.temperature_2m[idx];
+    const pr = data.hourly.precipitation_probability[idx];
+    const wd = Math.round(data.hourly.windspeed_10m[idx]);
+    const wdir = data.hourly.winddirection_10m?.[idx];
+    const cd = data.hourly.weathercode[idx];
+    const card = document.createElement('div');
+    card.className = 'wxBigCard';
+    if(i === 0) card.classList.add('cur');
+    if(tc <= 1 || (tc <= 4 && pr > 30)) card.classList.add('dw');
+    else if(pr > 50 || cd >= 80) card.classList.add('ww');
+    let precipRow = '';
+    if(pr >= 10){
+      let icon = '💧';
+      if(cd >= 71 && cd <= 77) icon = '❄️';
+      else if(cd === 85 || cd === 86) icon = '❄️';
+      else if(cd === 66 || cd === 67) icon = '🌨️';
+      precipRow = `<div class="wxBigDetailRow"><span class="lbl">Precip</span><span class="val">${icon} ${pr}%</span></div>`;
+    }
+    const windDir = (wdir != null) ? ` ${btoc(wdir)}` : '';
+    card.innerHTML = `
+      <div class="wxBigTime">${fmtT(t)}</div>
+      <div class="wxBigIco">${wxIcon(cd)}</div>
+      <div class="wxBigTemp">${c2d(tc)}</div>
+      <div class="wxBigDetails">
+        <div class="wxBigDetailRow"><span class="lbl">Wind</span><span class="val">${wd} mph${windDir}</span></div>
+        ${precipRow}
+      </div>
+    `;
+    el.appendChild(card);
+  }
+}
+
+/* ─── WEATHER PANEL OPEN/CLOSE ──────────────────────────────── */
+const wxPanel = document.getElementById('wxPanel');
+function openWxPanel(){
+  // If we have data, render it now. Otherwise show a placeholder so the
+  // panel doesn't look broken with empty cards and "—" everywhere.
+  if(S.weather){
+    // Find the current hour index again (renderWx computes this; we recompute here).
+    const now = new Date();
+    const times = S.weather.hourly.time;
+    let si = 0;
+    for(let i = 0; i < times.length; i++){
+      const t = new Date(times[i]);
+      if(t.getHours() === now.getHours() && t.toDateString() === now.toDateString()){ si = i; break; }
+    }
+    const ageMs = Date.now() - (S.wxTs || Date.now());
+    renderWxPanel(S.weather, ageMs, si);
+  } else {
+    // No data yet — typically because GPS hasn't locked. Fill with a clear
+    // explanation instead of the blank "—" state.
+    const meta = ['wxpNow','wxpFeels','wxpUV','wxpSunset'];
+    meta.forEach(id => {
+      const el = document.getElementById(id);
+      if(el) el.textContent = '—';
+    });
+    const hourly = document.getElementById('wxPanelHourly');
+    if(hourly){
+      const reason = (S.lat == null) ? 'Waiting for GPS location' : 'Loading weather data';
+      hourly.innerHTML = `
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;
+                    padding:40px 20px;text-align:center;color:var(--txt3);
+                    font-family:var(--fm);font-size:13px;line-height:1.6">
+          <div style="font-size:32px;margin-bottom:12px;opacity:.6">🌤️</div>
+          <div>${reason}…</div>
+          <div style="font-size:11px;margin-top:8px;color:var(--txt3);opacity:.7">
+            Live weather populates automatically once we know where you are.
+          </div>
+        </div>`;
+    }
+  }
+  wxPanel.classList.add('show');
+}
+function closeWxPanel(){
+  wxPanel.classList.remove('show');
+}
+// Tap on the weather strip → open panel. Tap on close button or backdrop → close.
+// We DON'T use a plain click handler here — that fires too eagerly and would
+// open the panel on every tap that happens to be on the strip during a
+// horizontal scroll. Instead, we track touch start/end and only treat
+// short, low-movement taps as "open" intent. Horizontal swipes (scrolling
+// the hourly cards) and accidental drags don't trigger.
+let _wxSwipeStartY = null;
+let _wxSwipeStartX = null;
+let _wxSwipeStartT = 0;
+document.getElementById('wx').addEventListener('touchstart', e => {
+  _wxSwipeStartY = e.touches[0].clientY;
+  _wxSwipeStartX = e.touches[0].clientX;
+  _wxSwipeStartT = Date.now();
+}, {passive: true});
+document.getElementById('wx').addEventListener('touchend', e => {
+  if(_wxSwipeStartY == null) return;
+  const dy = e.changedTouches[0].clientY - _wxSwipeStartY;
+  const dx = e.changedTouches[0].clientX - _wxSwipeStartX;
+  const dt = Date.now() - _wxSwipeStartT;
+  _wxSwipeStartY = null;
+  _wxSwipeStartX = null;
+  // Upward swipe (>40px vertical, mostly vertical) → open panel
+  if(dy < -40 && Math.abs(dy) > Math.abs(dx)){
+    openWxPanel();
+    return;
+  }
+  // Pure tap (small movement, quick) → open panel.
+  // Threshold: <10px movement in any direction, <300ms duration.
+  // This filters out accidental drags from horizontal scrolling.
+  if(Math.abs(dy) < 10 && Math.abs(dx) < 10 && dt < 300){
+    openWxPanel();
+  }
+}, {passive: true});
+
+// Mouse fallback for desktop testing — simple click since there's no scroll
+// gesture to confuse with a tap.
+document.getElementById('wx').addEventListener('click', e => {
+  // Only fire for non-touch (mouse) — touch events also synthesize click,
+  // but our touchend handler above covered that path. detail===0 indicates
+  // synthetic click; detail>0 is a real mouse click.
+  if(e.detail > 0) openWxPanel();
+});
+document.getElementById('wxPanelClose').addEventListener('click', closeWxPanel);
+document.getElementById('wxPanelHandle').addEventListener('click', closeWxPanel);
+
+// Swipe-down on the panel → close
+let _wxPanelSwipeStartY = null;
+document.getElementById('wxPanelHandle').addEventListener('touchstart', e => {
+  _wxPanelSwipeStartY = e.touches[0].clientY;
+}, {passive: true});
+document.getElementById('wxPanelHandle').addEventListener('touchend', e => {
+  if(_wxPanelSwipeStartY == null) return;
+  const dy = e.changedTouches[0].clientY - _wxPanelSwipeStartY;
+  _wxPanelSwipeStartY = null;
+  if(dy > 40) closeWxPanel();
+}, {passive: true});
 function fmtT(d){let h=d.getHours();const m=d.getMinutes(),ap=h>=12?'pm':'am';h=h%12||12;return`${h}${m>0?':'+String(m).padStart(2,'0'):''}${ap}`;}
 
 function tick(){const n=new Date();let h=n.getHours();const m=String(n.getMinutes()).padStart(2,'0'),ap=h>=12?'PM':'AM';h=h%12||12;document.getElementById('ctime').textContent=`${h}:${m} ${ap}`;}
@@ -3712,9 +4825,17 @@ function updateDaylight(){
   el.style.display='inline-flex';
   el.style.color=color;
   el.innerHTML = `${label} ${txt}`;
+  // After updating the visible countdown, evaluate whether we should fire
+  // the ambient sunset alert. The alert system is defined further down the
+  // file, so on the very first synchronous run of updateDaylight() the
+  // ALERTS const hasn't been initialized yet (temporal dead zone). Wrap
+  // in try/catch so the first call is a silent no-op; subsequent ticks
+  // (via setInterval) run after initialization and work normally.
+  try { evaluateAlerts(); } catch(_){}
 }
 updateDaylight();
 setInterval(updateDaylight, 30000);
+
 
 // Settings persistence — single key holds all user preferences as JSON.
 // Doesn't include trip data, mode toggle (already persisted), or weather cache.
@@ -3790,6 +4911,388 @@ document.getElementById('wlTgl').addEventListener('change',async e=>{
   else if(S.wakeLock){await S.wakeLock.release();S.wakeLock=null;}
   saveSettings();
 });
+
+// Angle pin settings — sync the controls to the ANGLE_PIN state on load,
+// then write back on change. ANGLE_PIN is loaded from localStorage above
+// in its own _v1 key, separate from the main settings object.
+(function initAnglePinControls(){
+  const tgl = document.getElementById('anglePinAutoTgl');
+  const thr = document.getElementById('anglePinThrSlider');
+  const thrV = document.getElementById('anglePinThrVal');
+  const cd = document.getElementById('anglePinCdSlider');
+  const cdV = document.getElementById('anglePinCdVal');
+  if(!tgl || !thr || !cd) return;
+  // Initial sync from state
+  tgl.checked = ANGLE_PIN.enabled;
+  thr.value = ANGLE_PIN.thresholdDeg;
+  thrV.textContent = ANGLE_PIN.thresholdDeg + '°';
+  cd.value = ANGLE_PIN.cooldownSec;
+  cdV.textContent = ANGLE_PIN.cooldownSec + 's';
+  // Wire change handlers
+  tgl.addEventListener('change', () => {
+    ANGLE_PIN.enabled = tgl.checked;
+    saveAnglePinSettings();
+  });
+  thr.addEventListener('input', () => {
+    ANGLE_PIN.thresholdDeg = parseInt(thr.value, 10);
+    thrV.textContent = ANGLE_PIN.thresholdDeg + '°';
+    saveAnglePinSettings();
+  });
+  cd.addEventListener('input', () => {
+    ANGLE_PIN.cooldownSec = parseInt(cd.value, 10);
+    cdV.textContent = ANGLE_PIN.cooldownSec + 's';
+    saveAnglePinSettings();
+  });
+})();
+
+/* ─── AMBIENT ALERT SYSTEM ──────────────────────────────────────
+   The full-screen ambient pulse fires when conditions warrant a
+   safety-relevant heads-up:
+     - Inclement weather is within 3 hours (red by default)
+     - Sunset is approaching (yellow by default, lead time user-configured)
+   The pulse never blocks UI — pointer-events:none on the overlay. Users
+   can also opt into a gentle haptic buzz that pairs with the visual.
+   A Driving/DnD mode dims everything to "background awareness" level.
+   All preferences persist to localStorage under tg_alerts_v1. */
+const ALERT_KEY = 'tg_alerts_v1';
+const ALERT_COLORS = {
+  red:    {r:239, g:68,  b:68},
+  yellow: {r:234, g:179, b:8 },
+  green:  {r:61,  g:220, b:151},
+  blue:   {r:59,  g:130, b:246},
+  purple: {r:168, g:85,  b:247}
+};
+
+const ALERTS = {
+  pulseEnabled:   true,
+  vibrateEnabled: false,  // off by default — opt-in haptic
+  dndMode:        false,
+  sunsetEnabled:  true,
+  weatherEnabled: true,
+  sunsetLeadMin:  30,
+  sunsetColor:    'yellow',
+  weatherColor:   'red',
+  // Runtime state — not persisted
+  _activeSource:  null,   // 'weather' | 'sunset' | null
+  _lastVibrateAt: 0
+};
+
+// Load any previously-saved settings
+try {
+  const raw = localStorage.getItem(ALERT_KEY);
+  if(raw){
+    const s = JSON.parse(raw);
+    for(const k of ['pulseEnabled','vibrateEnabled','dndMode','sunsetEnabled','weatherEnabled']){
+      if(typeof s[k] === 'boolean') ALERTS[k] = s[k];
+    }
+    if(typeof s.sunsetLeadMin === 'number' && s.sunsetLeadMin >= 5 && s.sunsetLeadMin <= 90){
+      ALERTS.sunsetLeadMin = s.sunsetLeadMin;
+    }
+    if(s.sunsetColor  && ALERT_COLORS[s.sunsetColor])  ALERTS.sunsetColor  = s.sunsetColor;
+    if(s.weatherColor && ALERT_COLORS[s.weatherColor]) ALERTS.weatherColor = s.weatherColor;
+  }
+} catch(_){}
+
+function saveAlertSettings(){
+  try {
+    localStorage.setItem(ALERT_KEY, JSON.stringify({
+      pulseEnabled: ALERTS.pulseEnabled,
+      vibrateEnabled: ALERTS.vibrateEnabled,
+      dndMode: ALERTS.dndMode,
+      sunsetEnabled: ALERTS.sunsetEnabled,
+      weatherEnabled: ALERTS.weatherEnabled,
+      sunsetLeadMin: ALERTS.sunsetLeadMin,
+      sunsetColor: ALERTS.sunsetColor,
+      weatherColor: ALERTS.weatherColor
+    }));
+  } catch(_){}
+}
+
+const _pulseEl = document.getElementById('ambientPulse');
+
+// Show or hide the pulse overlay with a given color.
+// source identifies what triggered it (used to avoid restarting the CSS
+// animation when an already-active alert is re-evaluated).
+function setAmbient(source, colorName){
+  if(!_pulseEl) return;
+  if(!source || !ALERTS.pulseEnabled){
+    _pulseEl.classList.remove('show','dnd');
+    ALERTS._activeSource = null;
+    return;
+  }
+  if(ALERTS._activeSource === source && _pulseEl.classList.contains('show')){
+    // Already showing this exact source — update DnD class only, leave anim alone
+    _pulseEl.classList.toggle('dnd', !!ALERTS.dndMode);
+    return;
+  }
+  const c = ALERT_COLORS[colorName] || ALERT_COLORS.red;
+  _pulseEl.style.setProperty('--pulseR', c.r);
+  _pulseEl.style.setProperty('--pulseG', c.g);
+  _pulseEl.style.setProperty('--pulseB', c.b);
+  _pulseEl.classList.add('show');
+  _pulseEl.classList.toggle('dnd', !!ALERTS.dndMode);
+  ALERTS._activeSource = source;
+}
+
+// Gentle haptic — two slow taps. Tuned for "safety nudge" rather than
+// "emergency strobe" so a driver isn't startled. Called explicitly by
+// the alert evaluator when transitions warrant haptics — NOT on every
+// evaluation tick (otherwise a 30-min sunset window = 30+ buzzes).
+function ambientVibrate(){
+  if(!ALERTS.vibrateEnabled || ALERTS.dndMode) return;
+  if(navigator.vibrate){
+    try { navigator.vibrate([200, 80, 200]); } catch(_){}
+  }
+  ALERTS._lastVibrateAt = Date.now();
+}
+
+// Check if hazardous weather is in the next 3 hours
+function checkWeatherHazard(){
+  if(!ALERTS.weatherEnabled || !S.weather || !S.weather.hourly) return false;
+  const now = new Date();
+  const times = S.weather.hourly.time;
+  let si = 0;
+  for(let i = 0; i < times.length; i++){
+    const t = new Date(times[i]);
+    if(t.getHours() === now.getHours() && t.toDateString() === now.toDateString()){ si = i; break; }
+  }
+  const horizon = Math.min(3, times.length - si);
+  for(let i = 0; i < horizon; i++){
+    const idx = si + i;
+    const pr = S.weather.hourly.precipitation_probability?.[idx] ?? 0;
+    const cd = S.weather.hourly.weathercode?.[idx] ?? 0;
+    // Open-Meteo weather codes:
+    //   71-77: snow variants
+    //   80-82: rain showers
+    //   95-99: thunderstorm variants
+    const isStorm = (cd >= 95) || (cd >= 71 && cd <= 77) || (cd >= 80 && cd <= 82);
+    if(pr >= 60 || isStorm) return true;
+  }
+  return false;
+}
+
+// Check if we're inside the user's sunset warning window
+function checkSunsetAlert(){
+  if(!ALERTS.sunsetEnabled || !S.sunsets) return false;
+  const now = new Date();
+  let nextSunset = null;
+  for(let i = 0; i < S.sunsets.length; i++){
+    if(S.sunsets[i] > now){ nextSunset = S.sunsets[i]; break; }
+  }
+  if(!nextSunset) return false;
+  const minsUntil = (nextSunset - now) / 60_000;
+  return (minsUntil > 0 && minsUntil <= ALERTS.sunsetLeadMin);
+}
+
+// Main evaluator — called every 30s from updateDaylight + on weather refresh.
+// Weather hazards win over sunset (more urgent).
+// Vibration strategy:
+//   - Buzz ONCE when entering a new alert state (none → weather, none → sunset)
+//   - Buzz ONCE when switching alert types (sunset → weather, weather → sunset)
+//   - For sustained alerts, buzz again every 5 minutes as a reminder
+//   - Source-change buzzes are gated on a 30s minimum gap so rapid toggling
+//     of the Pulse master switch can't buzz the user repeatedly
+//   - Don't buzz on every 30s evaluation tick (would mean 60+ buzzes per hour)
+function evaluateAlerts(){
+  if(!ALERTS.pulseEnabled){ setAmbient(null); return; }
+  let newSource = null;
+  let newColor = null;
+  if(checkWeatherHazard()){
+    newSource = 'weather';
+    newColor = ALERTS.weatherColor;
+  } else if(checkSunsetAlert()){
+    newSource = 'sunset';
+    newColor = ALERTS.sunsetColor;
+  }
+  // Decide whether to vibrate BEFORE updating state. Vibrate on:
+  //   (a) source changed AND at least 30s since last buzz (transition)
+  //   (b) same source still active, but 5+ minutes since last vibrate (reminder)
+  const sinceLast = Date.now() - (ALERTS._lastVibrateAt || 0);
+  const sourceChanged = newSource &&
+                        newSource !== ALERTS._activeSource &&
+                        sinceLast >= 30_000;
+  const shouldReminderBuzz = newSource &&
+                             newSource === ALERTS._activeSource &&
+                             sinceLast >= 5 * 60_000;
+  if(sourceChanged || shouldReminderBuzz){
+    ambientVibrate();
+  }
+  // Update visual state
+  if(newSource){
+    setAmbient(newSource, newColor);
+  } else {
+    setAmbient(null);
+  }
+}
+
+// Settings controls — wire each input to its ALERTS state slot
+(function initAlertControls(){
+  const tgls = {
+    alPulseTgl: 'pulseEnabled',
+    alVibTgl:   'vibrateEnabled',
+    alDndTgl:   'dndMode',
+    alSunTgl:   'sunsetEnabled',
+    alWxTgl:    'weatherEnabled'
+  };
+  for(const [id, key] of Object.entries(tgls)){
+    const el = document.getElementById(id);
+    if(!el) continue;
+    el.checked = ALERTS[key];
+    el.addEventListener('change', () => {
+      ALERTS[key] = el.checked;
+      saveAlertSettings();
+      evaluateAlerts();
+    });
+  }
+  const slider = document.getElementById('alSunMinSlider');
+  const sliderVal = document.getElementById('alSunMinVal');
+  if(slider && sliderVal){
+    slider.value = ALERTS.sunsetLeadMin;
+    sliderVal.textContent = ALERTS.sunsetLeadMin + 'm';
+    slider.addEventListener('input', () => {
+      ALERTS.sunsetLeadMin = parseInt(slider.value, 10);
+      sliderVal.textContent = ALERTS.sunsetLeadMin + 'm';
+      saveAlertSettings();
+      evaluateAlerts();
+    });
+  }
+  // Color pickers — sync initial active state then wire taps
+  document.querySelectorAll('.colorPicker').forEach(picker => {
+    const target = picker.dataset.target;  // 'sunsetColor' | 'weatherColor'
+    const current = ALERTS[target];
+    picker.querySelectorAll('.colorSwatch').forEach(sw => {
+      sw.classList.toggle('active', sw.dataset.color === current);
+      sw.addEventListener('click', () => {
+        ALERTS[target] = sw.dataset.color;
+        picker.querySelectorAll('.colorSwatch').forEach(s => s.classList.remove('active'));
+        sw.classList.add('active');
+        saveAlertSettings();
+        // Force the pulse to pick up the new color without re-triggering a
+        // vibration buzz (the user is interacting with settings, not
+        // entering a new alert state).
+        if(ALERTS._activeSource){
+          // Re-apply the active alert with the new color directly. Bypass
+          // evaluateAlerts so the vibration logic doesn't fire.
+          const src = ALERTS._activeSource;
+          ALERTS._activeSource = null;
+          const newColor = (src === 'weather') ? ALERTS.weatherColor : ALERTS.sunsetColor;
+          setAmbient(src, newColor);
+        } else {
+          // No active alert — normal evaluation in case conditions changed
+          evaluateAlerts();
+        }
+      });
+    });
+  });
+})();
+
+/* ─── USER FEEDBACK MODAL ──────────────────────────────────────
+   Opens from settings → "Send Feedback". Submits to the configured
+   endpoint if set; otherwise falls back to a mailto link. The mailto
+   path always works (no signup needed); when you're ready to wire up
+   Formspree or similar, just paste the endpoint URL into FEEDBACK_ENDPOINT
+   below and submissions will start landing in your dashboard.
+
+   To set up Formspree later:
+     1. Sign up at formspree.io (free tier: ~50/month)
+     2. Create a new form, copy the endpoint (e.g. https://formspree.io/f/xyz123)
+     3. Paste below
+   Until then, leave as empty string — feedback goes through mailto. */
+const FEEDBACK_ENDPOINT = '';   // <- paste Formspree URL here when ready
+const FEEDBACK_MAILTO   = 'TrailGaugeOffRoad@gmail.com';   // dedicated feedback inbox
+
+const fbp = document.getElementById('fbp');
+function openFeedback(){
+  fbp.classList.add('open');
+  document.getElementById('fbStatus').textContent = '';
+  document.getElementById('fbStatus').className = '';
+  // Pre-fill nothing — let user write what they want
+}
+function closeFeedback(){
+  fbp.classList.remove('open');
+}
+document.getElementById('fbOpenBtn')?.addEventListener('click', openFeedback);
+document.getElementById('fbCancel').addEventListener('click', closeFeedback);
+// Backdrop close (tap outside the sheet)
+fbp.addEventListener('click', e => { if(e.target === fbp) closeFeedback(); });
+
+document.getElementById('fbSend').addEventListener('click', async () => {
+  const btn = document.getElementById('fbSend');
+  const body = document.getElementById('fbBody').value.trim();
+  const category = document.getElementById('fbCategory').value;
+  const status = document.getElementById('fbStatus');
+  if(!body){
+    status.textContent = 'Please type a message first.';
+    status.className = 'error';
+    return;
+  }
+  // Build metadata that's useful for triaging bugs (browser, app version,
+  // current screen size). No personal data, no GPS coords.
+  const meta = {
+    category,
+    body,
+    ua: navigator.userAgent,
+    screen: `${window.innerWidth}x${window.innerHeight}`,
+    profile: localStorage.getItem('tg_mode') || 'unknown',
+    timestamp: new Date().toISOString()
+  };
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+  status.textContent = '';
+  status.className = '';
+  try {
+    if(FEEDBACK_ENDPOINT){
+      // POST to Formspree-style endpoint
+      const res = await fetch(FEEDBACK_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify(meta)
+      });
+      if(!res.ok) throw new Error('HTTP ' + res.status);
+      status.textContent = '✓ Thanks — feedback sent!';
+      status.className = 'success';
+      document.getElementById('fbBody').value = '';
+      setTimeout(closeFeedback, 1500);
+    } else {
+      // Mailto fallback — open the user's email app with a pre-filled message.
+      // We use a temporary anchor element with .click() rather than
+      // window.location.href = 'mailto:...'. The anchor approach is more
+      // reliable in iOS PWAs (standalone display mode) where navigating the
+      // top-level location can have unpredictable behavior. The anchor
+      // delegates to iOS's URL handling which knows how to launch Mail.app
+      // without disturbing the PWA's state.
+      const subj = encodeURIComponent(`TrailGauge Feedback (${category})`);
+      const bodyText = encodeURIComponent(
+        `${body}\n\n` +
+        `---\nCategory: ${category}\n` +
+        `Device: ${meta.ua}\n` +
+        `Screen: ${meta.screen}\n` +
+        `Profile: ${meta.profile}\n` +
+        `Sent: ${meta.timestamp}\n`
+      );
+      const mailtoUrl = `mailto:${FEEDBACK_MAILTO}?subject=${subj}&body=${bodyText}`;
+      const tempLink = document.createElement('a');
+      tempLink.href = mailtoUrl;
+      tempLink.rel = 'noopener';
+      // We don't append the link to the DOM — modern browsers allow click()
+      // on detached anchors, which avoids polluting the document.
+      tempLink.click();
+      status.textContent = 'Opening your email app — tap Send there to deliver.';
+      status.className = 'success';
+      // DO NOT clear the textarea here. The user might cancel out of Mail.app,
+      // and they'd lose their carefully-typed message. Leave the form filled
+      // so they can retry. Modal stays open too — user closes manually.
+    }
+  } catch(err){
+    console.warn('Feedback send failed:', err);
+    status.textContent = 'Could not send — please try again, or email directly: ' + FEEDBACK_MAILTO;
+    status.className = 'error';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Send';
+  }
+});
+
 
 async function reqWL(){
   if('wakeLock' in navigator)
@@ -3979,7 +5482,7 @@ function tripStart(){
   // Don't seed with a synthesized point. The first real GPS fix from
   // navigator.geolocation.watchPosition will become the start point in
   // tripIngestFix. This avoids inflating distance if S.lat/S.lon is stale.
-  tripBtn.textContent='⏹ STOP TRIP';
+  tripBtn.innerHTML='⏹<br><span class="actBtnSub">STOP TRIP</span>';
   tripBtn.classList.add('rec');
   tripLive.classList.add('show');
   document.getElementById('tripPauseBtn').style.display = '';
@@ -4043,7 +5546,7 @@ function tripStop(){
 }
 
 function tripReset(){
-  tripBtn.textContent='▶ START TRIP';
+  tripBtn.innerHTML='▶<br><span class="actBtnSub">START TRIP</span>';
   tripBtn.classList.remove('rec');
   tripBtn.classList.remove('paused');
   tripLive.classList.remove('show');
@@ -4056,9 +5559,11 @@ function tripReset(){
   TRIP.pausedTotalMs=0;
 }
 
-// Tap the live banner to scroll the trip controls into view
+// Tap the live banner to scroll the trip controls into view. Targets the
+// action bar (which now hosts the START/STOP TRIP button) since the old
+// #tripbar wrapper was retired in the v20.x command-bar redesign.
 document.getElementById('liveBanner').addEventListener('click', () => {
-  const tb = document.getElementById('tripbar');
+  const tb = document.getElementById('actionBar');
   if(tb) tb.scrollIntoView({behavior:'smooth', block:'center'});
 });
 
@@ -4432,8 +5937,6 @@ async function renderTripsList(){
   }
 }
 
-function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-
 /* ─── TRIP DETAIL ────────────────────────────────────────── */
 const tdp=document.getElementById('tdp');
 let _currentTrip=null;
@@ -4719,7 +6222,7 @@ document.getElementById('tdShareCard').addEventListener('click', async () => {
   try {
     const blob = await renderTripShareCard(_currentTrip);
     if(!blob){ alert('Could not generate the share card.'); return; }
-    const file = new File([blob], `${_currentTrip.name || 'trip'}.png`, { type: 'image/png' });
+    const file = new File([blob], `${safeFilename(_currentTrip.name, 'trip')}.png`, { type: 'image/png' });
     if(navigator.canShare && navigator.canShare({ files: [file] })){
       try {
         await navigator.share({
@@ -4862,7 +6365,7 @@ setInterval(()=>{if(S.wxTs)setWDot((Date.now()-S.wxTs)>S.wxStale?'stale':'cached
     TRIP.paused = false;
     TRIP.pausedAt = 0;
     // Visual state: show recording UI
-    tripBtn.textContent='⏹ STOP TRIP';
+    tripBtn.innerHTML='⏹<br><span class="actBtnSub">STOP TRIP</span>';
     tripBtn.classList.add('rec');
     tripLive.classList.add('show');
     document.getElementById('tripPauseBtn').style.display = '';
