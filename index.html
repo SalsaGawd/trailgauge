@@ -96,6 +96,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 #fbStatus.error{color:var(--danger)}
 
 
+#app{display:flex;flex-direction:column;height:100%;overflow:hidden;
   padding-top:var(--st);padding-bottom:var(--sb);background:var(--bg);
   transition:background var(--tr),color var(--tr);animation:fadeUp .4s ease both}
 @keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
@@ -2953,6 +2954,7 @@ async function openPinList(){
   document.getElementById('plCount').textContent = pins.length ? `${pins.length} pin${pins.length===1?'':'s'}` : '';
   renderPinRows(pins, list, empty);
   plp.classList.add('open');
+  setTimeout(() => showCoachmark('pinsList'), 350);
 }
 
 function renderPinRows(pins, list, empty){
@@ -4975,6 +4977,7 @@ function openWxPanel(){
     }
   }
   wxPanel.classList.add('show');
+  setTimeout(() => showCoachmark('wxPanel'), 400);
 }
 function closeWxPanel(){
   wxPanel.classList.remove('show');
@@ -5251,6 +5254,30 @@ const CM_DEFS = {
     // modal — so the modal being open is required, not blocking. Tell the
     // engine to ignore the pin save modal when checking for blockers.
     allowedModals: ['pnsp']
+  },
+  wxPanel: {
+    icon: '☁️',
+    title: 'Hourly Weather',
+    body: 'Swipe up or tap the weather strip anytime for hourly conditions — temperature, wind, precipitation, UV index, and sunrise / sunset.',
+    target: () => document.getElementById('wxPanelTitle'),
+    arrow: 'up',
+    allowedModals: ['wxPanel']
+  },
+  pinsList: {
+    icon: '📍',
+    title: 'Saved Pins',
+    body: 'Angle moments, summit spots, or any GPS waypoint — tap a pin to view details, share a card, or open the map. Organize with <b>folders</b>.',
+    target: () => document.querySelector('#plsh .mtl'),
+    arrow: 'up',
+    allowedModals: ['plp']
+  },
+  folders: {
+    icon: '📁',
+    title: 'Pin Folders',
+    body: 'Create folders to organize pins by trail, trip, or category. Tap a folder name to filter the list, or rename and delete anytime.',
+    target: () => document.getElementById('flCreateBtn'),
+    arrow: 'up',
+    allowedModals: ['flp']
   }
 };
 
@@ -5293,7 +5320,7 @@ function showCoachmark(id, opts){
   // Coachmarks can opt-in to specific modals via the allowedModals array
   // when the hint specifically targets something INSIDE a modal.
   const allowedModals = def.allowedModals || [];
-  const blockingModals = ['rcp','onb','pnsp','plp','tlp','tdp','stp','fbp','wxPanel'];
+  const blockingModals = ['rcp','onb','pnsp','plp','tlp','tdp','stp','fbp','wxPanel','flp'];
   for(const modalId of blockingModals){
     if(allowedModals.includes(modalId)) continue;
     const m = document.getElementById(modalId);
@@ -5963,6 +5990,8 @@ function checkElevationMilestones(){
         ELEV_STATE.summitFired = true;
         showElevToast(ELEV_STATE.summitPeakFt, true);
       }
+    } else {
+      ELEV_STATE.summitBuffer = 0;
     }
   }
 }
@@ -7047,6 +7076,7 @@ const flp = document.getElementById('flp');
 async function openFolderPanel(){
   await renderFolderList();
   flp.classList.add('open');
+  setTimeout(() => showCoachmark('folders'), 350);
 }
 
 async function renderFolderList(){
@@ -7090,6 +7120,7 @@ async function renderFolderList(){
         return pinPut(p);
       }));
       await folderDelete(f.id);
+      if(_pinFolderFilter === f.id) _pinFolderFilter = null;
       await renderFolderList();
     });
     // Tap folder name → filter pin list by this folder
