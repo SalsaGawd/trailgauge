@@ -128,14 +128,43 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 .ibtn:active{transform:scale(.92)}
 .ibtn.on{border-color:var(--accent);color:var(--accent)}
 
+/* Battery chip — informational only, no tap target. Shows phone battery
+   percentage with a context icon and color. Only Android Chrome/Edge
+   expose navigator.getBattery() as of late 2025; iOS Safari does not,
+   so this chip stays hidden on iPhone (display:none in HTML default).
+   The JS layer flips it to flex when the API resolves with a battery
+   manager instance. */
+.battChip{display:flex;align-items:center;gap:4px;padding:0 8px;
+  height:30px;background:var(--card);border:1px solid var(--border);
+  border-radius:8px;font-family:var(--fm);font-size:11px;font-weight:600;
+  color:var(--txt2);flex-shrink:0;letter-spacing:.5px;
+  -webkit-tap-highlight-color:transparent;cursor:default;
+  transition:all var(--tr)}
+.battChip .battIcon{font-size:12px;line-height:1}
+.battChip.warn{color:var(--warn);border-color:var(--warn)}
+.battChip.crit{color:var(--danger);border-color:var(--danger);
+  /* Critical battery (≤15%): subtle pulse so it draws attention without
+     spamming. 2.4s gentle cycle. Slow enough to read as "informational
+     warning" not "emergency strobe". */
+  animation:battPulse 2.4s ease-in-out infinite}
+.battChip.charging{color:var(--accent);border-color:var(--accent)}
+@keyframes battPulse{
+  0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,0)}
+  50%   {box-shadow:0 0 8px rgba(239,68,68,.55)}
+}
+
 /* iPhone SE / small Android: hide the subtitle entirely — the brand alone
-   communicates identity, and the 5 control buttons need every pixel. */
+   communicates identity, and the 5 control buttons need every pixel.
+   Battery chip also hides on narrow screens to keep the action button row
+   from overflowing — users on iPhone don't have battery API support
+   anyway, so this is mostly a defensive guard for narrow Android. */
 @media (max-width:380px){
   #hdr{padding:8px 10px;padding-top:max(8px, env(safe-area-inset-top, 0px));gap:6px}
   .sub{display:none}
   .brand{font-size:17px;letter-spacing:.5px}
   #hctl{gap:5px}
   .ibtn{width:30px;height:30px;font-size:13px;border-radius:7px}
+  .battChip{display:none !important}
 }
 /* Even narrower (iPhone SE 1st gen at 320px): squeeze further. The header
    becomes just the brand mark on the left + 5 compact buttons on the right. */
@@ -472,17 +501,15 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
   align-items:stretch;gap:18px;height:100%;justify-content:center}
 #onbCards{position:relative;width:100%;flex:1;max-height:520px;overflow:hidden}
 /* Inner track holds all four cards side-by-side. The cards container
-   above is the viewport; this track is what slides. Width 600% so each
-   card can claim a real 100% of the viewport via flex-basis 1/6. */
-#onbTrack{display:flex;width:600%;height:100%;
+   above is the viewport; this track is what slides. Width 400% so each
+   card can claim a real 100% of the viewport via flex-basis 25%. */
+#onbTrack{display:flex;width:400%;height:100%;
   transition:transform .35s cubic-bezier(.34,1.2,.64,1)}
 #onbTrack.onb-pos-0{transform:translateX(0)}
-#onbTrack.onb-pos-1{transform:translateX(-16.6667%)}
-#onbTrack.onb-pos-2{transform:translateX(-33.3333%)}
-#onbTrack.onb-pos-3{transform:translateX(-50%)}
-#onbTrack.onb-pos-4{transform:translateX(-66.6667%)}
-#onbTrack.onb-pos-5{transform:translateX(-83.3333%)}
-.onbCard{flex:0 0 16.6667%;width:16.6667%;display:flex;flex-direction:column;align-items:center;
+#onbTrack.onb-pos-1{transform:translateX(-25%)}
+#onbTrack.onb-pos-2{transform:translateX(-50%)}
+#onbTrack.onb-pos-3{transform:translateX(-75%)}
+.onbCard{flex:0 0 25%;width:25%;display:flex;flex-direction:column;align-items:center;
   text-align:center;padding:30px 18px;background:var(--card);
   border:1px solid var(--border);border-radius:18px;justify-content:center;
   overflow-y:auto;-webkit-overflow-scrolling:touch;box-sizing:border-box}
@@ -625,41 +652,65 @@ body.prof-trail .hourcard { padding: 8px 6px; }
   font-size:18px;line-height:1;padding:2px 6px;cursor:pointer;flex-shrink:0;
   -webkit-tap-highlight-color:transparent}
 
-/* ─── "What's New" one-time toast ──────────────────────────
-   Appears once for returning users who updated to v20 and haven't yet
-   seen the angle pins + ambient alerts explainer. Full-screen backdrop
-   (semi-transparent) with a card centered, since the content needs more
-   real estate than the slim status toasts. Dismissed via the X button,
-   the CTA button, or tapping the backdrop. Marks tg_whatsnew_alerts_v1
-   on dismiss so it never reshows. */
-#whatsNewToast{position:fixed;inset:0;z-index:260;
-  background:rgba(0,0,0,.6);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
-  display:flex;align-items:center;justify-content:center;padding:20px;
-  opacity:0;transition:opacity .35s ease;
-  /* Hidden initially so the requestAnimationFrame transition trigger works
-     when we add .show after appending the element. */
+/* ─── COACHMARK SYSTEM ───────────────────────────────────────
+   Small floating bubble that points at a specific UI element to explain it
+   the first time the user encounters it. Replaces the old "What's New"
+   modal pattern — instead of front-loading everything, each feature
+   explains itself in context, exactly when the user is looking at it.
+
+   Architecture:
+     - One #coachmark div, positioned dynamically next to whatever target
+       element we're explaining. JS computes target's getBoundingClientRect
+       and positions the bubble + arrow accordingly.
+     - Persisted via tg_coachmarks_seen_v1 (JSON array of seen coachmark IDs)
+     - Auto-shows once per ID; replay via Settings → Show Hints Again
+     - Backdrop is transparent — user sees the actual target highlighted
+       and can interact with rest of UI; tapping anywhere dismisses.
+
+   Why no semi-opaque backdrop (like a modal)?
+     - We want user to keep using the app while reading. The hint is
+       additive, not blocking.
+     - On a small screen, an opaque backdrop would obscure the very thing
+       being explained.
+     - Tapping the explained button itself should both dismiss the
+       coachmark AND trigger the button (use-and-learn). */
+#coachmark{position:fixed;z-index:265;
+  background:var(--card);border:1.5px solid var(--accent);border-radius:12px;
+  padding:11px 14px;max-width:280px;
+  font-family:var(--fb);font-size:13px;line-height:1.45;color:var(--txt);
+  box-shadow:0 8px 28px rgba(0,0,0,.5),0 0 0 1px rgba(61,220,151,.18),
+             0 0 28px rgba(61,220,151,.22);
+  opacity:0;transform:scale(.92) translateY(4px);
+  transition:opacity .25s ease, transform .25s cubic-bezier(.34,1.2,.64,1);
   pointer-events:none}
-#whatsNewToast.show{opacity:1;pointer-events:auto}
-#whatsNewToast > *{background:var(--card);border:1px solid var(--accent);
-  border-radius:18px;width:100%;max-width:420px;
-  padding:18px 20px calc(18px + var(--sb));display:flex;flex-direction:column;gap:12px;
-  box-shadow:0 16px 48px rgba(0,0,0,.6),0 0 0 1px rgba(61,220,151,.18);
-  transform:translateY(20px);transition:transform .35s cubic-bezier(.34,1.2,.64,1)}
-#whatsNewToast.show > *{transform:translateY(0)}
-.wnt-hdr{display:flex;align-items:center;justify-content:space-between}
-.wnt-title{font-family:var(--fd);font-size:16px;font-weight:700;color:var(--accent);
-  letter-spacing:1.5px;text-transform:uppercase}
-.wnt-x{background:transparent;border:none;color:var(--txt3);font-size:22px;
-  line-height:1;padding:4px 8px;cursor:pointer;-webkit-tap-highlight-color:transparent}
-.wnt-body{display:flex;flex-direction:column;gap:12px;
-  font-family:var(--fm);font-size:13px;color:var(--txt);line-height:1.55}
-.wnt-row{display:flex;gap:12px;align-items:flex-start}
-.wnt-icon{font-size:22px;line-height:1.3;flex-shrink:0;width:28px;text-align:center}
-.wnt-cta{background:var(--accent);color:#000;border:none;border-radius:10px;
-  padding:11px;font-family:var(--fd);font-size:13px;font-weight:700;
-  letter-spacing:1.5px;cursor:pointer;-webkit-tap-highlight-color:transparent;
-  text-transform:uppercase;margin-top:4px}
-.wnt-cta:active{transform:scale(.97)}
+#coachmark.show{opacity:1;transform:scale(1) translateY(0);pointer-events:auto}
+#coachmark .cm-hdr{display:flex;align-items:center;gap:6px;margin-bottom:5px}
+#coachmark .cm-icon{font-size:16px;line-height:1}
+#coachmark .cm-title{font-family:var(--fd);font-size:11px;font-weight:700;
+  color:var(--accent);letter-spacing:1.5px;text-transform:uppercase}
+#coachmark .cm-body{color:var(--txt2);font-size:12px;line-height:1.5}
+#coachmark .cm-body b{color:var(--txt)}
+#coachmark .cm-foot{display:flex;justify-content:flex-end;margin-top:8px}
+#coachmark .cm-ok{background:var(--accent);color:#000;border:none;
+  border-radius:8px;padding:5px 12px;font-family:var(--fd);font-size:10px;
+  font-weight:700;letter-spacing:1px;text-transform:uppercase;cursor:pointer;
+  -webkit-tap-highlight-color:transparent}
+#coachmark .cm-ok:active{transform:scale(.95)}
+/* Triangular arrow pointing at the target element. Direction set via
+   data-arrow attribute (up/down/left/right) — positioned by JS. */
+#coachmark::after{content:"";position:absolute;width:12px;height:12px;
+  background:var(--card);border:1.5px solid var(--accent);
+  transform:rotate(45deg)}
+#coachmark[data-arrow="up"]::after{
+  top:-7px;left:50%;margin-left:-6px;border-right:none;border-bottom:none}
+#coachmark[data-arrow="down"]::after{
+  bottom:-7px;left:50%;margin-left:-6px;border-left:none;border-top:none}
+#coachmark[data-arrow="left"]::after{
+  left:-7px;top:50%;margin-top:-6px;border-right:none;border-top:none}
+#coachmark[data-arrow="right"]::after{
+  right:-7px;top:50%;margin-top:-6px;border-left:none;border-bottom:none}
+/* Hidden state — element exists in DOM at all times for snappy show */
+#coachmark.hidden{display:none}
 
 /* Trail Hero: compass rose + central readouts. Rendered only in trail mode. */
 /* Trail mode hero block — redesigned in v20.x to put location/elevation as
@@ -885,29 +936,19 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
           <div class="onbBody">A trail tool for off-road drivers and hikers. Pitch and roll readings, weather, GPS, trip recording, and saved pins — all built for the dash or the trail.</div>
         </div>
         <div class="onbCard">
-          <div class="onbHero">🚙 🥾</div>
-          <div class="onbTitle">Two Modes</div>
-          <div class="onbBody"><b>Off-Road</b> shows the inclinometer with tilt alarm and max-angle tracking.<br><br><b>Trail</b> hides the gauge and surfaces a compass, weather, and elevation as the focus.<br><br>Switch anytime in Settings.</div>
+          <div class="onbHero">🎯</div>
+          <div class="onbTitle">First: Calibrate</div>
+          <div class="onbBody">Mount your phone, then <b>hold ZERO/CALIBRATE for 1.5 seconds</b> to set your resting angle as the reference.<br><br>Re-calibrate any time you change how the phone is mounted.</div>
         </div>
         <div class="onbCard">
-          <div class="onbHero">📍</div>
-          <div class="onbTitle">Calibrate &amp; Drop Pins</div>
-          <div class="onbBody"><b>ZERO/CALIBRATE</b> sets your phone's resting angle as the reference. Always recalibrate when you change the mount.<br><br>Tap the <b>coordinates</b> at any time to drop a pin or open in maps.</div>
+          <div class="onbHero">📍 📸</div>
+          <div class="onbTitle">Pins &amp; Trips</div>
+          <div class="onbBody">Tap the <b>📍 coordinates chip</b> to drop a pin (add a photo for a shareable image card).<br><br>Hit <b>START TRIP</b> to record distance, elevation gain, and your full route — view and re-share later from the 📋 trips list.</div>
         </div>
         <div class="onbCard">
-          <div class="onbHero">📸</div>
-          <div class="onbTitle">Share Your Adventures</div>
-          <div class="onbBody">Snap a photo when you save a pin or finish a trip. TrailGauge generates a <b>shareable image card</b> with your photo, location, and stats — perfect for Instagram, Reddit, or your group chat.<br><br>Open any saved pin → <b>Share as Image Card</b>.</div>
-        </div>
-        <div class="onbCard">
-          <div class="onbHero">📐</div>
-          <div class="onbTitle">Angle Pins</div>
-          <div class="onbBody">Hit a gnarly obstacle? TrailGauge can save the moment for you.<br><br>Tap <b>PIN ANGLE</b> manually, or let it auto-capture peaks above your threshold (default 15°). Each pin records pitch, roll, location, and elevation — review them later in your pin list.<br><br>Hands-free trail diary, no phone-tapping mid-climb.</div>
-        </div>
-        <div class="onbCard">
-          <div class="onbHero">🚨</div>
-          <div class="onbTitle">Ambient Alerts</div>
-          <div class="onbBody">A soft <b>colored pulse</b> around your screen warns you about incoming weather (red) or approaching sunset (yellow) — visible from your peripheral vision without blocking the gauge.<br><br>Driving / Do-Not-Disturb mode dims the pulse so it stays helpful, not distracting. Customize colors, lead time, and haptics in <b>Settings → Ambient Alerts</b>.</div>
+          <div class="onbHero">💡</div>
+          <div class="onbTitle">More Hints Will Appear</div>
+          <div class="onbBody">Other features (angle pins, ambient alerts, weather panel) will explain themselves <b>the first time you encounter them</b> with small inline hints.<br><br>Replay any hints any time via <b>Settings → Show Hints Again</b>. Have fun out there.</div>
         </div>
       </div>
     </div>
@@ -916,8 +957,6 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
       <span class="onbDot" data-i="1"></span>
       <span class="onbDot" data-i="2"></span>
       <span class="onbDot" data-i="3"></span>
-      <span class="onbDot" data-i="4"></span>
-      <span class="onbDot" data-i="5"></span>
     </div>
     <label id="onbDontShow">
       <input type="checkbox" id="onbDontShowCb" />
@@ -933,6 +972,10 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
 <!-- Ambient alert overlay — sits above all app content but below modals.
      Driven entirely by JS class toggles; CSS handles the animation. -->
 <div id="ambientPulse"></div>
+
+<!-- Coachmark bubble — inline contextual hints. Created once, positioned
+     and repopulated by JS as needed. Hidden by default. -->
+<div id="coachmark" class="hidden" data-arrow="down"></div>
 
 <!-- User feedback modal — accessible from settings. Submits to a Formspree
      endpoint if configured (FEEDBACK_ENDPOINT below), otherwise opens a
@@ -964,6 +1007,12 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
       <span class="sub">Off-Road Inclinometer</span>
     </div>
     <div id="hctl">
+      <!-- Battery chip: shows phone battery state when navigator.getBattery() is
+           supported (mostly Android; iOS Safari does NOT expose this API as of
+           late 2025, so the chip stays hidden on iPhone). Non-interactive —
+           informational only. Hidden on narrow screens to keep the action
+           buttons fitting comfortably (see media queries below). -->
+      <div id="battChip" class="battChip" style="display:none" title="Battery"></div>
       <button class="ibtn" id="pinsBtn" title="Pins">📍</button>
       <button class="ibtn" id="tripsBtn" title="Trips">📋</button>
       <button class="ibtn" id="themeBtn">☀️</button>
@@ -1239,9 +1288,12 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
       <label class="tgl"><input type="checkbox" id="wlTgl" checked><span class="tsl"></span></label>
     </div>
 
-    <!-- Feedback section — sits at the bottom of settings as a parking
-         spot for "tell us what's wrong" before users leave reviews. -->
+    <!-- Help & Feedback section — replay coachmarks + send feedback -->
     <div class="sectionDivider">Help &amp; Feedback</div>
+    <div class="srow">
+      <div class="sinfo"><span class="sname">Show Hints Again</span><span class="sdesc">Re-trigger the inline feature hints from the beginning</span></div>
+      <button class="modalbtn ghost" id="hintsResetBtn" style="padding:8px 14px;font-size:11px">Replay</button>
+    </div>
     <div class="srow" style="border-bottom:none">
       <div class="sinfo"><span class="sname">Send Feedback</span><span class="sdesc">Found a bug or want to suggest a feature? Tell us.</span></div>
       <button class="modalbtn ghost" id="fbOpenBtn" style="padding:8px 14px;font-size:11px">Open</button>
@@ -2504,6 +2556,12 @@ function openPinSaveModal(prefilledPin, overrideLat, overrideLon){
   pnsp.classList.add('open');
   // Focus the label field after the slide-up animation finishes
   setTimeout(() => document.getElementById('pnsLabel').focus(), 350);
+  // First time the pin save modal opens, show a coachmark explaining the
+  // photo button + share card feature. Delayed so it appears after the
+  // sheet animation completes.
+  if(typeof showCoachmark === 'function'){
+    setTimeout(() => showCoachmark('pinPhoto'), 500);
+  }
 }
 
 function closePinSaveModal(){
@@ -3835,7 +3893,7 @@ const onb = document.getElementById('onb');
 const onbCards = document.getElementById('onbCards');   // viewport (touch target)
 const onbTrack = document.getElementById('onbTrack');   // sliding track (transform target)
 let _onbStep = 0;
-const ONB_STEPS = 6;
+const ONB_STEPS = 4;
 
 function setOnbStep(i){
   _onbStep = Math.max(0, Math.min(ONB_STEPS - 1, i));
@@ -3855,11 +3913,6 @@ function dismissOnboarding(){
   const dontShowCb = document.getElementById('onbDontShowCb');
   if(dontShowCb && dontShowCb.checked){
     try { localStorage.setItem(ONB_KEY, '1'); } catch(_){}
-    // Fresh users who completed the new 6-card onboarding have seen the
-    // angle pins + ambient alerts explanation already. Mark the "What's
-    // New" toast as seen too — otherwise it would redundantly appear on
-    // their next launch covering the same material they just read.
-    try { localStorage.setItem('tg_whatsnew_alerts_v1', '1'); } catch(_){}
   }
 }
 
@@ -3897,76 +3950,12 @@ if(!_onboarded){
   if(_cb) _cb.checked = false;
   onb.classList.add('show');
   setOnbStep(0);
-} else {
-  // User has already gone through onboarding at some point. They've now
-  // landed on an update that adds Angle Pins + Ambient Alerts — features
-  // that include behaviors they haven't been taught about (auto-pin
-  // toasts, edge-of-screen color pulses for weather/sunset). Without an
-  // explanation, the first time a yellow pulse fires they might think
-  // the app is broken or warning them about something critical.
-  //
-  // One-time "What's New" toast handles this. Persists a separate flag
-  // (tg_whatsnew_alerts_v1) so it never shows again after dismissal.
-  const WHATS_NEW_KEY = 'tg_whatsnew_alerts_v1';
-  let alreadySeen = false;
-  try { alreadySeen = localStorage.getItem(WHATS_NEW_KEY) === '1'; } catch(_){}
-  if(!alreadySeen){
-    // Slight delay so it doesn't fight with the app's own load animations
-    setTimeout(showWhatsNewToast, 1200);
-  }
 }
-
-// "What's New" one-time toast for returning users. Explains the two
-// newest user-visible behaviors (angle pins, ambient alert pulses) so
-// existing users aren't surprised when the screen edges start glowing.
-function showWhatsNewToast(){
-  // Defer if a more critical modal is on screen. The recovery modal in
-  // particular has trip data hanging in the balance — we don't want a
-  // "What's New" overlay covering the user's choice between Resume,
-  // Save, and Discard. If recovery is open, we just skip showing the
-  // toast this session. They'll see it next launch (flag still unset).
-  const rcp = document.getElementById('rcp');
-  if(rcp && rcp.classList.contains('open')) return;
-  // Build the element fresh each call. We auto-dismiss on tap anywhere
-  // on the toast, OR after the timeout.
-  let el = document.getElementById('whatsNewToast');
-  if(el) el.remove();   // shouldn't happen but defensive
-  el = document.createElement('div');
-  el.id = 'whatsNewToast';
-  el.innerHTML = `
-    <div class="wnt-hdr">
-      <span class="wnt-title">✨ What's New</span>
-      <button class="wnt-x" aria-label="Dismiss">×</button>
-    </div>
-    <div class="wnt-body">
-      <div class="wnt-row">
-        <span class="wnt-icon">📐</span>
-        <div><b>Angle Pins</b> — TrailGauge now auto-saves your peak tilt moments
-        with GPS, or tap the new <b>PIN ANGLE</b> button. Review in your pin list.</div>
-      </div>
-      <div class="wnt-row">
-        <span class="wnt-icon">🚨</span>
-        <div><b>Ambient Alerts</b> — a soft <b>red</b> pulse warns of incoming
-        weather, <b>yellow</b> for approaching sunset. Customize colors, lead
-        time, vibration, and Driving Mode in Settings.</div>
-      </div>
-    </div>
-    <button class="wnt-cta">Got it</button>
-  `;
-  document.body.appendChild(el);
-  requestAnimationFrame(() => el.classList.add('show'));
-
-  // Mark seen and remove on dismiss
-  function dismiss(){
-    try { localStorage.setItem('tg_whatsnew_alerts_v1', '1'); } catch(_){}
-    el.classList.remove('show');
-    setTimeout(() => el.remove(), 350);
-  }
-  el.querySelector('.wnt-x').addEventListener('click', dismiss);
-  el.querySelector('.wnt-cta').addEventListener('click', dismiss);
-  // Backdrop tap (outside the card itself) also dismisses
-  el.addEventListener('click', e => { if(e.target === el) dismiss(); });
-}
+// (Existing users who already dismissed onboarding will learn about new
+// features via the coachmark system below — small inline hints that
+// auto-show the first time each feature is encountered, then persist.
+// Replaces the old "What's New" toast pattern, which was a heavyweight
+// modal users had to read all at once.)
 
 /* ─── MAX ANGLE RECORDER ──────────────────────────────────────
    Tracks the highest absolute pitch/roll seen. Two scopes:
@@ -4327,20 +4316,36 @@ function drawCompass(){
     compCtx.stroke();
   }
 
-  // Only render the N letter at this small size — others would crowd the readout
+  // Cardinal letters around the ring. N keeps its accent color since it's
+  // the orientation anchor; E/S/W are muted so they recede in the visual
+  // hierarchy — quick reference, not a primary readout. Each letter is
+  // positioned at its true bearing (rotated with the heading), then
+  // counter-rotated locally so the glyph reads upright regardless of
+  // which way the phone is facing.
   compCtx.font = '700 9px "Rajdhani",sans-serif';
   compCtx.textAlign = 'center';
   compCtx.textBaseline = 'middle';
-  const nRad = (-90) * Math.PI / 180;
-  const nR = R - 14;
-  const nX = Math.cos(nRad) * nR;
-  const nY = Math.sin(nRad) * nR;
-  compCtx.fillStyle = colAccent;
-  compCtx.save();
-  compCtx.translate(nX, nY);
-  compCtx.rotate(heading * Math.PI / 180);
-  compCtx.fillText('N', 0, 0);
-  compCtx.restore();
+  const labelR = R - 14;
+  const cardinals = [
+    { deg:   0, txt: 'N', accent: true  },
+    { deg:  90, txt: 'E', accent: false },
+    { deg: 180, txt: 'S', accent: false },
+    { deg: 270, txt: 'W', accent: false }
+  ];
+  for(const c of cardinals){
+    const rad = (c.deg - 90) * Math.PI / 180;
+    const lx = Math.cos(rad) * labelR;
+    const ly = Math.sin(rad) * labelR;
+    compCtx.fillStyle = c.accent ? colAccent : colTxt2;
+    compCtx.save();
+    compCtx.translate(lx, ly);
+    // Counter-rotate by heading so glyph stays upright regardless of
+    // compass rotation. Without this, "E" would appear sideways when
+    // user faces east.
+    compCtx.rotate(heading * Math.PI / 180);
+    compCtx.fillText(c.txt, 0, 0);
+    compCtx.restore();
+  }
   compCtx.restore();
 
   // Top center indicator (the direction the phone is "pointing")
@@ -4864,6 +4869,314 @@ function saveSettings(){
 }
 loadSettings();
 
+/* ─── BATTERY INDICATOR ───────────────────────────────────────
+   Surfaces the phone's battery state in the header chip when the browser
+   supports navigator.getBattery(). This is gracefully unavailable on iOS
+   Safari (which is most TrailGauge users), so the chip stays hidden there.
+   On Android Chrome/Edge it's live.
+
+   Why bother on iOS-heavy userbase? Two reasons:
+     - Z's road trip mounts the phone for hours. Battery awareness matters.
+       Even though iOS doesn't expose it, the feature ships ready for when
+       the API lands or a user is on Android.
+     - Power users on Android dash-mount setups will appreciate the chip,
+       since the OS battery widget is hidden behind the home indicator.
+
+   Visual states:
+     - normal: gray border, percentage text
+     - charging: green border + ⚡ icon
+     - warn (≤30%): yellow border
+     - crit (≤15%): red border + slow pulse */
+(function initBatteryChip(){
+  const chip = document.getElementById('battChip');
+  if(!chip) return;
+  if(!navigator.getBattery){
+    // iOS Safari and a few other browsers don't expose the API. Chip stays
+    // hidden — nothing to display. Don't even attempt to set up listeners.
+    return;
+  }
+  let batt = null;
+
+  function render(){
+    if(!batt) return;
+    const pct = Math.round(batt.level * 100);
+    const charging = !!batt.charging;
+    let icon = '🔋';
+    if(charging) icon = '⚡';
+    else if(pct <= 15) icon = '🪫';
+    chip.innerHTML = `<span class="battIcon">${icon}</span><span>${pct}%</span>`;
+    // Apply state class — start fresh, then add appropriate state
+    chip.classList.remove('warn','crit','charging');
+    if(charging) chip.classList.add('charging');
+    else if(pct <= 15) chip.classList.add('crit');
+    else if(pct <= 30) chip.classList.add('warn');
+    // Reveal the chip — was display:none in HTML default
+    chip.style.display = 'flex';
+  }
+
+  navigator.getBattery().then(b => {
+    batt = b;
+    render();
+    // Battery API fires events whenever any tracked state changes.
+    b.addEventListener('levelchange', render);
+    b.addEventListener('chargingchange', render);
+  }).catch(err => {
+    // Some browsers (Firefox in private mode, sandbox restrictions) reject
+    // even though the function exists. Stay hidden in that case.
+    console.warn('Battery API rejected:', err);
+  });
+})();
+
+/* ─── COACHMARK SYSTEM ──────────────────────────────────────────
+   Inline contextual hints that auto-show the first time the user
+   encounters each major feature. Replaces the old "What's New" modal
+   pattern — instead of front-loading 6+ explanations during onboarding,
+   each feature explains itself at the exact moment the user is looking
+   at it. Higher retention, less cognitive load, future-proof for new
+   features without needing onboarding redesigns.
+
+   Each coachmark has:
+     - unique id (used as persistence key)
+     - target: a CSS selector or function returning the element to point at
+     - arrow direction (up/down/left/right) relative to target
+     - title + body text
+
+   The same #coachmark element is reused across all hints; we just
+   reposition + repopulate it each time. */
+
+const CM_KEY = 'tg_coachmarks_seen_v1';
+const CM_DEFS = {
+  pinAngle: {
+    icon: '📐',
+    title: 'Angle Pins',
+    body: 'Tap <b>PIN ANGLE</b> to manually save the current pitch/roll moment, or let TrailGauge <b>auto-capture peaks</b> above your threshold. Review them in your pin list.',
+    target: () => document.getElementById('anglePinBtn'),
+    arrow: 'down'
+  },
+  ambientPulse: {
+    icon: '🚨',
+    title: 'Ambient Alerts',
+    body: 'That soft pulse around the screen is a heads-up: <b>red</b> for incoming weather, <b>yellow</b> as sunset approaches. Customize or disable in <b>Settings → Ambient Alerts</b>.',
+    target: () => document.getElementById('stBtn'),
+    arrow: 'up'
+  },
+  tripBtn: {
+    icon: '▶',
+    title: 'Trip Recording',
+    body: 'Tap <b>START TRIP</b> to log distance, elevation gain, and your full route. Stop to save with name + photo. View all trips via 📋 in the header.',
+    target: () => document.getElementById('tripBtn'),
+    arrow: 'down'
+  },
+  settings: {
+    icon: '⚙️',
+    title: 'Settings',
+    body: 'Switch mode (Off-Road / Trail), tune alerts, change units, customize colors. Everything\'s here.',
+    target: () => document.getElementById('stBtn'),
+    arrow: 'up'
+  },
+  pinPhoto: {
+    icon: '📸',
+    title: 'Shareable Image Cards',
+    body: 'After saving a pin with a photo, TrailGauge auto-generates a <b>branded share card</b> ready for Instagram, Reddit, or your group chat.',
+    target: () => document.getElementById('pnsPhotoBtn'),
+    arrow: 'up',
+    // The pinPhoto hint specifically points at a button INSIDE the pin save
+    // modal — so the modal being open is required, not blocking. Tell the
+    // engine to ignore the pin save modal when checking for blockers.
+    allowedModals: ['pnsp']
+  }
+};
+
+const _cm = document.getElementById('coachmark');
+let _cmCurrent = null;   // ID of currently-displayed coachmark, or null
+
+function cmGetSeen(){
+  try {
+    const raw = localStorage.getItem(CM_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch(_){ return []; }
+}
+function cmSetSeen(seenArr){
+  try { localStorage.setItem(CM_KEY, JSON.stringify(seenArr)); } catch(_){}
+}
+function cmMarkSeen(id){
+  const seen = cmGetSeen();
+  if(!seen.includes(id)){
+    seen.push(id);
+    cmSetSeen(seen);
+  }
+}
+function cmHasSeen(id){
+  return cmGetSeen().includes(id);
+}
+
+// Show a coachmark for a given ID. Positions next to target. No-op if
+// already seen (unless force=true, used by Show Hints Again replay).
+function showCoachmark(id, opts){
+  opts = opts || {};
+  if(!_cm) return;
+  const def = CM_DEFS[id];
+  if(!def) return;
+  if(!opts.force && cmHasSeen(id)) return;
+  // Defer if a blocking modal is open. The user is in the middle of a
+  // focused interaction (recovery decision, pin save, settings tweak,
+  // feedback form, onboarding) — popping a hint bubble over their
+  // current task is distracting and rude. We just skip this trigger;
+  // the coachmark stays unseen and will fire next time conditions allow.
+  // Coachmarks can opt-in to specific modals via the allowedModals array
+  // when the hint specifically targets something INSIDE a modal.
+  const allowedModals = def.allowedModals || [];
+  const blockingModals = ['rcp','onb','pnsp','plp','tlp','tdp','stp','fbp','wxPanel'];
+  for(const modalId of blockingModals){
+    if(allowedModals.includes(modalId)) continue;
+    const m = document.getElementById(modalId);
+    if(m && (m.classList.contains('open') || m.classList.contains('show'))) return;
+  }
+  // If another coachmark is currently showing, dismiss it first (one at a time)
+  if(_cmCurrent && _cmCurrent !== id) hideCoachmark(/*markSeen=*/true);
+  // Resolve target — may be a function (lazy) or a selector
+  const target = (typeof def.target === 'function')
+    ? def.target()
+    : document.querySelector(def.target);
+  if(!target) return;
+  // Bail if target isn't actually visible (display:none, etc.)
+  const tRect = target.getBoundingClientRect();
+  if(tRect.width === 0 || tRect.height === 0) return;
+  // Populate
+  _cm.innerHTML = `
+    <div class="cm-hdr">
+      <span class="cm-icon">${def.icon}</span>
+      <span class="cm-title">${escapeHtml(def.title)}</span>
+    </div>
+    <div class="cm-body">${def.body}</div>
+    <div class="cm-foot"><button class="cm-ok">Got it</button></div>
+  `;
+  _cm.classList.remove('hidden');
+  _cm.dataset.arrow = def.arrow || 'down';
+  // Position. We do this AFTER content is populated and class removed
+  // (display:none would give us zero dimensions otherwise).
+  const cmRect = _cm.getBoundingClientRect();
+  positionCoachmark(_cm, tRect, cmRect, def.arrow || 'down');
+  // Animate in
+  requestAnimationFrame(() => _cm.classList.add('show'));
+  _cmCurrent = id;
+  // Wire dismiss
+  _cm.querySelector('.cm-ok').onclick = () => hideCoachmark(true);
+}
+
+// Position the bubble relative to the target rect with the given arrow
+// direction. Bubble is placed on the OPPOSITE side from the arrow
+// (down-arrow bubble sits ABOVE target). Clamps within viewport.
+function positionCoachmark(el, tRect, eRect, arrow){
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const gap = 12;   // space between target and bubble
+  let x, y;
+  if(arrow === 'up'){
+    // Bubble below target
+    y = tRect.bottom + gap;
+    x = tRect.left + tRect.width/2 - eRect.width/2;
+  } else if(arrow === 'down'){
+    // Bubble above target
+    y = tRect.top - eRect.height - gap;
+    x = tRect.left + tRect.width/2 - eRect.width/2;
+  } else if(arrow === 'left'){
+    // Bubble right of target
+    x = tRect.right + gap;
+    y = tRect.top + tRect.height/2 - eRect.height/2;
+  } else { // 'right'
+    // Bubble left of target
+    x = tRect.left - eRect.width - gap;
+    y = tRect.top + tRect.height/2 - eRect.height/2;
+  }
+  // Clamp to viewport with 8px margin
+  x = Math.max(8, Math.min(vw - eRect.width - 8, x));
+  y = Math.max(8, Math.min(vh - eRect.height - 8, y));
+  el.style.left = x + 'px';
+  el.style.top  = y + 'px';
+}
+
+// Hide the current coachmark. If markSeen is true, persists the ID so
+// it doesn't re-trigger.
+function hideCoachmark(markSeen){
+  if(!_cm || !_cmCurrent) return;
+  if(markSeen) cmMarkSeen(_cmCurrent);
+  _cm.classList.remove('show');
+  const id = _cmCurrent;
+  _cmCurrent = null;
+  // Wait for transition to finish before hiding completely
+  setTimeout(() => {
+    if(_cmCurrent === null) _cm.classList.add('hidden');
+  }, 280);
+}
+
+// Document-level tap handler — any tap outside the bubble dismisses.
+// This makes the "Got it" button optional — user can dismiss via natural
+// flow of using the app. The persistence flag is still set.
+document.addEventListener('click', e => {
+  if(!_cmCurrent || _cm.classList.contains('hidden')) return;
+  // Tap inside bubble: let internal handlers (cm-ok) handle it
+  if(_cm.contains(e.target)) return;
+  // Tap outside: dismiss + mark seen
+  hideCoachmark(true);
+}, true);
+
+// Reposition on window resize / orientation change so bubble stays
+// anchored to its target as the layout shifts.
+window.addEventListener('resize', () => {
+  if(!_cmCurrent) return;
+  const def = CM_DEFS[_cmCurrent];
+  if(!def) return;
+  const target = (typeof def.target === 'function') ? def.target() : document.querySelector(def.target);
+  if(!target) return;
+  const tRect = target.getBoundingClientRect();
+  const cmRect = _cm.getBoundingClientRect();
+  positionCoachmark(_cm, tRect, cmRect, def.arrow || 'down');
+});
+
+// "Show Hints Again" — clears all seen flags AND triggers the first
+// coachmark in the off-road context (Pin Angle button). User then sees
+// the rest naturally as they tap through the app.
+function resetCoachmarks(){
+  cmSetSeen([]);
+  // Give the user immediate feedback that they reset by showing the
+  // first coachmark right away.
+  hideCoachmark(false);
+  setTimeout(() => showCoachmark('pinAngle', { force: true }), 200);
+}
+
+/* ─── COACHMARK TRIGGERS ──────────────────────────────────────
+   Each coachmark needs a trigger — a moment in the user's session when
+   it auto-shows. Triggers below are kept light: small delays, gated on
+   visibility and state where appropriate. */
+
+// Pin Angle button: trigger on first off-road mode session, after a brief
+// delay so the user has time to see the app land.
+setTimeout(() => {
+  if(document.body.classList.contains('prof-offroad')){
+    showCoachmark('pinAngle');
+  }
+}, 3500);
+
+// Trip button: triggers a moment after Pin Angle is dismissed (or right
+// away if Pin Angle was already seen). Sequential, not stacked.
+setTimeout(() => {
+  if(_cmCurrent) return;   // wait for current to dismiss
+  showCoachmark('tripBtn');
+}, 9000);
+
+// Settings: a bit later still, so we don't bombard the user with
+// hints all at once. After they've had a chance to look around.
+setTimeout(() => {
+  if(_cmCurrent) return;
+  showCoachmark('settings');
+}, 15000);
+
+// Ambient Pulse: fires the first time the pulse actually activates.
+// Hooked into setAmbient (see alert system code above).
+
+// Pin Photo: fires when the pin save modal opens. Hooked into
+// openPinSaveModal (see pin save code).
+
 // Apply loaded settings to UI on page load
 function applyLoadedSettings(){
   if(!S.dark) document.body.classList.add('light');
@@ -5032,6 +5345,14 @@ function setAmbient(source, colorName){
   _pulseEl.classList.add('show');
   _pulseEl.classList.toggle('dnd', !!ALERTS.dndMode);
   ALERTS._activeSource = source;
+  // First time the pulse actually fires, show a coachmark explaining what
+  // it is. Without this, a returning user could see the screen edges start
+  // glowing yellow and have no idea why. Defined in CM_DEFS above.
+  // Slight delay so the bubble doesn't appear simultaneously with the
+  // pulse start (looks confusing — appear AFTER user notices the glow).
+  if(typeof showCoachmark === 'function'){
+    setTimeout(() => showCoachmark('ambientPulse'), 1500);
+  }
 }
 
 // Gentle haptic — two slow taps. Tuned for "safety nudge" rather than
@@ -5212,6 +5533,19 @@ function closeFeedback(){
   fbp.classList.remove('open');
 }
 document.getElementById('fbOpenBtn')?.addEventListener('click', openFeedback);
+
+// Show Hints Again — clears all coachmark "seen" flags and replays.
+// Close the settings panel first so the user can actually see the
+// coachmarks (which point at elements behind the settings backdrop).
+document.getElementById('hintsResetBtn')?.addEventListener('click', () => {
+  const stp = document.getElementById('stp');
+  if(stp) stp.classList.remove('open');
+  // Wait for settings slide-down to finish before triggering the first hint,
+  // otherwise positioning math would target the wrong (covered) element.
+  setTimeout(() => {
+    if(typeof resetCoachmarks === 'function') resetCoachmarks();
+  }, 400);
+});
 document.getElementById('fbCancel').addEventListener('click', closeFeedback);
 // Backdrop close (tap outside the sheet)
 fbp.addEventListener('click', e => { if(e.target === fbp) closeFeedback(); });
