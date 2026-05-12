@@ -652,6 +652,78 @@ body.prof-trail .hourcard { padding: 8px 6px; }
   font-size:18px;line-height:1;padding:2px 6px;cursor:pointer;flex-shrink:0;
   -webkit-tap-highlight-color:transparent}
 
+/* ─── ELEVATION MILESTONE + SUMMIT TOAST ─────────────────────
+   Separate element from #anglePinToast — positioned lower so both
+   can appear without overlap. Gold/amber palette distinguishes from
+   the green angle-pin toast. */
+#elevToast{position:fixed;top:calc(116px + env(safe-area-inset-top,0px));
+  left:50%;transform:translate(-50%,-20px);z-index:252;
+  background:var(--card);border:1px solid var(--warn);border-radius:24px;
+  padding:10px 10px 10px 14px;display:none;align-items:center;gap:8px;
+  font-family:var(--fm);font-size:12px;color:var(--txt);
+  box-shadow:0 8px 24px rgba(0,0,0,.5);max-width:calc(100% - 24px);
+  min-width:220px;opacity:0;transition:opacity .25s ease,transform .25s ease}
+#elevToast.show{display:flex;opacity:1;transform:translate(-50%,0)}
+#elevToast.summit{border-color:#f59e0b;box-shadow:0 8px 32px rgba(245,158,11,.35)}
+#elevToast .et-ico{font-size:18px;flex-shrink:0;line-height:1}
+#elevToast .et-body{flex:1;min-width:0}
+#elevToast .et-title{font-family:var(--fd);font-size:11px;font-weight:700;
+  letter-spacing:1px;text-transform:uppercase;color:var(--warn);line-height:1.2}
+#elevToast.summit .et-title{color:#f59e0b}
+#elevToast .et-sub{font-size:10px;color:var(--txt2);margin-top:2px}
+#elevToast .et-share{background:var(--warn);color:#000;border:none;border-radius:14px;
+  padding:5px 10px;font-family:var(--fd);font-size:10px;font-weight:700;
+  letter-spacing:1px;text-transform:uppercase;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;flex-shrink:0}
+#elevToast.summit .et-share{background:#f59e0b}
+#elevToast .et-save{background:#f59e0b;color:#000;border:none;border-radius:14px;
+  padding:5px 10px;font-family:var(--fd);font-size:10px;font-weight:700;
+  letter-spacing:1px;text-transform:uppercase;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;flex-shrink:0}
+#elevToast .et-x{background:transparent;border:none;color:var(--txt3);
+  font-size:18px;line-height:1;padding:2px 6px;cursor:pointer;flex-shrink:0;
+  -webkit-tap-highlight-color:transparent}
+
+/* Summit hero block in pin detail — gold variant of .pdAngleHero */
+.pdSummitHero{background:linear-gradient(135deg,rgba(245,158,11,.14),rgba(245,158,11,.04));
+  border:1px solid rgba(245,158,11,.4);border-radius:14px;
+  padding:18px 16px;margin-bottom:14px;text-align:center}
+.pdSummitBig{font-family:var(--fd);font-size:44px;font-weight:700;color:#f59e0b;
+  line-height:1;font-feature-settings:"tnum"}
+.pdSummitLbl{font-family:var(--fd);font-size:10px;letter-spacing:2px;
+  color:var(--txt2);text-transform:uppercase;margin-top:6px}
+
+/* Mark Summit button — hidden by default, shown only in trail mode during active trip */
+#summitBtn{display:none}
+body.prof-trail.trip-active #summitBtn{display:flex}
+
+/* Folder filter chip row — shown above pin list when folders exist */
+#plFolderFilter{display:none;gap:6px;overflow-x:auto;padding:0 0 10px;
+  margin-bottom:4px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+#plFolderFilter::-webkit-scrollbar{display:none}
+.folderChip{background:var(--card2);border:1px solid var(--border);
+  border-radius:20px;padding:5px 12px;font-family:var(--fm);font-size:11px;
+  color:var(--txt2);cursor:pointer;white-space:nowrap;flex-shrink:0;
+  -webkit-tap-highlight-color:transparent;transition:all var(--tr)}
+.folderChip.active{background:var(--accent);border-color:var(--accent);color:#000}
+.folderChip:active{transform:scale(.96)}
+
+/* Folder rows in folder management panel */
+.folderRow{display:flex;align-items:center;gap:8px;padding:10px 0;
+  border-bottom:1px solid var(--border)}
+.folderRow:last-child{border-bottom:none}
+.folderRowName{flex:1;font-family:var(--fb);font-size:14px;font-weight:600;
+  color:var(--txt);min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.folderRowName:active{color:var(--accent)}
+.folderRowCount{font-family:var(--fm);font-size:10px;color:var(--txt3);flex-shrink:0}
+.folderRowBtn{background:transparent;border:1px solid var(--border);
+  border-radius:6px;color:var(--txt2);font-family:var(--fm);font-size:11px;
+  padding:5px 10px;cursor:pointer;-webkit-tap-highlight-color:transparent;
+  flex-shrink:0;transition:all var(--tr)}
+.folderRowBtn:active{transform:scale(.94);border-color:var(--accent);color:var(--accent)}
+.folderRowBtn.del:active{border-color:var(--danger);color:var(--danger)}
+
 /* ─── COACHMARK SYSTEM ───────────────────────────────────────
    Small floating bubble that points at a specific UI element to explain it
    the first time the user encounters it. Replaces the old "What's New"
@@ -780,7 +852,7 @@ body.prof-trail.trip-active #trailTripStrip{display:flex}
 .calib{animation:cflash .6s ease!important}
 
 /* Shared modal styling for trip panels */
-#tlp,#snp,#tdp,#rcp,#shp,#pnsp,#plp,#pdp{position:fixed;inset:0;z-index:101;display:flex;align-items:flex-end;
+#tlp,#snp,#tdp,#rcp,#shp,#pnsp,#plp,#pdp,#flp{position:fixed;inset:0;z-index:101;display:flex;align-items:flex-end;
   background:rgba(0,0,0,.65);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);opacity:0;pointer-events:none;transition:opacity .3s ease}
 #tdp{z-index:102} /* trip detail sits above the trips list when both are open */
 #snp{z-index:103} /* save modal sits above all — it owns unsaved data */
@@ -789,12 +861,12 @@ body.prof-trail.trip-active #trailTripStrip{display:flex}
 #pnsp{z-index:104} /* pin save modal beats pin detail — defensive in case parent isn't closed */
 #plp{z-index:102}
 #pdp{z-index:103} /* pin detail sits above pin list */
-#tlp.open,#snp.open,#tdp.open,#rcp.open,#shp.open,#pnsp.open,#plp.open,#pdp.open{opacity:1;pointer-events:all}
-#tlsh,#snsh,#tdsh,#rcsh,#shsh,#pnssh,#plsh,#pdsh{width:100%;background:var(--card);border-radius:20px 20px 0 0;border-top:1px solid var(--border);
+#tlp.open,#snp.open,#tdp.open,#rcp.open,#shp.open,#pnsp.open,#plp.open,#pdp.open,#flp.open{opacity:1;pointer-events:all}
+#tlsh,#snsh,#tdsh,#rcsh,#shsh,#pnssh,#plsh,#pdsh,#flsh{width:100%;background:var(--card);border-radius:20px 20px 0 0;border-top:1px solid var(--border);
   padding:16px 20px calc(20px + var(--sb));transform:translateY(100%);
   transition:transform .35s cubic-bezier(.34,1.56,.64,1);
   max-height:80vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
-#tlp.open #tlsh,#snp.open #snsh,#tdp.open #tdsh,#rcp.open #rcsh,#shp.open #shsh,#pnsp.open #pnssh,#plp.open #plsh,#pdp.open #pdsh{transform:translateY(0)}
+#tlp.open #tlsh,#snp.open #snsh,#tdp.open #tdsh,#rcp.open #rcsh,#shp.open #shsh,#pnsp.open #pnssh,#plp.open #plsh,#pdp.open #pdsh,#flp.open #flsh{transform:translateY(0)}
 
 /* Pin save modal field styling */
 .pinFieldLbl{font-family:var(--fd);font-size:9px;letter-spacing:1.5px;
@@ -1013,6 +1085,7 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
            informational only. Hidden on narrow screens to keep the action
            buttons fitting comfortably (see media queries below). -->
       <div id="battChip" class="battChip" style="display:none" title="Battery"></div>
+      <button class="ibtn" id="foldersBtn" title="Folders">📁</button>
       <button class="ibtn" id="pinsBtn" title="Pins">📍</button>
       <button class="ibtn" id="tripsBtn" title="Trips">📋</button>
       <button class="ibtn" id="themeBtn">☀️</button>
@@ -1122,6 +1195,7 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
         <button id="zbtn" class="actBtn">ZERO<br><span class="actBtnSub">CALIBRATE</span></button>
         <button id="anglePinBtn" class="actBtn primary">📍<br><span class="actBtnMain">PIN ANGLE</span></button>
         <button id="tripBtn" class="actBtn">▶<br><span class="actBtnSub">START TRIP</span></button>
+        <button id="summitBtn" class="actBtn">🏔️<br><span class="actBtnSub">MARK SUMMIT</span></button>
         <button id="tripPauseBtn" style="display:none">⏸</button>
       </div>
       <div id="zhintRow">
@@ -1421,9 +1495,26 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
   <div id="plsh">
     <div class="mhdl"></div>
     <div class="mtl"><span>Saved Pins</span><span id="plCount" style="margin-left:auto;font-family:var(--fm);font-size:11px;color:var(--txt3);font-weight:normal"></span></div>
+    <div id="plFolderFilter"></div>
     <div id="plList" style="max-height:60vh;overflow-y:auto"></div>
     <div id="plEmpty" style="padding:30px 14px;text-align:center;color:var(--txt3);font-family:var(--fm);font-size:11px;line-height:1.6">
       No pins saved yet.<br>Tap the coords on the home screen to drop your first pin.
+    </div>
+  </div>
+</div>
+
+<!-- Folder management panel — create, rename, delete folders and assign pins -->
+<div id="flp">
+  <div id="flsh">
+    <div class="mhdl"></div>
+    <div class="mtl"><span>Folders</span><span id="flCount" style="margin-left:auto;font-family:var(--fm);font-size:11px;color:var(--txt3);font-weight:normal"></span></div>
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <input type="text" id="flNewName" placeholder="New folder name…" maxlength="50" class="pinInput" style="flex:1"/>
+      <button class="modalbtn primary" id="flCreateBtn" style="flex:0 0 auto;padding:8px 14px;white-space:nowrap">+ Add</button>
+    </div>
+    <div id="flList"></div>
+    <div id="flEmpty" style="padding:24px 0;text-align:center;color:var(--txt3);font-family:var(--fm);font-size:11px;line-height:1.6;display:none">
+      No folders yet.<br>Create one above to organize your pins.
     </div>
   </div>
 </div>
@@ -2827,17 +2918,49 @@ document.getElementById('shDropPin').addEventListener('click', () => {
 const plp = document.getElementById('plp');
 const pdp = document.getElementById('pdp');
 
+let _pinFolderFilter = null;
+
 async function openPinList(){
-  const pins = await pinAll();
+  const [pins, folders] = await Promise.all([pinAll(), folderAll()]);
   pins.sort((a, b) => b.createdAt - a.createdAt);
   const list = document.getElementById('plList');
   const empty = document.getElementById('plEmpty');
-  // Preserve scroll position across re-renders. When the list is refreshed
-  // after a pin save/delete, the user shouldn't be jolted back to the top —
-  // they were probably looking at a specific pin halfway down.
-  const prevScroll = list.scrollTop;
+  const filterRow = document.getElementById('plFolderFilter');
+
+  // Folder filter chips — only rendered when folders exist
+  if(filterRow){
+    if(folders.length > 0){
+      filterRow.style.display = 'flex';
+      filterRow.innerHTML = '';
+      [null, ...folders].forEach(f => {
+        const chip = document.createElement('button');
+        chip.className = 'folderChip' + (_pinFolderFilter === (f ? f.id : null) ? ' active' : '');
+        chip.textContent = f ? f.name : 'All';
+        chip.addEventListener('click', () => {
+          _pinFolderFilter = f ? f.id : null;
+          filterRow.querySelectorAll('.folderChip').forEach(c => c.classList.remove('active'));
+          chip.classList.add('active');
+          renderPinRows(pins, list, empty);
+        });
+        filterRow.appendChild(chip);
+      });
+    } else {
+      filterRow.style.display = 'none';
+      _pinFolderFilter = null;
+    }
+  }
+
   document.getElementById('plCount').textContent = pins.length ? `${pins.length} pin${pins.length===1?'':'s'}` : '';
-  if(pins.length === 0){
+  renderPinRows(pins, list, empty);
+  plp.classList.add('open');
+}
+
+function renderPinRows(pins, list, empty){
+  const filtered = _pinFolderFilter
+    ? pins.filter(p => Array.isArray(p.folderIds) && p.folderIds.includes(_pinFolderFilter))
+    : pins;
+  const prevScroll = list.scrollTop;
+  if(filtered.length === 0){
     list.innerHTML = '';
     list.style.display = 'none';
     empty.style.display = 'block';
@@ -2845,7 +2968,7 @@ async function openPinList(){
     list.style.display = 'block';
     empty.style.display = 'none';
     list.innerHTML = '';
-    pins.forEach(pin => {
+    filtered.forEach(pin => {
       const row = document.createElement('div');
       row.className = 'pinRow';
       const date = new Date(pin.createdAt);
@@ -2853,8 +2976,7 @@ async function openPinList(){
       try { dateStr = date.toLocaleDateString(undefined, {month:'short', day:'numeric'}); }
       catch(_) { dateStr = `${date.getMonth()+1}/${date.getDate()}`; }
       const isAngle = (pin.kind === 'angle');
-      // Compose the subtitle differently per kind. Spot pins show coords/elev;
-      // angle pins lead with the peak angle since that's the defining info.
+      const isSummit = (pin.kind === 'summit');
       let subParts;
       if(isAngle){
         const pa = (pin.peakAngle != null) ? `📐 ${pin.peakAngle.toFixed(1)}°` : '📐 —';
@@ -2862,26 +2984,25 @@ async function openPinList(){
         const rStr = (pin.roll  != null) ? `R${Math.round(Math.abs(pin.roll ))}°` : '';
         const angleSummary = [pa, pStr, rStr].filter(Boolean).join(' ');
         subParts = [angleSummary, `${pin.lat.toFixed(4)}, ${pin.lon.toFixed(4)}`];
+      } else if(isSummit){
+        const elStr = pin.peakFt
+          ? `${pin.peakFt.toLocaleString()} ft peak`
+          : (pin.elev != null ? `${Math.round(pin.elev*3.28084)} ft` : '');
+        subParts = ['🏔️ Summit', elStr].filter(Boolean);
       } else {
         subParts = [`${pin.lat.toFixed(4)}, ${pin.lon.toFixed(4)}`];
         if(pin.elev != null) subParts.push(`${Math.round(pin.elev*3.28084)} ft`);
       }
-      // Fallback label: angle pins without a user-set label show the angle
-      // as the headline so the list doesn't look like a sea of "(unnamed)" rows.
       let nameDisplay = pin.label;
-      if(!nameDisplay && isAngle && pin.peakAngle != null){
-        nameDisplay = `${pin.peakAngle.toFixed(1)}° tilt`;
-      }
+      if(!nameDisplay && isAngle && pin.peakAngle != null) nameDisplay = `${pin.peakAngle.toFixed(1)}° tilt`;
+      if(!nameDisplay && isSummit) nameDisplay = pin.peakFt ? `${pin.peakFt.toLocaleString()} ft Summit` : 'Summit';
       if(!nameDisplay) nameDisplay = '(unnamed)';
-      // Thumbnail: photo if present, else a kind-appropriate icon
       const thumbContent = pin.photo
         ? `<img src="${pin.photo}" alt="">`
-        : (isAngle ? '📐' : '📍');
-      // Tiny badge in the row corner for angle pins so they're identifiable
-      // even when the list is scrolled fast
+        : (isAngle ? '📐' : (isSummit ? '🏔️' : '📍'));
       const kindBadge = isAngle
         ? '<div class="pinKindBadge" title="Angle pin">📐</div>'
-        : '';
+        : (isSummit ? '<div class="pinKindBadge" style="background:#f59e0b" title="Summit">🏔️</div>' : '');
       row.innerHTML = `
         <div class="pinThumb">${thumbContent}${kindBadge}</div>
         <div class="pinMeta">
@@ -2893,10 +3014,8 @@ async function openPinList(){
       row.addEventListener('click', () => openPinDetail(pin));
       list.appendChild(row);
     });
-    // Restore scroll after the new content is in the DOM
     list.scrollTop = prevScroll;
   }
-  plp.classList.add('open');
 }
 
 function escapeHtml(s){
@@ -2926,9 +3045,11 @@ let _currentPin = null;
 function openPinDetail(pin){
   _currentPin = pin;
   const isAngle = (pin.kind === 'angle');
-  // Title — fall back to angle summary for unlabeled angle pins
+  const isSummit = (pin.kind === 'summit');
+  // Title — fall back to angle/summit summary for unlabeled pins
   let title = pin.label;
   if(!title && isAngle && pin.peakAngle != null) title = `${pin.peakAngle.toFixed(1)}° tilt`;
+  if(!title && isSummit) title = pin.peakFt ? `${pin.peakFt.toLocaleString()} ft Summit` : 'Summit';
   if(!title) title = 'Pin';
   document.getElementById('pdTitle').textContent = title;
   const c = document.getElementById('pdContent');
@@ -2955,6 +3076,13 @@ function openPinDetail(pin){
           </div>
         </div>
         <div class="pdAngleMode">${captureMode}</div>
+      </div>`;
+  }
+  if(isSummit && pin.peakFt != null){
+    html += `
+      <div class="pdSummitHero">
+        <div class="pdSummitBig">🏔️ ${pin.peakFt.toLocaleString()} ft</div>
+        <div class="pdSummitLbl">SESSION PEAK ELEVATION</div>
       </div>`;
   }
   if(pin.photo) html += `<img class="pdPhoto" src="${pin.photo}" alt="">`;
@@ -2990,7 +3118,7 @@ function openPinDetail(pin){
   catch(_) { createdStr = created.toString(); }
   html += `
     <div class="pdField">
-      <div class="pdLabel">${isAngle ? 'Captured' : 'Saved'}</div>
+      <div class="pdLabel">${isAngle ? 'Captured' : (isSummit ? 'Summited' : 'Saved')}</div>
       <div class="pdValue" style="font-size:11px;color:var(--txt3)">${createdStr}</div>
     </div>`;
   // Map container — hidden by default. Lazy-rendered on Show Map tap so
@@ -3315,7 +3443,7 @@ function doRenderPinShareCard(pin, resolve){
         ctx.font = '300px serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText((pin.kind === 'angle') ? '📐' : '📍', W/2, H * 0.32);
+        ctx.fillText((pin.kind === 'angle') ? '📐' : (pin.kind === 'summit' ? '🏔️' : '📍'), W/2, H * 0.32);
         drawTopBadge(ctx, W);
       }
 
@@ -3357,6 +3485,8 @@ function doRenderPinShareCard(pin, resolve){
       if(!label){
         if(pin.kind === 'angle' && pin.peakAngle != null){
           label = `${pin.peakAngle.toFixed(1)}° Tilt`;
+        } else if(pin.kind === 'summit'){
+          label = pin.peakFt ? `${pin.peakFt.toLocaleString()} ft Summit` : 'Summit';
         } else {
           label = 'Saved Pin';
         }
@@ -4170,6 +4300,143 @@ function hideAnglePinToast(){
   const toast = document.getElementById('anglePinToast');
   if(toast) toast.classList.remove('show');
   if(_anglePinToastTimer){ clearTimeout(_anglePinToastTimer); _anglePinToastTimer = null; }
+}
+
+/* ─── ELEVATION MILESTONE + SUMMIT TOAST ────────────────────
+   Separate from #anglePinToast. isSummit=true → gold summit flow,
+   isSummit=false → 📈 gain milestone with share card option. */
+let _elevToastTimer = null;
+
+function showElevToast(ftVal, isSummit){
+  let toast = document.getElementById('elevToast');
+  if(!toast){
+    toast = document.createElement('div');
+    toast.id = 'elevToast';
+    document.body.appendChild(toast);
+  }
+  toast.classList.remove('show','summit');
+  if(isSummit){
+    const peakStr = Math.round(ftVal).toLocaleString() + ' ft';
+    toast.innerHTML = `<span class="et-ico">🏔️</span><div class="et-body"><div class="et-title">Summit Detected</div><div class="et-sub">Session peak: ${peakStr}</div></div><button class="et-save">Save Summit</button><button class="et-x" aria-label="Dismiss">×</button>`;
+    toast.querySelector('.et-save').addEventListener('click',()=>{ hideElevToast(); saveSummitPin(ftVal); });
+    toast.classList.add('summit');
+  } else {
+    const gainStr = Math.round(ftVal).toLocaleString() + ' ft';
+    toast.innerHTML = `<span class="et-ico">📈</span><div class="et-body"><div class="et-title">${gainStr} Gain</div><div class="et-sub">Elevation milestone reached</div></div><button class="et-share">Share</button><button class="et-x" aria-label="Dismiss">×</button>`;
+    toast.querySelector('.et-share').addEventListener('click',()=>{ hideElevToast(); shareElevMilestoneCard(ftVal); });
+  }
+  toast.querySelector('.et-x').addEventListener('click', hideElevToast);
+  toast.classList.add('show');
+  if(navigator.vibrate){ try { navigator.vibrate([100,60,100,60,100]); } catch(_){} }
+  if(_elevToastTimer) clearTimeout(_elevToastTimer);
+  _elevToastTimer = setTimeout(hideElevToast, 8000);
+}
+
+function hideElevToast(){
+  const toast = document.getElementById('elevToast');
+  if(toast){ toast.classList.remove('show'); toast.classList.remove('summit'); }
+  if(_elevToastTimer){ clearTimeout(_elevToastTimer); _elevToastTimer = null; }
+}
+
+async function shareElevMilestoneCard(gainFt){
+  const start = (document.fonts && document.fonts.ready) ? document.fonts.ready : Promise.resolve();
+  const blob = await new Promise(resolve => {
+    start.then(() => {
+      const W=1080, H=1080, c=document.createElement('canvas');
+      c.width=W; c.height=H;
+      const ctx=c.getContext('2d');
+      const grad=ctx.createLinearGradient(0,0,0,H);
+      grad.addColorStop(0,'#0a0c0f'); grad.addColorStop(1,'#161b22');
+      ctx.fillStyle=grad; ctx.fillRect(0,0,W,H);
+      ctx.strokeStyle='rgba(240,180,41,.1)'; ctx.lineWidth=1;
+      for(let x=0;x<W;x+=60){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+      for(let y=0;y<H;y+=60){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+      ctx.fillStyle='rgba(240,180,41,.2)'; ctx.font='260px serif';
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText('📈',W/2,H*0.34);
+      drawTopBadge(ctx,W);
+      ctx.fillStyle='#f0b429'; ctx.font='700 120px "Rajdhani",sans-serif';
+      ctx.textAlign='center'; ctx.textBaseline='alphabetic';
+      ctx.fillText(Math.round(gainFt).toLocaleString()+' ft',W/2,H*0.66);
+      ctx.fillStyle='rgba(255,255,255,.6)'; ctx.font='400 48px "Exo 2",sans-serif';
+      ctx.fillText('Elevation Gain',W/2,H*0.66+68);
+      ctx.fillStyle='rgba(255,255,255,.35)'; ctx.font='400 30px "Share Tech Mono",monospace';
+      ctx.fillText('TrailGauge Milestone',W/2,H*0.66+118);
+      c.toBlob(resolve,'image/png');
+    });
+  });
+  if(!blob) return;
+  const file=new File([blob],'elevation-milestone.png',{type:'image/png'});
+  if(navigator.canShare && navigator.canShare({files:[file]})){
+    try { await navigator.share({files:[file],title:`${Math.round(gainFt).toLocaleString()} ft Gain`,text:'TrailGauge elevation milestone'}); } catch(e){}
+  } else {
+    const url=URL.createObjectURL(blob), a=document.createElement('a');
+    a.href=url; a.download='elevation-milestone.png';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }
+}
+
+async function saveSummitPin(peakFt){
+  if(S.lat==null||S.lon==null){ alert('No GPS fix — summit not saved.'); return; }
+  const pin={
+    id:'summit_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
+    kind:'summit',
+    lat:S.lat, lon:S.lon,
+    elev:S.elev!=null?S.elev:null,
+    peakFt:Math.round(peakFt),
+    label:'', notes:'', photo:null,
+    createdAt:Date.now(), updatedAt:Date.now(),
+    ownerId:null, visibility:'private'
+  };
+  try {
+    await pinPut(pin);
+    await shareSummitCard(pin);
+  } catch(err){
+    console.warn('Summit pin save failed:',err);
+    alert('Could not save summit pin.');
+  }
+}
+
+async function shareSummitCard(pin){
+  const start=(document.fonts&&document.fonts.ready)?document.fonts.ready:Promise.resolve();
+  const blob=await new Promise(resolve=>{
+    start.then(()=>{
+      const W=1080,H=1080,c=document.createElement('canvas');
+      c.width=W; c.height=H;
+      const ctx=c.getContext('2d');
+      const grad=ctx.createLinearGradient(0,0,0,H);
+      grad.addColorStop(0,'#1a0f00'); grad.addColorStop(1,'#0a0c0f');
+      ctx.fillStyle=grad; ctx.fillRect(0,0,W,H);
+      ctx.strokeStyle='rgba(245,158,11,.1)'; ctx.lineWidth=1;
+      for(let x=0;x<W;x+=60){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+      for(let y=0;y<H;y+=60){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+      ctx.fillStyle='rgba(245,158,11,.2)'; ctx.font='260px serif';
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText('🏔️',W/2,H*0.34);
+      drawTopBadge(ctx,W);
+      ctx.fillStyle='#f59e0b'; ctx.font='700 120px "Rajdhani",sans-serif';
+      ctx.textAlign='center'; ctx.textBaseline='alphabetic';
+      ctx.fillText((pin.peakFt||0).toLocaleString()+' ft',W/2,H*0.66);
+      ctx.fillStyle='rgba(255,255,255,.65)'; ctx.font='400 52px "Exo 2",sans-serif';
+      ctx.fillText('Summit Reached',W/2,H*0.66+72);
+      if(pin.lat&&pin.lon){
+        ctx.fillStyle='rgba(255,255,255,.35)'; ctx.font='400 30px "Share Tech Mono",monospace';
+        ctx.fillText(`${pin.lat.toFixed(5)}, ${pin.lon.toFixed(5)}`,W/2,H*0.66+120);
+      }
+      c.toBlob(resolve,'image/png');
+    });
+  });
+  if(!blob) return;
+  const file=new File([blob],'summit.png',{type:'image/png'});
+  if(navigator.canShare&&navigator.canShare({files:[file]})){
+    try { await navigator.share({files:[file],title:`${(pin.peakFt||0).toLocaleString()} ft Summit`,text:'Reached the summit! TrailGauge'}); } catch(e){}
+  } else {
+    const url=URL.createObjectURL(blob),a=document.createElement('a');
+    a.href=url; a.download='summit.png';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }
 }
 
 // Manual angle-pin button — saves whatever angles are showing right now.
@@ -5647,6 +5914,59 @@ document.addEventListener('visibilitychange',async()=>{
   if(document.visibilityState==='visible'&&document.getElementById('wlTgl').checked) await reqWL();
 });
 
+/* ─── ELEVATION MILESTONES + SUMMIT DETECTION ────────────────
+   ELEV_STATE tracks milestone progress and summit buffer across
+   GPS fixes. resetElevState() called from tripStart(); restored
+   from draft.gainM on recovery so milestones don't re-fire. */
+const ELEV_STATE = {
+  lastMilestoneFt: 0,   // highest 1000 ft threshold already toasted
+  summitBuffer: 0,       // consecutive below-peak fix count
+  summitPeakFt: 0,       // rolling session elevation peak in ft
+  summitFired: false     // prevent re-triggering after detection
+};
+
+function resetElevState(){
+  ELEV_STATE.lastMilestoneFt = 0;
+  ELEV_STATE.summitBuffer = 0;
+  ELEV_STATE.summitPeakFt = 0;
+  ELEV_STATE.summitFired = false;
+}
+
+function checkElevationMilestones(){
+  const gainFt = m2ft(TRIP.gainM);
+  const currentElevFt = (TRIP.lastPt && TRIP.lastPt.elev != null) ? m2ft(TRIP.lastPt.elev) : null;
+
+  // Update rolling peak; reset descent counter whenever we're still climbing
+  if(currentElevFt != null){
+    if(currentElevFt > ELEV_STATE.summitPeakFt){
+      ELEV_STATE.summitPeakFt = currentElevFt;
+      ELEV_STATE.summitBuffer = 0;
+    }
+  }
+
+  // Gain milestones — fire once per 1000 ft band from 1 k through 14 k
+  if(gainFt >= 1000){
+    const thisMilestone = Math.floor(gainFt / 1000) * 1000;
+    if(thisMilestone > ELEV_STATE.lastMilestoneFt && thisMilestone <= 14000){
+      ELEV_STATE.lastMilestoneFt = thisMilestone;
+      showElevToast(thisMilestone, false);
+      return;
+    }
+  }
+
+  // Summit detection: 5 consecutive fixes >10 ft below peak, gain ≥ 200 ft
+  if(!ELEV_STATE.summitFired && gainFt >= 200 && currentElevFt != null && ELEV_STATE.summitPeakFt > 0){
+    const belowPeak = ELEV_STATE.summitPeakFt - currentElevFt;
+    if(belowPeak > 10){
+      ELEV_STATE.summitBuffer++;
+      if(ELEV_STATE.summitBuffer >= 5){
+        ELEV_STATE.summitFired = true;
+        showElevToast(ELEV_STATE.summitPeakFt, true);
+      }
+    }
+  }
+}
+
 /* ══════════════════════════════════════════════════════════
    TRIP RECORDER + IndexedDB persistence + GPX export
 ══════════════════════════════════════════════════════════ */
@@ -5753,6 +6073,7 @@ function tripIngestFix(pos){
     }
     TRIP.lastFixMs=fix.t;
     refreshTripLive();
+    checkElevationMilestones();
     // Persist draft on every accepted fix. IndexedDB writes are async and
     // queued by the browser, so this is cheap — but it means we never lose
     // more than a single fix's worth of trip data even if iOS kills the
@@ -5813,6 +6134,7 @@ function tripStart(){
   TRIP.distM=0; TRIP.gainM=0; TRIP.lossM=0;
   TRIP.maxElevM=-Infinity; TRIP.minElevM=Infinity;
   TRIP.movingMs=0;
+  resetElevState();
   // Don't seed with a synthesized point. The first real GPS fix from
   // navigator.geolocation.watchPosition will become the start point in
   // tripIngestFix. This avoids inflating distance if S.lat/S.lon is stale.
@@ -5967,7 +6289,7 @@ window.addEventListener('pagehide', () => {
 });
 
 /* ─── INDEXEDDB ──────────────────────────────────────────── */
-const DB_NAME='trailgauge', DB_VER=2, STORE='trips', PIN_STORE='pins';
+const DB_NAME='trailgauge', DB_VER=3, STORE='trips', PIN_STORE='pins', FOLDER_STORE='folders';
 let _db=null;
 function openDB(){
   return new Promise((resolve,reject)=>{
@@ -5985,6 +6307,9 @@ function openDB(){
       if(!db.objectStoreNames.contains(PIN_STORE)){
         const ps=db.createObjectStore(PIN_STORE,{keyPath:'id'});
         ps.createIndex('createdAt','createdAt',{unique:false});
+      }
+      if(!db.objectStoreNames.contains(FOLDER_STORE)){
+        db.createObjectStore(FOLDER_STORE,{keyPath:'id'});
       }
     };
     req.onsuccess=()=>{ _db=req.result; resolve(_db); };
@@ -6047,6 +6372,35 @@ async function pinDelete(id){
   return new Promise((res,rej)=>{
     const tx=db.transaction(PIN_STORE,'readwrite');
     tx.objectStore(PIN_STORE).delete(id);
+    tx.oncomplete=()=>res();
+    tx.onerror=()=>rej(tx.error);
+  });
+}
+
+/* ─── FOLDER PERSISTENCE ──────────────────────────────────── */
+async function folderPut(f){
+  const db=await openDB();
+  return new Promise((res,rej)=>{
+    const tx=db.transaction(FOLDER_STORE,'readwrite');
+    tx.objectStore(FOLDER_STORE).put(f);
+    tx.oncomplete=()=>res();
+    tx.onerror=()=>rej(tx.error);
+  });
+}
+async function folderAll(){
+  const db=await openDB();
+  return new Promise((res,rej)=>{
+    const tx=db.transaction(FOLDER_STORE,'readonly');
+    const req=tx.objectStore(FOLDER_STORE).getAll();
+    req.onsuccess=()=>res(req.result||[]);
+    req.onerror=()=>rej(req.error);
+  });
+}
+async function folderDelete(id){
+  const db=await openDB();
+  return new Promise((res,rej)=>{
+    const tx=db.transaction(FOLDER_STORE,'readwrite');
+    tx.objectStore(FOLDER_STORE).delete(id);
     tx.oncomplete=()=>res();
     tx.onerror=()=>rej(tx.error);
   });
@@ -6652,6 +7006,122 @@ setTimeout(()=>{if(!S.weather)loadCachedWx();},3000);
 setInterval(()=>{if(S.lat&&S.lon)fetchWx(S.lat,S.lon);},15*60*1000);
 setInterval(()=>{if(S.wxTs)setWDot((Date.now()-S.wxTs)>S.wxStale?'stale':'cached');},60000);
 
+/* ─── BATTERY INDICATOR ─────────────────────────────────────── */
+(function initBattery(){
+  if(!navigator.getBattery) return;
+  const chip = document.getElementById('battChip');
+  if(!chip) return;
+  chip.innerHTML = '<span class="battIcon"></span><span class="battPct"></span>';
+  function updateBatt(b){
+    const pct = Math.round(b.level * 100);
+    chip.querySelector('.battIcon').textContent = b.charging ? '⚡' : (pct <= 15 ? '🪫' : '🔋');
+    chip.querySelector('.battPct').textContent = pct + '%';
+    chip.style.display = 'flex';
+    chip.classList.remove('warn','crit','charging');
+    if(b.charging)    chip.classList.add('charging');
+    else if(pct <= 15) chip.classList.add('crit');
+    else if(pct <= 30) chip.classList.add('warn');
+  }
+  navigator.getBattery().then(batt => {
+    updateBatt(batt);
+    batt.addEventListener('levelchange',   () => updateBatt(batt));
+    batt.addEventListener('chargingchange', () => updateBatt(batt));
+  }).catch(()=>{});
+})();
+
+/* ─── MARK SUMMIT BUTTON ────────────────────────────────────── */
+(function(){
+  const btn = document.getElementById('summitBtn');
+  if(!btn) return;
+  btn.addEventListener('click', () => {
+    const peakFt = ELEV_STATE.summitPeakFt > 0
+      ? ELEV_STATE.summitPeakFt
+      : (TRIP.maxElevM > -Infinity ? m2ft(TRIP.maxElevM) : 0);
+    saveSummitPin(peakFt);
+  });
+})();
+
+/* ─── FOLDER PANEL ───────────────────────────────────────────── */
+const flp = document.getElementById('flp');
+
+async function openFolderPanel(){
+  await renderFolderList();
+  flp.classList.add('open');
+}
+
+async function renderFolderList(){
+  const [folders, pins] = await Promise.all([folderAll(), pinAll()]);
+  folders.sort((a,b) => a.name.localeCompare(b.name));
+  const list  = document.getElementById('flList');
+  const empty = document.getElementById('flEmpty');
+  const cnt   = document.getElementById('flCount');
+  if(cnt) cnt.textContent = folders.length ? `${folders.length} folder${folders.length===1?'':'s'}` : '';
+  if(folders.length === 0){
+    list.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+  list.innerHTML = '';
+  folders.forEach(f => {
+    const pinCount = pins.filter(p => Array.isArray(p.folderIds) && p.folderIds.includes(f.id)).length;
+    const row = document.createElement('div');
+    row.className = 'folderRow';
+    row.innerHTML = `
+      <span style="font-size:16px;flex-shrink:0">📁</span>
+      <span class="folderRowName">${escapeHtml(f.name)}</span>
+      <span class="folderRowCount">${pinCount} pin${pinCount===1?'':'s'}</span>
+      <button class="folderRowBtn" data-action="rename">✏</button>
+      <button class="folderRowBtn del" data-action="delete">🗑</button>
+    `;
+    row.querySelector('[data-action="rename"]').addEventListener('click', async () => {
+      const name = prompt('Rename folder:', f.name);
+      if(!name || !name.trim()) return;
+      f.name = name.trim(); f.updatedAt = Date.now();
+      await folderPut(f);
+      await renderFolderList();
+    });
+    row.querySelector('[data-action="delete"]').addEventListener('click', async () => {
+      if(!confirm(`Delete folder "${f.name}"?\nPins will not be deleted.`)) return;
+      const affected = pins.filter(p => Array.isArray(p.folderIds) && p.folderIds.includes(f.id));
+      await Promise.all(affected.map(p => {
+        p.folderIds = p.folderIds.filter(id => id !== f.id);
+        p.updatedAt = Date.now();
+        return pinPut(p);
+      }));
+      await folderDelete(f.id);
+      await renderFolderList();
+    });
+    // Tap folder name → filter pin list by this folder
+    row.querySelector('.folderRowName').addEventListener('click', () => {
+      _pinFolderFilter = f.id;
+      flp.classList.remove('open');
+      openPinList();
+    });
+    list.appendChild(row);
+  });
+}
+
+document.getElementById('flCreateBtn')?.addEventListener('click', async () => {
+  const input = document.getElementById('flNewName');
+  const name  = input ? input.value.trim() : '';
+  if(!name) return;
+  const f = {
+    id: 'fld_' + Date.now() + '_' + Math.random().toString(36).slice(2,6),
+    name, createdAt: Date.now(), updatedAt: Date.now()
+  };
+  await folderPut(f);
+  if(input) input.value = '';
+  await renderFolderList();
+});
+
+document.getElementById('flNewName')?.addEventListener('keydown', e => {
+  if(e.key === 'Enter') document.getElementById('flCreateBtn')?.click();
+});
+
+document.getElementById('foldersBtn')?.addEventListener('click', openFolderPanel);
+flp?.addEventListener('click', e => { if(e.target === flp) flp.classList.remove('open'); });
+
 // Check for an unfinished trip from a previous session.
 // If found, offer three options: Resume (continue recording), Save (stop and save),
 // or Discard (throw away). Resume is critical for the case where the tab died but
@@ -6690,6 +7160,7 @@ setInterval(()=>{if(S.wxTs)setWDot((Date.now()-S.wxTs)>S.wxStale?'stale':'cached
     TRIP.pausedTotalMs = draft.pausedTotalMs || 0;
     TRIP.pts = draft.pts;
     TRIP.lastPt = draft.pts[draft.pts.length-1];
+    ELEV_STATE.lastMilestoneFt = Math.floor(m2ft(draft.gainM) / 1000) * 1000;
   }
 
   document.getElementById('rcResume').addEventListener('click', ()=>{
