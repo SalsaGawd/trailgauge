@@ -737,6 +737,19 @@ body.prof-trail.trip-active #summitBtn{display:flex}
 .folderRowBtn:active{transform:scale(.94);border-color:var(--accent);color:var(--accent)}
 .folderRowBtn.del:active{border-color:var(--danger);color:var(--danger)}
 
+/* Permanent-delete confirmation bottom sheet */
+.dangerSheet{position:fixed;inset:0;z-index:310;
+  background:rgba(0,0,0,.65);display:flex;align-items:flex-end;
+  -webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);
+  animation:fadeIn .18s ease both}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.dangerSheetBox{background:var(--card);border-radius:20px 20px 0 0;width:100%;
+  padding:24px 20px calc(24px + env(safe-area-inset-bottom,0px));
+  display:flex;flex-direction:column;gap:12px;animation:fadeUp .22s ease both}
+.dangerSheetTitle{font-family:var(--fd);font-size:17px;font-weight:700;color:var(--txt)}
+.dangerSheetBody{font-family:var(--fm);font-size:13px;color:var(--txt2);line-height:1.5}
+.dangerSheetBtns{display:flex;gap:8px;margin-top:4px}
+
 /* ─── COACHMARK SYSTEM ───────────────────────────────────────
    Small floating bubble that points at a specific UI element to explain it
    the first time the user encounters it. Replaces the old "What's New"
@@ -893,12 +906,23 @@ body.prof-trail.trip-active #trailTripStrip{display:flex}
 textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
 
 /* Pin list rows */
+/* Swipe-to-delete wrapper — overflow:hidden clips the action until swiped */
+.pinSwipeWrap{position:relative;overflow:hidden;border-bottom:1px solid var(--border)}
+.pinSwipeWrap:last-child{border-bottom:none}
+.pinSwipeAction{position:absolute;right:0;top:0;bottom:0;width:76px;
+  background:var(--danger);display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:2px;color:#fff;cursor:pointer;
+  -webkit-tap-highlight-color:transparent}
+.pinSwipeAction .sai{font-size:20px;line-height:1}
+.pinSwipeAction .sal{font-family:var(--fm);font-size:8px;font-weight:700;
+  letter-spacing:.5px;text-transform:uppercase;opacity:.9}
+.pinSwipeAction.forever{background:#7c3aed}
 .pinRow{display:flex;align-items:center;gap:12px;padding:12px 8px;
-  border-bottom:1px solid var(--border);cursor:pointer;
-  -webkit-tap-highlight-color:transparent;transition:background var(--tr);
-  -webkit-user-select:none;user-select:none}
+  cursor:pointer;-webkit-tap-highlight-color:transparent;background:var(--card);
+  transition:background var(--tr), transform .2s cubic-bezier(.4,0,.2,1);
+  -webkit-user-select:none;user-select:none;will-change:transform}
 .pinRow:active{background:var(--bg2)}
-.pinRow:last-child{border-bottom:none}
+.pinRow.swipe-open{transform:translateX(-76px)}
 .pinThumb{width:48px;height:48px;border-radius:8px;background:var(--bg2);
   display:flex;align-items:center;justify-content:center;font-size:22px;
   flex-shrink:0;overflow:visible;position:relative}
@@ -967,7 +991,7 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
 .modalbtn:active{transform:scale(.97)}
 .modalbtn:disabled{opacity:.5;cursor:default;transform:none}
 .modalbtn.primary{background:var(--accent);color:#000;border-color:var(--accent)}
-.modalbtn.danger{color:var(--danger);border-color:var(--danger)}
+.modalbtn.danger{background:var(--danger);color:#fff;border-color:var(--danger)}
 .modalbtn.ghost:hover{border-color:var(--txt2)}
 .tdStat{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);
   font-family:var(--fm);font-size:12px}
@@ -2934,57 +2958,79 @@ const plp = document.getElementById('plp');
 const pdp = document.getElementById('pdp');
 
 let _pinFolderFilter = null;
+let _openSwipeRow = null;
 
 async function openPinList(){
+  await Promise.all([ensureTrashFolder(), autoPurgeTrash()]);
   const [pins, folders] = await Promise.all([pinAll(), folderAll()]);
   pins.sort((a, b) => b.createdAt - a.createdAt);
   const list = document.getElementById('plList');
   const empty = document.getElementById('plEmpty');
   const filterRow = document.getElementById('plFolderFilter');
 
-  // Folder filter chips — only rendered when folders exist
+  const regularFolders = folders.filter(f => f.id !== TRASH_FOLDER_ID)
+                                .sort((a,b) => a.name.localeCompare(b.name));
+  const trashFolder = folders.find(f => f.id === TRASH_FOLDER_ID);
+
+  // Filter chips: always show (trash folder is always present)
   if(filterRow){
-    if(folders.length > 0){
-      filterRow.style.display = 'flex';
-      filterRow.innerHTML = '';
-      [null, ...folders].forEach(f => {
-        const chip = document.createElement('button');
-        chip.className = 'folderChip' + (_pinFolderFilter === (f ? f.id : null) ? ' active' : '');
-        chip.textContent = f ? f.name : 'All';
-        chip.addEventListener('click', () => {
-          _pinFolderFilter = f ? f.id : null;
-          filterRow.querySelectorAll('.folderChip').forEach(c => c.classList.remove('active'));
-          chip.classList.add('active');
-          renderPinRows(pins, list, empty);
+    filterRow.style.display = 'flex';
+    filterRow.innerHTML = '';
+    const chipDefs = [null, ...regularFolders, trashFolder].filter(x => x !== undefined);
+    chipDefs.forEach(f => {
+      const chip = document.createElement('button');
+      const isTrashChip = f && f.id === TRASH_FOLDER_ID;
+      chip.className = 'folderChip' + (_pinFolderFilter === (f ? f.id : null) ? ' active' : '');
+      chip.textContent = f ? (isTrashChip ? '🗑 Deleted' : f.name) : 'All';
+      if(isTrashChip) chip.style.cssText = 'border-color:var(--danger);color:var(--danger)';
+      chip.addEventListener('click', () => {
+        _pinFolderFilter = f ? f.id : null;
+        filterRow.querySelectorAll('.folderChip').forEach(c => {
+          c.classList.remove('active');
+          if(c !== chip) c.style.color = '';
         });
-        filterRow.appendChild(chip);
+        chip.classList.add('active');
+        renderPinRows(pins, list, empty);
       });
-    } else {
-      filterRow.style.display = 'none';
-      _pinFolderFilter = null;
-    }
+      filterRow.appendChild(chip);
+    });
   }
 
-  document.getElementById('plCount').textContent = pins.length ? `${pins.length} pin${pins.length===1?'':'s'}` : '';
+  const nonTrash = pins.filter(p => !Array.isArray(p.folderIds) || !p.folderIds.includes(TRASH_FOLDER_ID));
+  document.getElementById('plCount').textContent = nonTrash.length ? `${nonTrash.length} pin${nonTrash.length===1?'':'s'}` : '';
   renderPinRows(pins, list, empty);
   plp.classList.add('open');
   setTimeout(() => showCoachmark('pinsList'), 350);
 }
 
 function renderPinRows(pins, list, empty){
-  const filtered = _pinFolderFilter
-    ? pins.filter(p => Array.isArray(p.folderIds) && p.folderIds.includes(_pinFolderFilter))
-    : pins;
+  const inTrash = (_pinFolderFilter === TRASH_FOLDER_ID);
+  let filtered;
+  if(inTrash){
+    filtered = pins.filter(p => Array.isArray(p.folderIds) && p.folderIds.includes(TRASH_FOLDER_ID));
+  } else if(_pinFolderFilter){
+    filtered = pins.filter(p => Array.isArray(p.folderIds) && p.folderIds.includes(_pinFolderFilter) && !p.folderIds.includes(TRASH_FOLDER_ID));
+  } else {
+    filtered = pins.filter(p => !Array.isArray(p.folderIds) || !p.folderIds.includes(TRASH_FOLDER_ID));
+  }
   const prevScroll = list.scrollTop;
   if(filtered.length === 0){
     list.innerHTML = '';
     list.style.display = 'none';
     empty.style.display = 'block';
+    if(inTrash) empty.textContent = 'Deleted pins appear here. They auto-delete after 30 days.';
+    else if(empty.textContent.startsWith('Deleted')) empty.textContent = 'No pins yet.';
   } else {
     list.style.display = 'block';
     empty.style.display = 'none';
     list.innerHTML = '';
     filtered.forEach(pin => {
+      const wrap = document.createElement('div');
+      wrap.className = 'pinSwipeWrap';
+      const swipeAction = document.createElement('div');
+      swipeAction.className = 'pinSwipeAction' + (inTrash ? ' forever' : '');
+      swipeAction.innerHTML = `<span class="sai">${inTrash ? '⛔' : '🗑'}</span><span class="sal">${inTrash ? 'Forever' : 'Delete'}</span>`;
+
       const row = document.createElement('div');
       row.className = 'pinRow';
       const date = new Date(pin.createdAt);
@@ -2998,24 +3044,24 @@ function renderPinRows(pins, list, empty){
         const pa = (pin.peakAngle != null) ? `📐 ${pin.peakAngle.toFixed(1)}°` : '📐 —';
         const pStr = (pin.pitch != null) ? `P${Math.round(Math.abs(pin.pitch))}°` : '';
         const rStr = (pin.roll  != null) ? `R${Math.round(Math.abs(pin.roll ))}°` : '';
-        const angleSummary = [pa, pStr, rStr].filter(Boolean).join(' ');
-        subParts = [angleSummary, `${pin.lat.toFixed(4)}, ${pin.lon.toFixed(4)}`];
+        subParts = [[pa, pStr, rStr].filter(Boolean).join(' '), `${pin.lat.toFixed(4)}, ${pin.lon.toFixed(4)}`];
       } else if(isSummit){
-        const elStr = pin.peakFt
-          ? `${pin.peakFt.toLocaleString()} ft peak`
-          : (pin.elev != null ? `${Math.round(pin.elev*3.28084)} ft` : '');
+        const elStr = pin.peakFt ? `${pin.peakFt.toLocaleString()} ft peak` : (pin.elev != null ? `${Math.round(pin.elev*3.28084)} ft` : '');
         subParts = ['🏔️ Summit', elStr].filter(Boolean);
       } else {
         subParts = [`${pin.lat.toFixed(4)}, ${pin.lon.toFixed(4)}`];
         if(pin.elev != null) subParts.push(`${Math.round(pin.elev*3.28084)} ft`);
       }
+      // Show days-until-deletion when viewing the trash folder
+      if(inTrash && pin.deletedAt){
+        const daysLeft = Math.max(0, Math.ceil((pin.deletedAt + 30*24*60*60*1000 - Date.now()) / (24*60*60*1000)));
+        subParts.push(`${daysLeft}d left`);
+      }
       let nameDisplay = pin.label;
       if(!nameDisplay && isAngle && pin.peakAngle != null) nameDisplay = `${pin.peakAngle.toFixed(1)}° tilt`;
       if(!nameDisplay && isSummit) nameDisplay = pin.peakFt ? `${pin.peakFt.toLocaleString()} ft Summit` : 'Summit';
       if(!nameDisplay) nameDisplay = '(unnamed)';
-      const thumbContent = pin.photo
-        ? `<img src="${pin.photo}" alt="">`
-        : (isAngle ? '📐' : (isSummit ? '🏔️' : '📍'));
+      const thumbContent = pin.photo ? `<img src="${pin.photo}" alt="">` : (isAngle ? '📐' : (isSummit ? '🏔️' : '📍'));
       const kindBadge = isAngle
         ? '<div class="pinKindBadge" title="Angle pin">📐</div>'
         : (isSummit ? '<div class="pinKindBadge" style="background:#f59e0b" title="Summit">🏔️</div>' : '');
@@ -3027,8 +3073,69 @@ function renderPinRows(pins, list, empty){
         </div>
         <div class="pinDate">${dateStr}</div>
       `;
-      row.addEventListener('click', () => openPinDetail(pin));
-      list.appendChild(row);
+
+      // Swipe-to-delete gesture
+      let startX = null, startY = null, didSwipe = false;
+      row.addEventListener('touchstart', e => {
+        if(_openSwipeRow && _openSwipeRow !== row){ _openSwipeRow.classList.remove('swipe-open'); _openSwipeRow = null; }
+        startX = e.touches[0].clientX; startY = e.touches[0].clientY; didSwipe = false;
+      }, {passive:true});
+      row.addEventListener('touchmove', e => {
+        if(startX === null) return;
+        const dx = e.touches[0].clientX - startX;
+        const dy = Math.abs(e.touches[0].clientY - startY);
+        if(!didSwipe && dx < -6 && Math.abs(dx) > dy) didSwipe = true;
+        if(didSwipe){
+          const base = row.classList.contains('swipe-open') ? -76 : 0;
+          row.style.transition = 'none';
+          row.style.transform = `translateX(${Math.max(-76, Math.min(0, base + dx))}px)`;
+        }
+      }, {passive:true});
+      row.addEventListener('touchend', e => {
+        if(!didSwipe){ startX = null; return; }
+        const dx = e.changedTouches[0].clientX - startX;
+        row.style.transition = '';
+        if(dx < -36){ row.classList.add('swipe-open'); _openSwipeRow = row; }
+        else { row.classList.remove('swipe-open'); if(_openSwipeRow === row) _openSwipeRow = null; }
+        row.style.transform = ''; startX = null;
+      }, {passive:true});
+      row.addEventListener('click', () => {
+        if(didSwipe){ didSwipe = false; return; }
+        if(row.classList.contains('swipe-open')){ row.classList.remove('swipe-open'); _openSwipeRow = null; return; }
+        openPinDetail(pin);
+      });
+
+      // Action button handler
+      swipeAction.addEventListener('click', async e => {
+        e.stopPropagation();
+        if(inTrash){
+          const ok = await showDangerConfirm('Delete forever?',
+            'This pin will be permanently deleted. <b>There\'s no undo.</b>');
+          if(!ok) return;
+          await pinDelete(pin.id);
+        } else {
+          await moveToTrash(pin);
+        }
+        // Collapse the row out with animation, then re-render
+        wrap.style.transition = 'max-height .2s ease, opacity .15s ease';
+        wrap.style.maxHeight = wrap.offsetHeight + 'px';
+        wrap.style.overflow = 'hidden';
+        requestAnimationFrame(() => { wrap.style.maxHeight = '0'; wrap.style.opacity = '0'; });
+        setTimeout(async () => {
+          const freshPins = await pinAll();
+          freshPins.sort((a,b) => b.createdAt - a.createdAt);
+          if(!inTrash){
+            const nonTrash = freshPins.filter(p => !Array.isArray(p.folderIds) || !p.folderIds.includes(TRASH_FOLDER_ID));
+            const cnt = document.getElementById('plCount');
+            if(cnt) cnt.textContent = nonTrash.length ? `${nonTrash.length} pin${nonTrash.length===1?'':'s'}` : '';
+          }
+          renderPinRows(freshPins, list, empty);
+        }, 220);
+      });
+
+      wrap.appendChild(swipeAction);
+      wrap.appendChild(row);
+      list.appendChild(wrap);
     });
     list.scrollTop = prevScroll;
   }
@@ -6366,6 +6473,7 @@ window.addEventListener('pagehide', () => {
 
 /* ─── INDEXEDDB ──────────────────────────────────────────── */
 const DB_NAME='trailgauge', DB_VER=3, STORE='trips', PIN_STORE='pins', FOLDER_STORE='folders';
+const TRASH_FOLDER_ID = 'fld_trash';
 let _db=null;
 function openDB(){
   return new Promise((resolve,reject)=>{
@@ -6450,6 +6558,46 @@ async function pinDelete(id){
     tx.objectStore(PIN_STORE).delete(id);
     tx.oncomplete=()=>res();
     tx.onerror=()=>rej(tx.error);
+  });
+}
+async function moveToTrash(pin){
+  pin.folderIds = [TRASH_FOLDER_ID];
+  pin.deletedAt = Date.now();
+  pin.updatedAt = Date.now();
+  await pinPut(pin);
+}
+async function ensureTrashFolder(){
+  const all = await folderAll();
+  if(!all.find(f => f.id === TRASH_FOLDER_ID)){
+    await folderPut({id:TRASH_FOLDER_ID,name:'Deleted',system:true,
+      createdAt:Date.now(),updatedAt:Date.now()});
+  }
+}
+async function autoPurgeTrash(){
+  const pins = await pinAll();
+  const cutoff = Date.now() - 30*24*60*60*1000;
+  const expired = pins.filter(p =>
+    Array.isArray(p.folderIds) && p.folderIds.includes(TRASH_FOLDER_ID) &&
+    p.deletedAt && p.deletedAt < cutoff
+  );
+  if(expired.length) await Promise.all(expired.map(p => pinDelete(p.id)));
+}
+function showDangerConfirm(title, body){
+  return new Promise(resolve => {
+    const el = document.createElement('div');
+    el.className = 'dangerSheet';
+    el.innerHTML = `<div class="dangerSheetBox">
+      <div class="dangerSheetTitle">${escapeHtml(title)}</div>
+      <div class="dangerSheetBody">${body}</div>
+      <div class="dangerSheetBtns">
+        <button class="modalbtn ghost" style="flex:1" id="_dsc">Keep</button>
+        <button class="modalbtn danger" style="flex:1" id="_dsd">Delete Forever</button>
+      </div></div>`;
+    document.body.appendChild(el);
+    const cleanup = val => { el.remove(); resolve(val); };
+    el.querySelector('#_dsc').onclick = () => cleanup(false);
+    el.querySelector('#_dsd').onclick = () => cleanup(true);
+    el.addEventListener('click', e => { if(e.target === el) cleanup(false); });
   });
 }
 
@@ -7128,49 +7276,59 @@ async function openFolderPanel(){
 
 async function renderFolderList(){
   const [folders, pins] = await Promise.all([folderAll(), pinAll()]);
-  folders.sort((a,b) => a.name.localeCompare(b.name));
+  const trashFolder = folders.find(f => f.id === TRASH_FOLDER_ID);
+  const regularFolders = folders.filter(f => f.id !== TRASH_FOLDER_ID).sort((a,b) => a.name.localeCompare(b.name));
+  const ordered = trashFolder ? [...regularFolders, trashFolder] : regularFolders;
   const list  = document.getElementById('flList');
   const empty = document.getElementById('flEmpty');
   const cnt   = document.getElementById('flCount');
-  if(cnt) cnt.textContent = folders.length ? `${folders.length} folder${folders.length===1?'':'s'}` : '';
-  if(folders.length === 0){
+  if(cnt) cnt.textContent = regularFolders.length ? `${regularFolders.length} folder${regularFolders.length===1?'':'s'}` : '';
+  if(ordered.length === 0){
     list.innerHTML = '';
     empty.style.display = 'block';
     return;
   }
   empty.style.display = 'none';
   list.innerHTML = '';
-  folders.forEach(f => {
+  ordered.forEach(f => {
+    const isTrash = f.id === TRASH_FOLDER_ID;
     const pinCount = pins.filter(p => Array.isArray(p.folderIds) && p.folderIds.includes(f.id)).length;
     const row = document.createElement('div');
     row.className = 'folderRow';
-    row.innerHTML = `
-      <span style="font-size:16px;flex-shrink:0">📁</span>
-      <span class="folderRowName">${escapeHtml(f.name)}</span>
-      <span class="folderRowCount">${pinCount} pin${pinCount===1?'':'s'}</span>
-      <button class="folderRowBtn" data-action="rename">✏</button>
-      <button class="folderRowBtn del" data-action="delete">🗑</button>
-    `;
-    row.querySelector('[data-action="rename"]').addEventListener('click', async () => {
-      const name = prompt('Rename folder:', f.name);
-      if(!name || !name.trim()) return;
-      f.name = name.trim(); f.updatedAt = Date.now();
-      await folderPut(f);
-      await renderFolderList();
-    });
-    row.querySelector('[data-action="delete"]').addEventListener('click', async () => {
-      if(!confirm(`Delete folder "${f.name}"?\nPins will not be deleted.`)) return;
-      const affected = pins.filter(p => Array.isArray(p.folderIds) && p.folderIds.includes(f.id));
-      await Promise.all(affected.map(p => {
-        p.folderIds = p.folderIds.filter(id => id !== f.id);
-        p.updatedAt = Date.now();
-        return pinPut(p);
-      }));
-      await folderDelete(f.id);
-      if(_pinFolderFilter === f.id) _pinFolderFilter = null;
-      await renderFolderList();
-    });
-    // Tap folder name → filter pin list by this folder
+    if(isTrash){
+      row.innerHTML = `
+        <span style="font-size:16px;flex-shrink:0">🗑</span>
+        <span class="folderRowName" style="color:var(--danger)">${escapeHtml(f.name)}</span>
+        <span class="folderRowCount" style="font-size:10px;color:var(--txt3)">${pinCount} pin${pinCount===1?'':'s'} · auto-deletes after 30d</span>
+      `;
+    } else {
+      row.innerHTML = `
+        <span style="font-size:16px;flex-shrink:0">📁</span>
+        <span class="folderRowName">${escapeHtml(f.name)}</span>
+        <span class="folderRowCount">${pinCount} pin${pinCount===1?'':'s'}</span>
+        <button class="folderRowBtn" data-action="rename">✏</button>
+        <button class="folderRowBtn del" data-action="delete">🗑</button>
+      `;
+      row.querySelector('[data-action="rename"]').addEventListener('click', async () => {
+        const name = prompt('Rename folder:', f.name);
+        if(!name || !name.trim()) return;
+        f.name = name.trim(); f.updatedAt = Date.now();
+        await folderPut(f);
+        await renderFolderList();
+      });
+      row.querySelector('[data-action="delete"]').addEventListener('click', async () => {
+        if(!confirm(`Delete folder "${f.name}"?\nPins will not be deleted.`)) return;
+        const affected = pins.filter(p => Array.isArray(p.folderIds) && p.folderIds.includes(f.id));
+        await Promise.all(affected.map(p => {
+          p.folderIds = p.folderIds.filter(id => id !== f.id);
+          p.updatedAt = Date.now();
+          return pinPut(p);
+        }));
+        await folderDelete(f.id);
+        if(_pinFolderFilter === f.id) _pinFolderFilter = null;
+        await renderFolderList();
+      });
+    }
     row.querySelector('.folderRowName').addEventListener('click', () => {
       _pinFolderFilter = f.id;
       flp.classList.remove('open');
