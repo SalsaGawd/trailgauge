@@ -90,7 +90,11 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 #fbBody{background:var(--bg2);border:1px solid var(--border);color:var(--txt);
   padding:12px;border-radius:8px;font-family:var(--fm);font-size:14px;
   min-height:120px;resize:vertical;line-height:1.5}
-#fbBody:focus,#fbCategory:focus{outline:none;border-color:var(--accent)}
+#fbEmail{background:var(--bg2);border:1px solid var(--border);color:var(--txt);
+  padding:10px 12px;border-radius:8px;font-family:var(--fm);font-size:14px;
+  -webkit-appearance:none;appearance:none}
+#fbEmail::placeholder{color:var(--txt3)}
+#fbBody:focus,#fbCategory:focus,#fbEmail:focus{outline:none;border-color:var(--accent)}
 #fbStatus{font-family:var(--fm);font-size:12px;color:var(--txt3);min-height:16px}
 #fbStatus.success{color:var(--accent)}
 #fbStatus.error{color:var(--danger)}
@@ -323,13 +327,21 @@ body.light #permOverlay{background:rgba(240,244,248,0.94)}
   /* Make the weather strip itself tappable as an expand affordance — pointer
      on it so users discover the swipe-up panel. */
   cursor:pointer;-webkit-tap-highlight-color:transparent;position:relative;
-  transition:background var(--tr)}
+  overflow:hidden;max-height:400px;
+  transition:max-height .35s cubic-bezier(.4,0,.2,1), background var(--tr)}
 #wx:active{background:var(--card)}
 /* Drag handle indicator at the top of the weather strip — subtle pill that
    tells users "this expands". */
 #wxHandle{position:absolute;top:3px;left:50%;transform:translateX(-50%);
   width:36px;height:3px;border-radius:2px;background:var(--border);
-  pointer-events:none;opacity:.6}
+  pointer-events:none;opacity:.6;transition:opacity .2s ease}
+#wxCollapseBtn{background:transparent;border:none;color:var(--txt3);
+  font-size:13px;line-height:1;padding:4px 8px;cursor:pointer;flex-shrink:0;
+  -webkit-tap-highlight-color:transparent;transition:transform .3s ease}
+#wxCollapseBtn:active{color:var(--txt)}
+#wx.wx-collapsed{max-height:40px}
+#wx.wx-collapsed #wxHandle{opacity:0}
+#wx.wx-collapsed #wxCollapseBtn{transform:rotate(180deg)}
 
 /* Full weather panel — slides up over the rest of the UI when user taps
    or swipes up the weather strip. Contains larger hourly cards in a
@@ -1064,6 +1076,7 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
       <option value="praise">❤️ Compliment</option>
       <option value="other">💬 Other</option>
     </select>
+    <input type="email" id="fbEmail" placeholder="Your email (optional — for follow-up)" autocomplete="email"/>
     <textarea id="fbBody" placeholder="Describe what happened, what you'd like to see, or anything else…"></textarea>
     <div id="fbStatus"></div>
     <div style="display:flex;gap:8px;margin-top:6px">
@@ -1228,6 +1241,7 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
             <div id="cdot"></div>
             <span id="ctmp">—</span>
           </div>
+          <button id="wxCollapseBtn" title="Collapse weather" aria-label="Collapse weather strip">˅</button>
         </div>
       </div>
       <div id="fwarn">⚠ FREEZE/THAW CONDITIONS — Icy or muddy surface possible</div>
@@ -4940,6 +4954,13 @@ function renderWxPanel(data, ageMs, si){
 /* ─── WEATHER PANEL OPEN/CLOSE ──────────────────────────────── */
 const wxPanel = document.getElementById('wxPanel');
 function openWxPanel(){
+  // If the strip is collapsed, expand it instead of opening the full panel.
+  const _wxEl = document.getElementById('wx');
+  if(_wxEl && _wxEl.classList.contains('wx-collapsed')){
+    _wxEl.classList.remove('wx-collapsed');
+    try { localStorage.setItem('tg_wx_collapsed','0'); } catch(_){}
+    return;
+  }
   // If we have data, render it now. Otherwise show a placeholder so the
   // panel doesn't look broken with empty cards and "—" everywhere.
   if(S.weather){
@@ -5003,6 +5024,15 @@ document.getElementById('wx').addEventListener('touchend', e => {
   const dt = Date.now() - _wxSwipeStartT;
   _wxSwipeStartY = null;
   _wxSwipeStartX = null;
+  // Downward swipe (>40px vertical, mostly vertical) → collapse strip
+  if(dy > 40 && Math.abs(dy) > Math.abs(dx)){
+    const _wxEl = document.getElementById('wx');
+    if(_wxEl && !_wxEl.classList.contains('wx-collapsed')){
+      _wxEl.classList.add('wx-collapsed');
+      try { localStorage.setItem('tg_wx_collapsed','1'); } catch(_){}
+    }
+    return;
+  }
   // Upward swipe (>40px vertical, mostly vertical) → open panel
   if(dy < -40 && Math.abs(dy) > Math.abs(dx)){
     openWxPanel();
@@ -5026,6 +5056,19 @@ document.getElementById('wx').addEventListener('click', e => {
 });
 document.getElementById('wxPanelClose').addEventListener('click', closeWxPanel);
 document.getElementById('wxPanelHandle').addEventListener('click', closeWxPanel);
+
+// Weather strip collapse toggle — chevron button + localStorage persistence
+(function(){
+  const wx = document.getElementById('wx');
+  const btn = document.getElementById('wxCollapseBtn');
+  if(!wx || !btn) return;
+  if(localStorage.getItem('tg_wx_collapsed') === '1') wx.classList.add('wx-collapsed');
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    const collapsed = wx.classList.toggle('wx-collapsed');
+    try { localStorage.setItem('tg_wx_collapsed', collapsed ? '1' : '0'); } catch(_){}
+  });
+})();
 
 // Swipe-down on the panel → close
 let _wxPanelSwipeStartY = null;
@@ -5856,9 +5899,11 @@ document.getElementById('fbSend').addEventListener('click', async () => {
   }
   // Build metadata that's useful for triaging bugs (browser, app version,
   // current screen size). No personal data, no GPS coords.
+  const email = (document.getElementById('fbEmail')?.value || '').trim();
   const meta = {
     category,
     body,
+    ...(email && { email }),
     ua: navigator.userAgent,
     screen: `${window.innerWidth}x${window.innerHeight}`,
     profile: localStorage.getItem('tg_mode') || 'unknown',
@@ -5880,6 +5925,7 @@ document.getElementById('fbSend').addEventListener('click', async () => {
       status.textContent = '✓ Thanks — feedback sent!';
       status.className = 'success';
       document.getElementById('fbBody').value = '';
+      const _em = document.getElementById('fbEmail'); if(_em) _em.value = '';
       setTimeout(closeFeedback, 1500);
     } else {
       // Mailto fallback — open the user's email app with a pre-filled message.
@@ -5893,6 +5939,7 @@ document.getElementById('fbSend').addEventListener('click', async () => {
       const bodyText = encodeURIComponent(
         `${body}\n\n` +
         `---\nCategory: ${category}\n` +
+        (email ? `Reply-to: ${email}\n` : '') +
         `Device: ${meta.ua}\n` +
         `Screen: ${meta.screen}\n` +
         `Profile: ${meta.profile}\n` +
