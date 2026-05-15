@@ -599,6 +599,14 @@ body.prof-trail #actionBar #anglePinBtn { display: none !important; }
 body.prof-trail #actionBar { justify-content: center; gap: 8px; }
 body.prof-trail #actionBar #tripBtn { max-width: 240px; flex: 0 1 240px; }
 body.prof-trail #actionBar #tripPauseBtn { flex: 0 0 48px; }
+
+/* During active trip in trail mode, the bar holds STOP + MARK SUMMIT + pause.
+   The 240px cap on tripBtn squeezes summit to a sliver on narrow phones.
+   Drop the cap during trip-active so both grow equally. */
+body.prof-trail.trip-active   #actionBar #tripBtn   { flex:1 1 0; max-width:none; }
+body.prof-trail.trip-active   #actionBar #summitBtn { flex:1 1 0; max-width:none; }
+body.prof-trail.trip-active   #actionBar #tripPauseBtn { flex:0 0 48px; }
+body.prof-offroad.trip-active #actionBar #summitBtn { flex:1 1 0; }
 body.prof-trail #gsec { justify-content: flex-start; padding-top: 12px; gap: 14px;
   /* In trail mode, let gsec size to its actual content rather than filling
      the available height. This eliminates the dead space between the trip
@@ -706,9 +714,12 @@ body.prof-trail .hourcard { padding: 8px 6px; }
 .pdSummitLbl{font-family:var(--fd);font-size:10px;letter-spacing:2px;
   color:var(--txt2);text-transform:uppercase;margin-top:6px}
 
-/* Mark Summit button — hidden by default, shown only in trail mode during active trip */
+/* Mark Summit button — hidden by default. Shown during active trip in BOTH
+   modes since auto-detect runs in both; manual escape hatch should exist
+   wherever auto-detection does. */
 #summitBtn{display:none}
-body.prof-trail.trip-active #summitBtn{display:flex}
+body.prof-trail.trip-active   #summitBtn{display:flex}
+body.prof-offroad.trip-active #summitBtn{display:flex}
 
 /* Folder filter chip row — shown above pin list when folders exist */
 #plFolderFilter{display:none;gap:6px;overflow-x:auto;padding:0 0 10px;
@@ -1330,15 +1341,15 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
     <div class="srow">
       <div class="sinfo"><span class="sname">Auto-Pin Threshold</span><span class="sdesc">Trigger angle for auto-capture</span></div>
       <div class="thrwrap">
-        <input type="range" id="anglePinThrSlider" min="5" max="45" value="15" step="1">
-        <span id="anglePinThrVal">15°</span>
+        <input type="range" id="anglePinThrSlider" min="5" max="45" value="25" step="1">
+        <span id="anglePinThrVal">25°</span>
       </div>
     </div>
     <div class="srow">
       <div class="sinfo"><span class="sname">Cooldown</span><span class="sdesc">Minimum seconds between auto-pins</span></div>
       <div class="thrwrap">
-        <input type="range" id="anglePinCdSlider" min="5" max="180" value="30" step="5">
-        <span id="anglePinCdVal">30s</span>
+        <input type="range" id="anglePinCdSlider" min="5" max="300" value="90" step="5">
+        <span id="anglePinCdVal">90s</span>
       </div>
     </div>
 
@@ -1533,7 +1544,7 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
 <div id="plp">
   <div id="plsh">
     <div class="mhdl"></div>
-    <div class="mtl"><span>Saved Pins</span><span id="plCount" style="margin-left:auto;font-family:var(--fm);font-size:11px;color:var(--txt3);font-weight:normal"></span></div>
+    <div class="mtl"><span>Saved Pins</span><button id="plManageBtn" style="margin-right:6px;background:transparent;border:1px solid var(--border);color:var(--txt2);border-radius:6px;font-family:var(--fm);font-size:10px;letter-spacing:1px;text-transform:uppercase;padding:4px 8px;cursor:pointer;-webkit-tap-highlight-color:transparent" title="Batch manage pins">⋯ Manage</button><button id="plSortBtn" style="margin-left:auto;background:transparent;border:1px solid var(--border);color:var(--txt2);border-radius:6px;font-family:var(--fm);font-size:10px;letter-spacing:1px;text-transform:uppercase;padding:4px 8px;cursor:pointer;-webkit-tap-highlight-color:transparent" title="Cycle sort order">↕ Date</button><span id="plCount" style="margin-left:8px;font-family:var(--fm);font-size:11px;color:var(--txt3);font-weight:normal"></span></div>
     <div id="plFolderFilter"></div>
     <div id="plList" style="max-height:60vh;overflow-y:auto"></div>
     <div id="plEmpty" style="padding:30px 14px;text-align:center;color:var(--txt3);font-family:var(--fm);font-size:11px;line-height:1.6">
@@ -1643,6 +1654,8 @@ function smooth(){
 
 function loop(){
   smooth();
+  // Diagnostic overlay (off by default, toggle via window.tgDebug=true in console)
+  if(window.tgDebug) renderDebugHud();
   // Off-road profile renders the inclinometer canvas + max angle.
   // Trail profile renders the compass + trail trip strip.
   // Both run cheaply enough to update every frame; CSS handles visibility.
@@ -1661,6 +1674,32 @@ function loop(){
   }
   requestAnimationFrame(loop);
 }
+
+/* Developer diagnostic HUD. Hidden by default. Toggle with:
+     window.tgDebug = true    in browser console
+   Shows raw vs filtered sensor values + glitch count. Use during the Bishop
+   drive if the 67° false-reading bug reappears — paste glitch count + raw
+   values into a feedback ticket so we can keep narrowing it down. */
+let _debugHud = null;
+function renderDebugHud(){
+  if(!_debugHud){
+    _debugHud = document.createElement('div');
+    _debugHud.style.cssText = 'position:fixed;top:60px;right:8px;z-index:500;'+
+      'background:rgba(0,0,0,.85);color:#3ddc97;font-family:monospace;'+
+      'font-size:10px;padding:8px 10px;border-radius:6px;border:1px solid #3ddc97;'+
+      'pointer-events:none;line-height:1.4;white-space:pre;min-width:160px';
+    document.body.appendChild(_debugHud);
+  }
+  _debugHud.textContent =
+    `RAW P ${S.rawPitch.toFixed(2)}\n`+
+    `RAW R ${S.rawRoll.toFixed(2)}\n`+
+    `FIL P ${S.pitch.toFixed(2)}\n`+
+    `FIL R ${S.roll.toFixed(2)}\n`+
+    `OFF P ${S.pOff.toFixed(2)}\n`+
+    `OFF R ${S.rOff.toFixed(2)}\n`+
+    `GLITCH ${_glitchCount}`;
+}
+
 requestAnimationFrame(loop);
 
 function drawHorizon(pitch,roll){
@@ -2036,18 +2075,27 @@ function getScreenAngle(){
   return 0;
 }
 
-// Median-of-3 buffers for spike rejection (kills single-frame outliers
-// without adding lag the way deeper smoothing does)
-const _pBuf = [0, 0, 0];
-const _rBuf = [0, 0, 0];
+// Median-of-5 buffers for spike rejection. 3-sample median (previous) only
+// rejected single-frame outliers — two consecutive bad readings (a dash-mount
+// thump lasting 2 frames at 60fps) would sail through and hit the smoothing
+// filter as legitimate input. 5-sample median rejects up to 2 consecutive
+// outliers at the cost of one extra frame of latency (~17ms, imperceptible).
+const _pBuf = [0, 0, 0, 0, 0];
+const _rBuf = [0, 0, 0, 0, 0];
 let _bufIdx = 0;
-let _sensorWarmupAt = 0;  // timestamp when sensor first reports — discard 300ms
+let _sensorWarmupAt = 0;  // timestamp when sensor first reports — discard 1500ms
+// Last accepted (post-filter) values for rate-limiting. A vehicle physically
+// cannot rotate >1800°/sec — anything that jumps more than 30° between
+// consecutive frames at 60fps is a sensor glitch, NOT a real maneuver.
+let _lastAcceptedP = null;
+let _lastAcceptedR = null;
+let _glitchCount = 0;  // diagnostic counter — exposed via window.tgDebug
 
-function median3(a, b, c){
-  if(a > b){ const t=a; a=b; b=t; }
-  if(b > c){ const t=b; b=c; c=t; }
-  if(a > b){ const t=a; a=b; b=t; }
-  return b;
+function median5(a, b, c, d, e){
+  // Simple sort-and-return-middle. Tiny array, branch-free is overkill.
+  const arr = [a, b, c, d, e];
+  arr.sort((x, y) => x - y);
+  return arr[2];
 }
 
 function handleOri(e){
@@ -2111,24 +2159,54 @@ function handleOri(e){
   p = Math.max(-90, Math.min(90, p));
   r = Math.max(-90, Math.min(90, r));
 
-  // Warmup: discard the first 300ms of sensor readings — the OS hasn't
-  // settled its sensor fusion yet and early values can be wildly wrong.
+  // Warmup: discard the first 1500ms of sensor readings. iOS sensor fusion
+  // takes 1-2 seconds to converge after a fresh mount or orientation flip;
+  // 300ms (previous) was letting early garbage poison the filter chain.
+  // Also clear median buffers on warmup start so stale prior values don't
+  // taint the new orientation.
   const now = Date.now();
-  if(_sensorWarmupAt === 0){ _sensorWarmupAt = now; }
-  if(now - _sensorWarmupAt < 300) return;
+  if(_sensorWarmupAt === 0){
+    _sensorWarmupAt = now;
+    _pBuf[0] = _pBuf[1] = _pBuf[2] = 0;
+    _rBuf[0] = _rBuf[1] = _rBuf[2] = 0;
+    _bufIdx = 0;
+  }
+  if(now - _sensorWarmupAt < 1500) return;
 
   // Mark live AFTER warmup so the demo simulator doesn't kick in,
   // but we also don't show garbage in the first few frames.
   S.sensorLive = true;
 
-  // Median-of-3 spike rejection: write the new reading into a 3-slot ring
-  // buffer, then take the median. Removes single-frame jumps without
-  // affecting responsiveness to real movement.
+  // Median-of-5 spike rejection: write the new reading into a 5-slot ring
+  // buffer, then take the median. Rejects up to 2 consecutive frame
+  // outliers (dash-mount thumps, sensor glitches).
   _pBuf[_bufIdx] = p;
   _rBuf[_bufIdx] = r;
-  _bufIdx = (_bufIdx + 1) % 3;
-  p = median3(_pBuf[0], _pBuf[1], _pBuf[2]);
-  r = median3(_rBuf[0], _rBuf[1], _rBuf[2]);
+  _bufIdx = (_bufIdx + 1) % 5;
+  p = median5(_pBuf[0], _pBuf[1], _pBuf[2], _pBuf[3], _pBuf[4]);
+  r = median5(_rBuf[0], _rBuf[1], _rBuf[2], _rBuf[3], _rBuf[4]);
+
+  // Rate-of-change sanity gate. After median filtering, if pitch or roll
+  // jumped more than 30° from the last accepted value, treat this frame
+  // as a glitch and reuse the previous accepted values. A real vehicle
+  // can't rotate that fast (>1800°/sec) without something catastrophic
+  // happening, in which case the inclinometer isn't the priority.
+  if(_lastAcceptedP !== null && _lastAcceptedR !== null){
+    const dP = Math.abs(p - _lastAcceptedP);
+    const dR = Math.abs(r - _lastAcceptedR);
+    if(dP > 30 || dR > 30){
+      _glitchCount++;
+      // Reuse last good values — visually no jump, internally tracked
+      p = _lastAcceptedP;
+      r = _lastAcceptedR;
+    } else {
+      _lastAcceptedP = p;
+      _lastAcceptedR = r;
+    }
+  } else {
+    _lastAcceptedP = p;
+    _lastAcceptedR = r;
+  }
 
   S.rawPitch = p;
   S.rawRoll  = r;
@@ -2358,6 +2436,10 @@ function cancelHold(){S.holding=false;clearTimeout(S.holdT);if(!zb.classList.con
 function doZero(){
   S.pOff=S.rawPitch; S.rOff=S.rawRoll;
   S.tPitch=0; S.tRoll=0;
+  // Reset rate-limit state so the next frame doesn't see the offset
+  // change as a 30°+ jump and reject itself.
+  _lastAcceptedP = S.rawPitch;
+  _lastAcceptedR = S.rawRoll;
   zb.classList.remove('hld'); zb.classList.add('zd');
   zh.textContent='Reference plane set ✓';
   [hc,ac].forEach(c=>{c.classList.add('calib');setTimeout(()=>c.classList.remove('calib'),700);});
@@ -2958,12 +3040,130 @@ const plp = document.getElementById('plp');
 const pdp = document.getElementById('pdp');
 
 let _pinFolderFilter = null;
+let _pinSortMode = 'date';   // 'date' | 'distance' | 'name'
+const PIN_SORT_KEY = 'tg_pin_sort_v1';
+try { const s = localStorage.getItem(PIN_SORT_KEY); if(s === 'date' || s === 'distance' || s === 'name') _pinSortMode = s; } catch(_){}
+
+function applyPinSort(pins){
+  if(_pinSortMode === 'distance'){
+    if(S.lat == null || S.lon == null){
+      pins.sort((a, b) => b.createdAt - a.createdAt);
+      return;
+    }
+    const me = {lat:S.lat, lon:S.lon};
+    pins.sort((a, b) => haversineM(me, a) - haversineM(me, b));
+  } else if(_pinSortMode === 'name'){
+    pins.sort((a, b) => {
+      const an = (a.label || '').toLowerCase();
+      const bn = (b.label || '').toLowerCase();
+      if(an && !bn) return -1;
+      if(!an && bn) return 1;
+      if(an === bn) return b.createdAt - a.createdAt;
+      return an < bn ? -1 : 1;
+    });
+  } else {
+    pins.sort((a, b) => b.createdAt - a.createdAt);
+  }
+}
+
+function plSortBtnLabel(){
+  if(_pinSortMode === 'distance') return '↕ Near';
+  if(_pinSortMode === 'name')     return '↕ Name';
+  return '↕ Date';
+}
+
+function cyclePinSort(){
+  _pinSortMode = (_pinSortMode === 'date') ? 'distance'
+               : (_pinSortMode === 'distance') ? 'name'
+               : 'date';
+  try { localStorage.setItem(PIN_SORT_KEY, _pinSortMode); } catch(_){}
+  const btn = document.getElementById('plSortBtn');
+  if(btn) btn.textContent = plSortBtnLabel();
+  openPinList();
+}
+
+/* ─── BATCH PIN MANAGEMENT ────────────────────────────────────
+   Surgical batch-delete for the pin list. Built after Silverado test
+   produced 200 auto-pins on one drive — manually deleting 200 swipe-rows
+   is unworkable. Each option below targets a specific reasonable subset.
+   All destructive actions go through showDangerConfirm for an undo prompt. */
+async function openPinManageSheet(){
+  const pins = await pinAll();
+  const nonTrash = pins.filter(p => !Array.isArray(p.folderIds) || !p.folderIds.includes(TRASH_FOLDER_ID));
+
+  // Compute counts for each batch option so user knows what they're nuking
+  const now = Date.now();
+  const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+  const todayMs = todayStart.getTime();
+  const lastHourMs = now - 60*60*1000;
+
+  const counts = {
+    lastHour: nonTrash.filter(p => p.createdAt >= lastHourMs).length,
+    today:    nonTrash.filter(p => p.createdAt >= todayMs).length,
+    autoOnly: nonTrash.filter(p => p.kind === 'angle' && p.auto === true).length,
+    all:      nonTrash.length
+  };
+
+  const sheet = document.createElement('div');
+  sheet.className = 'dangerSheet';
+  sheet.innerHTML = `<div class="dangerSheetBox">
+    <div class="dangerSheetTitle">Batch Delete Pins</div>
+    <div class="dangerSheetBody" style="margin-bottom:8px">Each option moves pins to Trash (recoverable for 30 days). Pick a scope:</div>
+    <button class="modalbtn ghost" id="_pmLastHour" style="text-align:left;padding:12px 14px;display:flex;justify-content:space-between;align-items:center" ${counts.lastHour===0?'disabled':''}>
+      <span>Pins from last hour</span><span style="color:var(--txt3);font-family:var(--fm);font-size:11px">${counts.lastHour}</span>
+    </button>
+    <button class="modalbtn ghost" id="_pmToday" style="text-align:left;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;margin-top:6px" ${counts.today===0?'disabled':''}>
+      <span>Pins from today</span><span style="color:var(--txt3);font-family:var(--fm);font-size:11px">${counts.today}</span>
+    </button>
+    <button class="modalbtn ghost" id="_pmAuto" style="text-align:left;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;margin-top:6px" ${counts.autoOnly===0?'disabled':''}>
+      <span>All auto-captured angle pins</span><span style="color:var(--txt3);font-family:var(--fm);font-size:11px">${counts.autoOnly}</span>
+    </button>
+    ${_pinFolderFilter && _pinFolderFilter !== TRASH_FOLDER_ID ? `<button class="modalbtn ghost" id="_pmFolder" style="text-align:left;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;margin-top:6px">
+      <span>All pins in current folder</span><span style="color:var(--txt3);font-family:var(--fm);font-size:11px">filter</span>
+    </button>` : ''}
+    <button class="modalbtn danger" id="_pmAll" style="text-align:left;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;margin-top:10px" ${counts.all===0?'disabled':''}>
+      <span>ALL pins (nuclear)</span><span style="font-family:var(--fm);font-size:11px">${counts.all}</span>
+    </button>
+    <button class="modalbtn ghost" id="_pmCancel" style="margin-top:12px">Cancel</button>
+  </div>`;
+  document.body.appendChild(sheet);
+
+  const cleanup = () => sheet.remove();
+  sheet.querySelector('#_pmCancel').onclick = cleanup;
+  sheet.addEventListener('click', e => { if(e.target === sheet) cleanup(); });
+
+  async function batchTrash(filterFn, label){
+    const targets = nonTrash.filter(filterFn);
+    if(targets.length === 0) return;
+    cleanup();
+    const ok = await showDangerConfirm(
+      `Move ${targets.length} pin${targets.length===1?'':'s'} to Trash?`,
+      `Scope: <b>${label}</b><br>These will be recoverable from the Deleted folder for 30 days.`
+    );
+    if(!ok) return;
+    await Promise.all(targets.map(p => moveToTrash(p)));
+    openPinList();
+  }
+
+  sheet.querySelector('#_pmLastHour').onclick = () => batchTrash(p => p.createdAt >= lastHourMs, 'Last hour');
+  sheet.querySelector('#_pmToday').onclick    = () => batchTrash(p => p.createdAt >= todayMs,   'Today');
+  sheet.querySelector('#_pmAuto').onclick     = () => batchTrash(p => p.kind === 'angle' && p.auto === true, 'Auto-captured angle pins');
+  const pmFolder = sheet.querySelector('#_pmFolder');
+  if(pmFolder){
+    pmFolder.onclick = () => batchTrash(
+      p => Array.isArray(p.folderIds) && p.folderIds.includes(_pinFolderFilter),
+      'Current folder'
+    );
+  }
+  sheet.querySelector('#_pmAll').onclick = () => batchTrash(() => true, 'All pins');
+}
+
 let _openSwipeRow = null;
 
 async function openPinList(){
   await Promise.all([ensureTrashFolder(), autoPurgeTrash()]);
   const [pins, folders] = await Promise.all([pinAll(), folderAll()]);
-  pins.sort((a, b) => b.createdAt - a.createdAt);
+  applyPinSort(pins);
   const list = document.getElementById('plList');
   const empty = document.getElementById('plEmpty');
   const filterRow = document.getElementById('plFolderFilter');
@@ -2998,12 +3198,23 @@ async function openPinList(){
 
   const nonTrash = pins.filter(p => !Array.isArray(p.folderIds) || !p.folderIds.includes(TRASH_FOLDER_ID));
   document.getElementById('plCount').textContent = nonTrash.length ? `${nonTrash.length} pin${nonTrash.length===1?'':'s'}` : '';
+  // Wire/sync sort button each open (idempotent — overwrites onclick).
+  const sortBtn = document.getElementById('plSortBtn');
+  if(sortBtn){
+    sortBtn.textContent = plSortBtnLabel();
+    sortBtn.onclick = cyclePinSort;
+  }
+  const manageBtn = document.getElementById('plManageBtn');
+  if(manageBtn){
+    manageBtn.onclick = openPinManageSheet;
+  }
   renderPinRows(pins, list, empty);
   plp.classList.add('open');
   setTimeout(() => showCoachmark('pinsList'), 350);
 }
 
 function renderPinRows(pins, list, empty){
+  applyPinSort(pins);
   const inTrash = (_pinFolderFilter === TRASH_FOLDER_ID);
   let filtered;
   if(inTrash){
@@ -3012,6 +3223,15 @@ function renderPinRows(pins, list, empty){
     filtered = pins.filter(p => Array.isArray(p.folderIds) && p.folderIds.includes(_pinFolderFilter) && !p.folderIds.includes(TRASH_FOLDER_ID));
   } else {
     filtered = pins.filter(p => !Array.isArray(p.folderIds) || !p.folderIds.includes(TRASH_FOLDER_ID));
+  }
+  // Keep count chip in sync with the active filter. openPinList sets the
+  // initial value, but folder-chip taps just re-render rows — without this
+  // the chip lies ("5 pins" while viewing 3 trash items).
+  const cnt = document.getElementById('plCount');
+  if(cnt){
+    cnt.textContent = filtered.length
+      ? `${filtered.length} pin${filtered.length === 1 ? '' : 's'}`
+      : '';
   }
   const prevScroll = list.scrollTop;
   if(filtered.length === 0){
@@ -3062,9 +3282,13 @@ function renderPinRows(pins, list, empty){
       if(!nameDisplay && isSummit) nameDisplay = pin.peakFt ? `${pin.peakFt.toLocaleString()} ft Summit` : 'Summit';
       if(!nameDisplay) nameDisplay = '(unnamed)';
       const thumbContent = pin.photo ? `<img src="${pin.photo}" alt="">` : (isAngle ? '📐' : (isSummit ? '🏔️' : '📍'));
-      const kindBadge = isAngle
+      // Badge only when a photo covers the thumb. Without a photo the thumb
+      // already shows the kind icon, and stacking the badge duplicates it.
+      const kindBadge = (pin.photo && isAngle)
         ? '<div class="pinKindBadge" title="Angle pin">📐</div>'
-        : (isSummit ? '<div class="pinKindBadge" style="background:#f59e0b" title="Summit">🏔️</div>' : '');
+        : (pin.photo && isSummit)
+          ? '<div class="pinKindBadge" style="background:#f59e0b" title="Summit">🏔️</div>'
+          : '';
       row.innerHTML = `
         <div class="pinThumb">${thumbContent}${kindBadge}</div>
         <div class="pinMeta">
@@ -3923,22 +4147,31 @@ function doRenderTripShareCard(trip, resolve){
     const durMs = Math.max(0, (trip.endMs - trip.startMs) - (trip.pausedTotalMs || 0));
     const durStr = fmtDuration(durMs);
 
-    const stats = [
+    // Speed stat (moving-time basis) — only show if we have movingMs data.
+    // Older saved trips without it fall back to the 3-stat layout.
+    const movingHrs = (trip.movingMs || 0) / 3600000;
+    const avgMph = (movingHrs > 0) ? (m2mi(trip.distM) / movingHrs) : 0;
+    const hasAvg = avgMph > 0;
+    const stats = hasAvg ? [
+      ['DISTANCE', distMi + ' mi'],
+      ['ELEV GAIN', gainFt + ' ft'],
+      ['AVG SPEED', avgMph.toFixed(1) + ' mph'],
+      ['TIME', durStr]
+    ] : [
       ['DISTANCE', distMi + ' mi'],
       ['ELEV GAIN', gainFt + ' ft'],
       ['TIME', durStr]
     ];
-    const colW = (W - padX*2) / 3;
+    const colW = (W - padX*2) / stats.length;
+    const valueFontPx = hasAvg ? 36 : 42;
     stats.forEach((s, i) => {
       const cx = padX + colW * i + colW/2;
-      // Label
       ctx.fillStyle = 'rgba(220,228,238,.6)';
       ctx.font = '700 18px "Rajdhani",sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(s[0], cx, y);
-      // Value
       ctx.fillStyle = '#3ddc97';
-      ctx.font = '700 42px "Rajdhani",sans-serif';
+      ctx.font = `700 ${valueFontPx}px "Rajdhani",sans-serif`;
       ctx.fillText(s[1], cx, y + 32);
     });
 
@@ -4255,10 +4488,13 @@ document.getElementById('maxResetSession').addEventListener('click', () => {
 
 const ANGLE_PIN_KEY = 'tg_anglepin_settings_v1';
 const ANGLE_PIN = {
-  // User settings (persisted)
+  // User settings (persisted). Defaults raised after the Silverado field
+  // test showed 15°/30s produced 200+ pins on a single mellow drive.
+  // Off-road dash mounts pick up enough vibration + cornering noise that
+  // 15° fires constantly. 25° / 90s is the new floor.
   enabled: true,
-  thresholdDeg: 15,
-  cooldownSec: 30,
+  thresholdDeg: 25,
+  cooldownSec: 90,
   // Runtime state
   peakAngle: 0,           // highest |pitch|/|roll| observed in the current event
   peakPitch: 0,
@@ -6135,12 +6371,23 @@ function checkElevationMilestones(){
     }
   }
 
-  // Summit detection: 5 consecutive fixes >10 ft below peak, gain ≥ 200 ft
-  if(!ELEV_STATE.summitFired && gainFt >= 200 && currentElevFt != null && ELEV_STATE.summitPeakFt > 0){
+  // Summit detection — mode-aware thresholds. Vehicle GPS altitude noise is
+  // routinely ±15–30 ft, so off-road needs wider deltas + more cumulative
+  // gain before considering a summit. Trail/hiking moves slow enough that
+  // altitude is stable and tighter detection works.
+  const isOffroad = document.body.classList.contains('prof-offroad');
+  const minGain   = isOffroad ? 500 : 200;
+  const dropDelta = isOffroad ? 50  : 10;
+  const buffer    = isOffroad ? 10  : 5;
+
+  if(!ELEV_STATE.summitFired
+     && gainFt >= minGain
+     && currentElevFt != null
+     && ELEV_STATE.summitPeakFt > 0){
     const belowPeak = ELEV_STATE.summitPeakFt - currentElevFt;
-    if(belowPeak > 10){
+    if(belowPeak > dropDelta){
       ELEV_STATE.summitBuffer++;
-      if(ELEV_STATE.summitBuffer >= 5){
+      if(ELEV_STATE.summitBuffer >= buffer){
         ELEV_STATE.summitFired = true;
         showElevToast(ELEV_STATE.summitPeakFt, true);
       }
@@ -6864,11 +7111,17 @@ function openTripDetail(trip){
     let h=d.getHours();const mm=String(d.getMinutes()).padStart(2,'0'),ap=h>=12?'PM':'AM';h=h%12||12;
     startStr = `${dateStr} ${h}:${mm} ${ap}`;
   }
+  // Speed calc uses MOVING time (not total duration) so pauses for camp /
+  // lunch / wrong-turn-deliberation don't artificially drop the avg.
+  const movingHrs = (trip.movingMs || 0) / 3600000;
+  const avgMph = (movingHrs > 0) ? (m2mi(trip.distM) / movingHrs) : 0;
+  const avgStr = (avgMph > 0) ? avgMph.toFixed(1) + ' mph' : '—';
   const rows=[
     ['Started', startStr],
     ['Distance', m2mi(trip.distM).toFixed(2)+' mi'],
     ['Duration', fmtDuration(Math.max(0, (trip.endMs-trip.startMs) - (trip.pausedTotalMs||0)))],
     ['Moving time', fmtDuration(trip.movingMs)],
+    ['Avg speed (moving)', avgStr],
     ['Elevation gain', '+'+Math.round(m2ft(trip.gainM))+' ft'],
     ['Elevation loss', '−'+Math.round(m2ft(trip.lossM))+' ft'],
   ];
@@ -7230,37 +7483,31 @@ setTimeout(()=>{if(!S.weather)loadCachedWx();},3000);
 setInterval(()=>{if(S.lat&&S.lon)fetchWx(S.lat,S.lon);},15*60*1000);
 setInterval(()=>{if(S.wxTs)setWDot((Date.now()-S.wxTs)>S.wxStale?'stale':'cached');},60000);
 
-/* ─── BATTERY INDICATOR ─────────────────────────────────────── */
-(function initBattery(){
-  if(!navigator.getBattery) return;
-  const chip = document.getElementById('battChip');
-  if(!chip) return;
-  chip.innerHTML = '<span class="battIcon"></span><span class="battPct"></span>';
-  function updateBatt(b){
-    const pct = Math.round(b.level * 100);
-    chip.querySelector('.battIcon').textContent = b.charging ? '⚡' : (pct <= 15 ? '🪫' : '🔋');
-    chip.querySelector('.battPct').textContent = pct + '%';
-    chip.style.display = 'flex';
-    chip.classList.remove('warn','crit','charging');
-    if(b.charging)    chip.classList.add('charging');
-    else if(pct <= 15) chip.classList.add('crit');
-    else if(pct <= 30) chip.classList.add('warn');
-  }
-  navigator.getBattery().then(batt => {
-    updateBatt(batt);
-    batt.addEventListener('levelchange',   () => updateBatt(batt));
-    batt.addEventListener('chargingchange', () => updateBatt(batt));
-  }).catch(()=>{});
-})();
+/* (Battery chip init is handled by the chip-init function above. A second
+   IIFE here was running concurrently and registering duplicate listeners.
+   Removed in Session A audit pass.) */
 
-/* ─── MARK SUMMIT BUTTON ────────────────────────────────────── */
+/* ─── MARK SUMMIT BUTTON ──────────────────────────────────────
+   Manual escape hatch — saves a summit pin at the current spot regardless
+   of auto-detection state. Picks best available peak elevation in priority
+   order: rolling session peak → trip max elev → current S.elev. If none
+   have data, tells the user to wait rather than save "0 ft". */
 (function(){
   const btn = document.getElementById('summitBtn');
   if(!btn) return;
   btn.addEventListener('click', () => {
-    const peakFt = ELEV_STATE.summitPeakFt > 0
-      ? ELEV_STATE.summitPeakFt
-      : (TRIP.maxElevM > -Infinity ? m2ft(TRIP.maxElevM) : 0);
+    let peakFt = 0;
+    if(ELEV_STATE.summitPeakFt > 0){
+      peakFt = ELEV_STATE.summitPeakFt;
+    } else if(TRIP.maxElevM > -Infinity){
+      peakFt = m2ft(TRIP.maxElevM);
+    } else if(S.elev != null){
+      peakFt = m2ft(S.elev);
+    }
+    if(peakFt <= 0){
+      alert('No elevation data yet — wait for a GPS fix with altitude before marking a summit.');
+      return;
+    }
     saveSummitPin(peakFt);
   });
 })();
@@ -7372,6 +7619,28 @@ flp?.addEventListener('click', e => { if(e.target === flp) flp.classList.remove(
   const lastPtTime = draft.pts[draft.pts.length-1]?.t || draft.savedAt;
   const tripDurationMin = Math.round((lastPtTime - draft.startMs) / 60000);
 
+  // Auto-resume fresh drafts (<15 min). The user probably just crashed or
+  // backgrounded briefly — popping a modal every time interrupts the flow.
+  // For older drafts (15+ min), show the modal so they consciously choose
+  // Resume / Save / Discard.
+  const isFreshDraft = ageMin < 15;
+  function rehydrateAndResume(){
+    rehydrateDraft();
+    TRIP.active = true;
+    TRIP.paused = false;
+    TRIP.pausedAt = 0;
+    tripBtn.innerHTML='⏹<br><span class="actBtnSub">STOP TRIP</span>';
+    tripBtn.classList.add('rec');
+    tripLive.classList.add('show');
+    document.getElementById('tripPauseBtn').style.display = '';
+    document.getElementById('tripPauseBtn').textContent = '⏸';
+    document.body.classList.add('trip-active');
+    refreshTripLive();
+    if(typeof showAnglePinToast === 'function'){
+      showAnglePinToast(`Resumed trip · ${distMi} mi so far`, null);
+    }
+  }
+
   const rcp = document.getElementById('rcp');
   const rcBody = document.getElementById('rcBody');
   rcBody.innerHTML = [
@@ -7382,10 +7651,18 @@ flp?.addEventListener('click', e => { if(e.target === flp) flp.classList.remove(
     '',
     `<span style="color:var(--txt3)">Resume to continue recording where you left off, or save to finalize the trip as-is.</span>`
   ].join('<br>');
+  // Fresh draft: skip the modal entirely and auto-resume.
+  if(isFreshDraft){
+    rehydrateAndResume();
+    return;
+  }
   rcp.classList.add('open');
 
-  // Restore TRIP state from draft (used by both Resume and Save paths)
-  function rehydrate(){
+  // Restore TRIP state from draft. ELEV_STATE must be fully reconstructed —
+  // not just lastMilestoneFt — or summit detection compares new altitude
+  // readings against a peak of 0 and false-fires the moment the user
+  // descends from where they crashed.
+  function rehydrateDraft(){
     TRIP.startMs = draft.startMs;
     TRIP.distM = draft.distM;
     TRIP.gainM = draft.gainM;
@@ -7397,15 +7674,25 @@ flp?.addEventListener('click', e => { if(e.target === flp) flp.classList.remove(
     TRIP.pts = draft.pts;
     TRIP.lastPt = draft.pts[draft.pts.length-1];
     ELEV_STATE.lastMilestoneFt = Math.floor(m2ft(draft.gainM) / 1000) * 1000;
+    // Rebuild summit peak from saved fixes so post-resume descent
+    // doesn't trigger a phantom summit at the resume elevation.
+    let peakFt = 0;
+    for(const p of draft.pts){
+      if(p.elev != null){
+        const ft = m2ft(p.elev);
+        if(ft > peakFt) peakFt = ft;
+      }
+    }
+    ELEV_STATE.summitPeakFt = peakFt;
+    ELEV_STATE.summitBuffer = 0;
+    ELEV_STATE.summitFired  = false;
   }
 
   document.getElementById('rcResume').addEventListener('click', ()=>{
-    rehydrate();
+    rehydrateDraft();
     TRIP.active = true;
-    // Reset pause state on resume — we don't persist pause across reloads
     TRIP.paused = false;
     TRIP.pausedAt = 0;
-    // Visual state: show recording UI
     tripBtn.innerHTML='⏹<br><span class="actBtnSub">STOP TRIP</span>';
     tripBtn.classList.add('rec');
     tripLive.classList.add('show');
@@ -7417,7 +7704,7 @@ flp?.addEventListener('click', e => { if(e.target === flp) flp.classList.remove(
   }, {once:true});
 
   document.getElementById('rcSave').addEventListener('click', ()=>{
-    rehydrate();
+    rehydrateDraft();
     TRIP.active = false;
     rcp.classList.remove('open');
     openSaveModal(/*recovery=*/true);
