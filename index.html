@@ -2164,13 +2164,15 @@ function drawTruckDial(pitch, roll){
   tdx.lineWidth = 1; tdx.stroke();
 
   // Visual range — clamp inputs to ±45 so needles stay inside the arcs.
-  // Sign inverted from raw pitch/roll: the device-orientation pipeline
-  // reports forward tilt as negative pitch, but user intuition says
-  // forward tilt = UP on the gauge. Single negation here propagates
-  // through both the arc needle and the center ladder, keeping them in
-  // sync and moving the intuitive direction.
+  // Sign convention notes:
+  //   PITCH: sensor reports forward tilt as negative. User intuition says
+  //   forward = UP on gauge. Negate at source so both needle and ladder
+  //   read forward-tilt as positive (= up).
+  //   ROLL: sensor reports right-side-down as positive, which matches
+  //   user intuition of "right-down = blue needle goes to right (down on
+  //   our arc layout)". No inversion needed.
   const pVis = Math.max(-45, Math.min(45, -pitch));
-  const rVis = Math.max(-45, Math.min(45, -roll));
+  const rVis = Math.max(-45, Math.min(45, roll));
 
   /* ─── PITCH ARC (left semicircle) ────────────────────────
      Arc sweeps from canvas angle 135° (lower-left) to 225° (upper-left),
