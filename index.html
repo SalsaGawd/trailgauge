@@ -203,12 +203,16 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 .runit{font-family:var(--fm);font-size:10px;color:var(--txt3);margin-top:1px}
 
 #gwrap{position:relative;flex-shrink:0;display:flex;align-items:flex-start;justify-content:center}
-#hc,#ac{display:block;border-radius:50%;
+#hc,#ac,#tdc{display:block;border-radius:50%;
   box-shadow:0 0 0 3px var(--border),0 0 0 5px var(--bg2),0 0 28px rgba(61,220,151,.1);
   position:absolute;top:0;left:0;transition:opacity .35s ease}
-#ac{opacity:0;pointer-events:none}
+#ac,#tdc{opacity:0;pointer-events:none}
+/* Mode classes on #gwrap drive which canvas is visible. Default state
+   (no class) = Horizon. .am = Analog. .tdm = Truck Dial. */
 #gwrap.am #hc{opacity:0;pointer-events:none}
 #gwrap.am #ac{opacity:1;pointer-events:all}
+#gwrap.tdm #hc{opacity:0;pointer-events:none}
+#gwrap.tdm #tdc{opacity:1;pointer-events:all}
 #mbtn{position:absolute;bottom:-15px;left:50%;transform:translateX(-50%);
   background:var(--card2);border:1px solid var(--border);border-radius:20px;
   padding:4px 16px;font-family:var(--fm);font-size:10px;color:var(--txt2);
@@ -1173,6 +1177,7 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
       <div id="gwrap">
         <canvas id="hc"></canvas>
         <canvas id="ac"></canvas>
+        <canvas id="tdc"></canvas>
         <button id="mbtn">⬡ Horizon</button>
         <div id="permOverlay">
           <div class="permIcon">📐</div>
@@ -1594,7 +1599,7 @@ const S = {
   tPitch:0, tRoll:0,
   rawPitch:0, rawRoll:0,
   pOff:0, rOff:0,
-  cel:false, dark:true, analog:false,
+  cel:false, dark:true, gaugeMode:'horizon',
   alarm:false, vib:true, threshold:30, alarmFired:false,
   wakeLock:null, audio:null,
   weather:null, wxTs:null, wxStale:2*60*60*1000,
@@ -1606,8 +1611,10 @@ const S = {
 
 const hc=document.getElementById('hc');
 const ac=document.getElementById('ac');
+const tdc=document.getElementById('tdc');
 const hx=hc.getContext('2d');
 const ax=ac.getContext('2d');
+const tdx=tdc.getContext('2d');
 const gw=document.getElementById('gwrap');
 const mb=document.getElementById('mbtn');
 let SZ=200, DPR=window.devicePixelRatio||1;
@@ -1620,7 +1627,7 @@ function resize(){
   let sz=Math.min(gs.clientWidth-24, gs.clientHeight-rH);
   sz=Math.max(140, Math.min(land?300:360, sz));
   SZ=sz;
-  [hc,ac].forEach(c=>{
+  [hc,ac,tdc].forEach(c=>{
     c.width=sz*DPR; c.height=sz*DPR;
     c.style.width=sz+'px'; c.style.height=sz+'px';
     c.style.position='absolute'; c.style.top='0'; c.style.left='0';
@@ -1640,6 +1647,7 @@ function resize(){
   }
   hx.setTransform(1,0,0,1,0,0); hx.scale(DPR,DPR);
   ax.setTransform(1,0,0,1,0,0); ax.scale(DPR,DPR);
+  tdx.setTransform(1,0,0,1,0,0); tdx.scale(DPR,DPR);
 }
 
 // Visual smoothing — higher alpha = more responsive, less smooth.
@@ -1662,7 +1670,9 @@ function loop(){
   const isOffroad = document.body.classList.contains('prof-offroad');
   const isTrail   = document.body.classList.contains('prof-trail');
   if(isOffroad){
-    S.analog ? drawAnalog(S.pitch,S.roll) : drawHorizon(S.pitch,S.roll);
+    if(S.gaugeMode === 'truckdial')   drawTruckDial(S.pitch, S.roll);
+    else if(S.gaugeMode === 'analog') drawAnalog(S.pitch, S.roll);
+    else                              drawHorizon(S.pitch, S.roll);
     updateCards();
     checkAlarm();
     updateMaxAngle();
@@ -2065,6 +2075,298 @@ function drawAnalog(pitch,roll){
   ax.restore();
 }
 
+/* ══════════════════════════════════════════════════════════
+   TRUCK DIAL — off-road analog dash style
+
+   Layout (faithful TG-palette translation of the reference photo):
+   - Two curved arcs sweep from inner edges outward (pitch=left, roll=right)
+     each with 0/10/20/30/40 tick marks, small red warning triangles at the
+     outer corners (±40°), and a moving needle indicator.
+   - Center column: twin vertical ladder bars (pitch=green, roll=sky blue)
+     filling up/down from a zero line. Visualizes magnitude alongside the arcs.
+   - Bottom "bathtub" arc: green safe-zone indicator. Fills bright green when
+     both axes are inside threshold/2, transitions amber → red as the worst
+     axis approaches threshold.
+   - Top digital P readout, bottom digital R readout (large white digits).
+
+   Math:
+     - Each arc occupies a 90° sweep
+     - Pitch arc: canvas angle range 180° to 270° (left side, 9-to-7 o'clock)
+     - Roll arc:  canvas angle range -90° to 0° (right side, 12-to-3 o'clock,
+       drawn mirrored from the right inside)
+     - Needles draw inside their arc, rotating from base position by the
+       angle * (90°/45°) = 2x the input degrees mapped into the arc sweep.
+   ══════════════════════════════════════════════════════════ */
+function drawTruckDial(pitch, roll){
+  const s = SZ, cx = s/2, cy = s/2, r = s/2 - 4;
+  const D2R = Math.PI / 180;
+  tdx.clearRect(0, 0, s, s);
+
+  // Background — dark gradient inside the bezel, matching Analog mode's vibe
+  const bg = tdx.createRadialGradient(cx, cy - r*.1, r*.05, cx, cy, r);
+  bg.addColorStop(0, S.dark ? '#1e2738' : '#f0f4f8');
+  bg.addColorStop(1, S.dark ? '#0a0c0f' : '#dde3ea');
+  tdx.beginPath(); tdx.arc(cx, cy, r, 0, Math.PI*2);
+  tdx.fillStyle = bg; tdx.fill();
+  tdx.strokeStyle = S.dark ? '#2a3342' : '#cbd5e0';
+  tdx.lineWidth = 3; tdx.stroke();
+
+  // Inner bezel highlight
+  tdx.beginPath(); tdx.arc(cx, cy, r - 8, 0, Math.PI*2);
+  tdx.strokeStyle = S.dark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)';
+  tdx.lineWidth = 1; tdx.stroke();
+
+  // Visual range — clamp inputs to ±45 so needles stay inside the arcs
+  const pVis = Math.max(-45, Math.min(45, pitch));
+  const rVis = Math.max(-45, Math.min(45, roll));
+
+  /* ─── PITCH ARC (left semicircle) ────────────────────────
+     Arc sweeps from canvas angle 135° (lower-left) to 225° (upper-left),
+     a 90° sweep on the left side of the dial. */
+  const arcR = r * 0.78;     // outer arc radius
+  const arcRi = r * 0.62;    // inner arc radius (where ticks terminate)
+
+  drawTruckArc({
+    ctx: tdx, cx, cy, r: arcR, ri: arcRi,
+    startDeg: 135, endDeg: 225,
+    value: pVis, maxDeg: 45,
+    label: 'P',
+    needleColor: '#3ddc97',
+    side: 'left'
+  });
+
+  /* ─── ROLL ARC (right semicircle) ───────────────────────
+     Mirror of pitch arc on the right side. Canvas angles -45° to 45°. */
+  drawTruckArc({
+    ctx: tdx, cx, cy, r: arcR, ri: arcRi,
+    startDeg: -45, endDeg: 45,
+    value: rVis, maxDeg: 45,
+    label: 'R',
+    needleColor: '#38bdf8',
+    side: 'right'
+  });
+
+  /* ─── CENTER LADDER COLUMN ──────────────────────────────
+     Two vertical bars side by side. Each shows the |value|/45 filled
+     amount, with the fill direction (up or down) indicating sign.
+     Left bar: pitch (green). Right bar: roll (sky blue). */
+  const ladderW = r * 0.085;
+  const ladderH = r * 0.95;
+  const ladderGap = r * 0.04;
+  const ladderTotalW = ladderW * 2 + ladderGap;
+  const ladderX = cx - ladderTotalW / 2;
+  const ladderTop = cy - ladderH / 2;
+  const ladderMid = cy;
+
+  // Backgrounds for both ladder bars
+  tdx.fillStyle = S.dark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
+  tdx.fillRect(ladderX, ladderTop, ladderW, ladderH);
+  tdx.fillRect(ladderX + ladderW + ladderGap, ladderTop, ladderW, ladderH);
+
+  // Outline
+  tdx.strokeStyle = S.dark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.15)';
+  tdx.lineWidth = 1;
+  tdx.strokeRect(ladderX, ladderTop, ladderW, ladderH);
+  tdx.strokeRect(ladderX + ladderW + ladderGap, ladderTop, ladderW, ladderH);
+
+  // Pitch fill (left bar) — fills upward for positive, downward for negative
+  const pFillH = (Math.abs(pVis) / 45) * (ladderH / 2);
+  const pFillY = (pVis >= 0) ? (ladderMid - pFillH) : ladderMid;
+  const pOverThr = Math.abs(pitch) >= S.threshold;
+  tdx.fillStyle = pOverThr ? '#ef4444' : '#3ddc97';
+  tdx.fillRect(ladderX, pFillY, ladderW, pFillH);
+
+  // Roll fill (right bar)
+  const rFillH = (Math.abs(rVis) / 45) * (ladderH / 2);
+  const rFillY = (rVis >= 0) ? (ladderMid - rFillH) : ladderMid;
+  const rOverThr = Math.abs(roll) >= S.threshold;
+  tdx.fillStyle = rOverThr ? '#ef4444' : '#38bdf8';
+  tdx.fillRect(ladderX + ladderW + ladderGap, rFillY, ladderW, rFillH);
+
+  // Zero-reference line across both ladders
+  tdx.strokeStyle = S.dark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)';
+  tdx.lineWidth = 1.5;
+  tdx.beginPath();
+  tdx.moveTo(ladderX - 4, ladderMid);
+  tdx.lineTo(ladderX + ladderTotalW + 4, ladderMid);
+  tdx.stroke();
+
+  // Tick marks at ±15° and ±30° on each ladder
+  tdx.strokeStyle = S.dark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.25)';
+  tdx.lineWidth = 1;
+  [15, 30].forEach(deg => {
+    const yOff = (deg / 45) * (ladderH / 2);
+    [-1, 1].forEach(dir => {
+      const y = ladderMid + yOff * dir;
+      tdx.beginPath();
+      tdx.moveTo(ladderX - 3, y);
+      tdx.lineTo(ladderX, y);
+      tdx.stroke();
+      tdx.beginPath();
+      tdx.moveTo(ladderX + ladderTotalW, y);
+      tdx.lineTo(ladderX + ladderTotalW + 3, y);
+      tdx.stroke();
+    });
+  });
+
+  /* ─── BOTTOM SAFE-ZONE BATHTUB ARC ──────────────────────
+     A wide arc at the bottom that's green when safe, transitions amber
+     → red as worst-case angle approaches threshold. */
+  const tubR = r * 0.92;
+  const tubStart = 110 * D2R;
+  const tubEnd = 70 * D2R;
+  const maxAbs = Math.max(Math.abs(pitch), Math.abs(roll));
+  const safeRatio = Math.max(0, Math.min(1, maxAbs / S.threshold));
+  let tubColor;
+  if(safeRatio < 0.5){
+    tubColor = '#3ddc97';
+  } else if(safeRatio < 0.85){
+    tubColor = '#f0b429';
+  } else {
+    tubColor = '#ef4444';
+  }
+  tdx.strokeStyle = tubColor;
+  tdx.lineWidth = 5;
+  tdx.lineCap = 'round';
+  tdx.beginPath();
+  tdx.arc(cx, cy, tubR, tubStart, tubEnd);
+  tdx.stroke();
+  tdx.lineCap = 'butt';
+
+  /* ─── DIGITAL READOUTS ─────────────────────────────────
+     Big P at top, R at bottom. */
+  const dispP = Math.round(pitch * 2) / 2;
+  const dispR = Math.round(roll * 2) / 2;
+  const digitFs = Math.max(11, s * 0.065);
+  tdx.font = `bold ${digitFs}px 'Rajdhani', sans-serif`;
+  tdx.shadowColor = 'rgba(0,0,0,0.6)';
+  tdx.shadowBlur = 4;
+  tdx.textAlign = 'center';
+  tdx.textBaseline = 'middle';
+
+  tdx.fillStyle = '#3ddc97';
+  tdx.fillText('P ' + (dispP >= 0 ? '+' : '') + dispP.toFixed(1) + '°',
+               cx, cy - r * 0.78);
+
+  tdx.fillStyle = '#38bdf8';
+  tdx.fillText('R ' + (dispR >= 0 ? '+' : '') + dispR.toFixed(1) + '°',
+               cx, cy + r * 0.78);
+
+  tdx.shadowBlur = 0;
+}
+
+/* Helper for drawing one side's arc + ticks + needle.
+   Centralized so left/right arcs stay symmetric without code duplication. */
+function drawTruckArc(opts){
+  const {ctx, cx, cy, r, ri, startDeg, endDeg, value, maxDeg, label, needleColor, side} = opts;
+  const D2R = Math.PI / 180;
+  const sR = startDeg * D2R;
+  const eR = endDeg * D2R;
+
+  // Arc background line — full sweep, dim
+  ctx.strokeStyle = S.dark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.20)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, sR, eR);
+  ctx.stroke();
+
+  // Tick marks at 0, 10, 20, 30, 40
+  const ticks = [0, 10, 20, 30, 40];
+  const labelR = r + 8;
+  const fs = Math.max(8, SZ * 0.038);
+  ctx.font = `${fs}px 'Share Tech Mono', monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  ticks.forEach(deg => {
+    [-1, 1].forEach(dir => {
+      if(deg === 0 && dir === -1) return;
+      let angle;
+      if(side === 'left'){
+        angle = (180 + dir * (deg / maxDeg) * 45) * D2R;
+      } else {
+        angle = (0 + dir * (deg / maxDeg) * 45) * D2R;
+      }
+      const isMajor = (deg % 20 === 0);
+      const tickLen = isMajor ? 8 : 5;
+      const x1 = cx + r * Math.cos(angle);
+      const y1 = cy + r * Math.sin(angle);
+      const x2 = cx + (r - tickLen) * Math.cos(angle);
+      const y2 = cy + (r - tickLen) * Math.sin(angle);
+      ctx.strokeStyle = isMajor
+        ? (S.dark ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.65)')
+        : (S.dark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.35)');
+      ctx.lineWidth = isMajor ? 1.8 : 1;
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+
+      if(isMajor && deg > 0){
+        const lx = cx + labelR * Math.cos(angle);
+        const ly = cy + labelR * Math.sin(angle);
+        ctx.fillStyle = S.dark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.7)';
+        ctx.fillText(String(deg), lx, ly);
+      }
+    });
+  });
+
+  // 0° label at the arc midpoint
+  let midAngle;
+  if(side === 'left') midAngle = 180 * D2R;
+  else                midAngle = 0;
+  const zx = cx + labelR * Math.cos(midAngle);
+  const zy = cy + labelR * Math.sin(midAngle);
+  ctx.fillStyle = S.dark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.55)';
+  ctx.fillText('0', zx, zy);
+
+  // Red warning triangles at ±40° (corners)
+  ctx.fillStyle = '#ef4444';
+  [-1, 1].forEach(dir => {
+    let angle;
+    if(side === 'left'){
+      angle = (180 + dir * (40 / maxDeg) * 45) * D2R;
+    } else {
+      angle = (0 + dir * (40 / maxDeg) * 45) * D2R;
+    }
+    const tipX = cx + (r + 4) * Math.cos(angle);
+    const tipY = cy + (r + 4) * Math.sin(angle);
+    ctx.save();
+    ctx.translate(tipX, tipY);
+    ctx.rotate(angle + Math.PI/2);
+    ctx.beginPath();
+    ctx.moveTo(0, -4);
+    ctx.lineTo(-3, 2);
+    ctx.lineTo(3, 2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  });
+
+  // NEEDLE
+  let needleAngle;
+  if(side === 'left'){
+    needleAngle = (180 + (value / maxDeg) * 45) * D2R;
+  } else {
+    needleAngle = (0 + (value / maxDeg) * 45) * D2R;
+  }
+  const nx1 = cx + ri * Math.cos(needleAngle);
+  const ny1 = cy + ri * Math.sin(needleAngle);
+  const nx2 = cx + (r - 2) * Math.cos(needleAngle);
+  const ny2 = cy + (r - 2) * Math.sin(needleAngle);
+  ctx.strokeStyle = needleColor;
+  ctx.lineWidth = 3;
+  ctx.lineCap = 'round';
+  ctx.shadowColor = needleColor;
+  ctx.shadowBlur = 8;
+  ctx.beginPath();
+  ctx.moveTo(nx1, ny1);
+  ctx.lineTo(nx2, ny2);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.lineCap = 'butt';
+}
+
 function getScreenAngle(){
   // screen.orientation.angle is the modern API; window.orientation is the
   // legacy iOS Safari fallback. Both return one of: 0, 90, -90 (or 270), 180.
@@ -2464,14 +2766,37 @@ zb.addEventListener('touchstart',e=>{e.preventDefault();startHold();},{passive:f
 zb.addEventListener('mouseup',cancelHold); zb.addEventListener('mouseleave',cancelHold);
 zb.addEventListener('touchend',cancelHold); zb.addEventListener('touchcancel',cancelHold);
 
-mb.addEventListener('click',()=>{
-  S.analog=!S.analog;
-  gw.classList.toggle('am',S.analog);
-  mb.textContent=S.analog?'◎ Analog':'⬡ Horizon';
-  mb.classList.toggle('am',S.analog);
-  try{localStorage.setItem('tg_mode',S.analog?'analog':'horizon');}catch(e){}
+// Mode cycle: Horizon → Analog → Truck Dial → Horizon.
+// Each mode has its own button label, accent state, and #gwrap CSS class.
+const MODE_CYCLE = ['horizon', 'analog', 'truckdial'];
+const MODE_META = {
+  horizon:   { label: '⬡ Horizon',     cls: ''     },
+  analog:    { label: '◎ Analog',      cls: 'am'   },
+  truckdial: { label: '▣ Truck Dial',  cls: 'tdm'  }
+};
+function applyGaugeMode(mode){
+  if(!MODE_META[mode]) mode = 'horizon';
+  S.gaugeMode = mode;
+  // Clear all mode classes, then add the current one
+  gw.classList.remove('am','tdm');
+  if(MODE_META[mode].cls) gw.classList.add(MODE_META[mode].cls);
+  mb.textContent = MODE_META[mode].label;
+  // Active accent only on non-default modes
+  mb.classList.toggle('am', mode !== 'horizon');
+  try { localStorage.setItem('tg_mode', mode); } catch(e){}
+}
+mb.addEventListener('click', () => {
+  const idx = MODE_CYCLE.indexOf(S.gaugeMode);
+  const next = MODE_CYCLE[(idx + 1) % MODE_CYCLE.length];
+  applyGaugeMode(next);
 });
-try{if(localStorage.getItem('tg_mode')==='analog'){S.analog=true;gw.classList.add('am');mb.textContent='◎ Analog';mb.classList.add('am');}}catch(e){}
+// Restore saved mode on load. Migrate legacy 'analog'/'horizon' strings
+// transparently — they already match the new keys.
+try {
+  const saved = localStorage.getItem('tg_mode');
+  if(saved && MODE_META[saved]) applyGaugeMode(saved);
+  else applyGaugeMode('horizon');
+} catch(e) { applyGaugeMode('horizon'); }
 
 function startGPS(){
   if(!navigator.geolocation){
