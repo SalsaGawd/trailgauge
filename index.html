@@ -2336,13 +2336,14 @@ function drawTruckArc(opts){
   ticks.forEach(deg => {
     [-1, 1].forEach(dir => {
       if(deg === 0 && dir === -1) return;
+      // pVis/rVis are pre-inverted at source (V3), so positive = forward tilt /
+      // right-side-down. Additive delta on both sides maps correctly.
       let angle;
       if(side === 'left'){
-        // Pitch arc: positive pitch (nose up) → UPPER portion of left arc.
-        // Subtract delta so positive values go counter-clockwise (upward).
-        angle = (180 - dir * (deg / maxDeg) * 45) * D2R;
+        // Pitch: positive value swings needle UPWARD (canvas angle < 180°)
+        angle = (180 + dir * (deg / maxDeg) * 45) * D2R;
       } else {
-        // Roll arc: positive roll (right side down) → lower portion of right arc.
+        // Roll: positive value swings needle DOWNWARD on right arc
         angle = (0 + dir * (deg / maxDeg) * 45) * D2R;
       }
       const isMajor = (deg % 20 === 0);
@@ -2378,13 +2379,12 @@ function drawTruckArc(opts){
   ctx.fillStyle = S.dark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.55)';
   ctx.fillText('0', zx, zy);
 
-  // Red warning triangles at ±40° (corners)
+  // Red warning triangles at ±40° corners — same sign convention as ticks.
   ctx.fillStyle = '#ef4444';
   [-1, 1].forEach(dir => {
     let angle;
     if(side === 'left'){
-      // Match tick sign flip: positive → counter-clockwise (upward on left side).
-      angle = (180 - dir * (40 / maxDeg) * 45) * D2R;
+      angle = (180 + dir * (40 / maxDeg) * 45) * D2R;
     } else {
       angle = (0 + dir * (40 / maxDeg) * 45) * D2R;
     }
@@ -2402,12 +2402,13 @@ function drawTruckArc(opts){
     ctx.restore();
   });
 
-  // NEEDLE
+  // NEEDLE — pre-inverted pVis/rVis arrive positive on forward-tilt / right-side-down.
   let needleAngle;
   if(side === 'left'){
-    // Positive pitch (nose up) → counter-clockwise from 9-o'clock = upward.
-    needleAngle = (180 - (value / maxDeg) * 45) * D2R;
+    // Pitch: positive value → needle swings UP on left arc
+    needleAngle = (180 + (value / maxDeg) * 45) * D2R;
   } else {
+    // Roll: positive value → needle swings DOWN on right arc
     needleAngle = (0 + (value / maxDeg) * 45) * D2R;
   }
   const nx1 = cx + ri * Math.cos(needleAngle);
