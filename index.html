@@ -2123,33 +2123,31 @@ function drawAnalog(pitch,roll){
 }
 
 /* ══════════════════════════════════════════════════════════
-   TRUCK DIAL — off-road analog dash style
+   TRUCK DIAL — off-road analog dash gauge
 
-   Layout (faithful TG-palette translation of the reference photo):
-   - Two curved arcs sweep from inner edges outward (pitch=left, roll=right)
-     each with 0/10/20/30/40 tick marks, small red warning triangles at the
-     outer corners (±40°), and a moving needle indicator.
-   - Center column: twin vertical ladder bars (pitch=green, roll=sky blue)
-     filling up/down from a zero line. Visualizes magnitude alongside the arcs.
-   - Bottom "bathtub" arc: green safe-zone indicator. Fills bright green when
-     both axes are inside threshold/2, transitions amber → red as the worst
-     axis approaches threshold.
-   - Top digital P readout, bottom digital R readout (large white digits).
+   AXIS CONVENTION (single source of truth, used by both indicators):
+     pitchSigned: positive = nose UP (forward-tilt of dash mount)
+     rollSigned:  positive = LEFT side down (driver's left dips)
 
-   Math:
-     - Each arc occupies a 90° sweep
-     - Pitch arc: canvas angle range 180° to 270° (left side, 9-to-7 o'clock)
-     - Roll arc:  canvas angle range -90° to 0° (right side, 12-to-3 o'clock,
-       drawn mirrored from the right inside)
-     - Needles draw inside their arc, rotating from base position by the
-       angle * (90°/45°) = 2x the input degrees mapped into the arc sweep.
+   Both indicators (arc needle + center ladder bar) read these same
+   signed values, so they always agree. Sign correction happens ONCE
+   here at function entry — nowhere else in the rendering chain.
+
+   LAYOUT (faithful TG-palette translation of reference image):
+     - Left semicircle arc: pitch ladder, needle rotates with pitchSigned
+     - Right semicircle arc: roll ladder, needle rotates with rollSigned
+     - Center: twin vertical ladder bars (pitch=green, roll=blue) filling
+       from a zero-line based on signed value magnitude + direction
+     - Bottom arc: green safe-zone "bathtub" that transitions amber → red
+       as max(|pitch|, |roll|) approaches threshold
+     - Digital P readout above gauge, R readout below gauge
    ══════════════════════════════════════════════════════════ */
 function drawTruckDial(pitch, roll){
   const s = SZ, cx = s/2, cy = s/2, r = s/2 - 4;
   const D2R = Math.PI / 180;
   tdx.clearRect(0, 0, s, s);
 
-  // Background — dark gradient inside the bezel, matching Analog mode's vibe
+  // Background — dark gradient bezel
   const bg = tdx.createRadialGradient(cx, cy - r*.1, r*.05, cx, cy, r);
   bg.addColorStop(0, S.dark ? '#1e2738' : '#f0f4f8');
   bg.addColorStop(1, S.dark ? '#0a0c0f' : '#dde3ea');
@@ -2163,47 +2161,63 @@ function drawTruckDial(pitch, roll){
   tdx.strokeStyle = S.dark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)';
   tdx.lineWidth = 1; tdx.stroke();
 
-  // Visual range — clamp inputs to ±45 so needles stay inside the arcs.
-  // Sign convention notes:
-  //   PITCH: sensor reports forward tilt as negative. User intuition says
-  //   forward = UP on gauge. Negate at source so both needle and ladder
-  //   read forward-tilt as positive (= up).
-  //   ROLL: sensor reports right-side-down as positive, which matches
-  //   user intuition of "right-down = blue needle goes to right (down on
-  //   our arc layout)". No inversion needed.
-  const pVis = Math.max(-45, Math.min(45, -pitch));
-  const rVis = Math.max(-45, Math.min(45, roll));
+  // ───────────────────────────────────────────────────────
+  // SIGN CORRECTION — done ONCE, here
+  // ───────────────────────────────────────────────────────
+  // The raw `pitch` and `roll` parameters arrive AFTER calibration and
+  // screen orientation correction (handled upstream in handleOri). We need
+  // to align them with user intuition:
+  //   - Forward tilt (top of phone tilts away from user on dash mount)
+  //     should read as POSITIVE on our gauge (nose up = climbing)
+  //   - Right side down (driver leans right) should read as POSITIVE on
+  //     the right-arc roll display (right wheel low = needle dips right)
+  //
+  // PITCH: TrailGauge upstream sends forward-tilt as negative. Invert.
+  // ROLL: TrailGauge upstream sends right-side-down as POSITIVE already.
+  //   But user testing shows the current convention has roll inverted on
+  //   the gauge, so we invert here too.
+  const pitchSigned = -pitch;
+  const rollSigned  = -roll;
 
-  /* ─── PITCH ARC (left semicircle) ────────────────────────
-     Arc sweeps from canvas angle 135° (lower-left) to 225° (upper-left),
-     a 90° sweep on the left side of the dial. */
-  const arcR = r * 0.78;     // outer arc radius
-  const arcRi = r * 0.62;    // inner arc radius (where ticks terminate)
+  // Visual clamp ±45 so indicators stay inside their arcs
+  const pVis = Math.max(-45, Math.min(45, pitchSigned));
+  const rVis = Math.max(-45, Math.min(45, rollSigned));
 
+  // ───────────────────────────────────────────────────────
+  // ARC NEEDLES (left = pitch, right = roll)
+  // ───────────────────────────────────────────────────────
+  const arcR = r * 0.78;
+  const arcRi = r * 0.62;
+
+  // Left arc spans canvas angle 135° to 225° (the LEFT semicircle).
+  // 180° is the midpoint (9 o'clock). Positive pitch should rotate the
+  // needle COUNTER-CLOCKWISE (toward 12 o'clock / "up").
+  // In canvas: counter-clockwise = subtracting from the angle.
   drawTruckArc({
     ctx: tdx, cx, cy, r: arcR, ri: arcRi,
-    startDeg: 135, endDeg: 225,
     value: pVis, maxDeg: 45,
-    label: 'P',
     needleColor: '#3ddc97',
     side: 'left'
   });
 
-  /* ─── ROLL ARC (right semicircle) ───────────────────────
-     Mirror of pitch arc on the right side. Canvas angles -45° to 45°. */
+  // Right arc spans canvas angle -45° to 45° (the RIGHT semicircle).
+  // 0° is the midpoint (3 o'clock). Positive roll should rotate the
+  // needle CLOCKWISE (toward 6 o'clock / "down" on the right side).
+  // In canvas: clockwise = adding to the angle.
   drawTruckArc({
     ctx: tdx, cx, cy, r: arcR, ri: arcRi,
-    startDeg: -45, endDeg: 45,
     value: rVis, maxDeg: 45,
-    label: 'R',
     needleColor: '#38bdf8',
     side: 'right'
   });
 
-  /* ─── CENTER LADDER COLUMN ──────────────────────────────
-     Two vertical bars side by side. Each shows the |value|/45 filled
-     amount, with the fill direction (up or down) indicating sign.
-     Left bar: pitch (green). Right bar: roll (sky blue). */
+  // ───────────────────────────────────────────────────────
+  // CENTER LADDER COLUMN (left = pitch, right = roll)
+  // ───────────────────────────────────────────────────────
+  // Each bar fills from a center zero-line:
+  //   - Positive value → fill in UPPER half
+  //   - Negative value → fill in LOWER half
+  // Magnitude scales |value|/45 of the half-height.
   const ladderW = r * 0.085;
   const ladderH = r * 0.95;
   const ladderGap = r * 0.04;
@@ -2212,35 +2226,34 @@ function drawTruckDial(pitch, roll){
   const ladderTop = cy - ladderH / 2;
   const ladderMid = cy;
 
-  // Backgrounds for both ladder bars
+  // Bar backgrounds
   tdx.fillStyle = S.dark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
   tdx.fillRect(ladderX, ladderTop, ladderW, ladderH);
   tdx.fillRect(ladderX + ladderW + ladderGap, ladderTop, ladderW, ladderH);
 
-  // Outline
+  // Bar outlines
   tdx.strokeStyle = S.dark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.15)';
   tdx.lineWidth = 1;
   tdx.strokeRect(ladderX, ladderTop, ladderW, ladderH);
   tdx.strokeRect(ladderX + ladderW + ladderGap, ladderTop, ladderW, ladderH);
 
-  // Pitch fill (left bar). Reads pVis directly — sign correction now
-  // happens at the top of drawTruckDial so all indicators share the same
-  // axis convention.
+  // PITCH FILL (left bar)
+  // pVis >= 0 → fill upper half (from ladderMid - height to ladderMid)
+  // pVis  < 0 → fill lower half (from ladderMid to ladderMid + height)
   const pFillH = (Math.abs(pVis) / 45) * (ladderH / 2);
   const pFillY = (pVis >= 0) ? (ladderMid - pFillH) : ladderMid;
-  const pOverThr = Math.abs(pitch) >= S.threshold;
+  const pOverThr = Math.abs(pitchSigned) >= S.threshold;
   tdx.fillStyle = pOverThr ? '#ef4444' : '#3ddc97';
   tdx.fillRect(ladderX, pFillY, ladderW, pFillH);
 
-  // Roll fill (right bar). Reads rVis directly — sign correction now
-  // happens at the top of drawTruckDial.
+  // ROLL FILL (right bar) — same convention as pitch
   const rFillH = (Math.abs(rVis) / 45) * (ladderH / 2);
   const rFillY = (rVis >= 0) ? (ladderMid - rFillH) : ladderMid;
-  const rOverThr = Math.abs(roll) >= S.threshold;
+  const rOverThr = Math.abs(rollSigned) >= S.threshold;
   tdx.fillStyle = rOverThr ? '#ef4444' : '#38bdf8';
   tdx.fillRect(ladderX + ladderW + ladderGap, rFillY, ladderW, rFillH);
 
-  // Zero-reference line across both ladders
+  // Zero-reference line across both bars
   tdx.strokeStyle = S.dark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)';
   tdx.lineWidth = 1.5;
   tdx.beginPath();
@@ -2248,7 +2261,7 @@ function drawTruckDial(pitch, roll){
   tdx.lineTo(ladderX + ladderTotalW + 4, ladderMid);
   tdx.stroke();
 
-  // Tick marks at ±15° and ±30° on each ladder
+  // Reference ticks at ±15° and ±30° on each bar
   tdx.strokeStyle = S.dark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.25)';
   tdx.lineWidth = 1;
   [15, 30].forEach(deg => {
@@ -2266,13 +2279,13 @@ function drawTruckDial(pitch, roll){
     });
   });
 
-  /* ─── BOTTOM SAFE-ZONE BATHTUB ARC ──────────────────────
-     A wide arc at the bottom that's green when safe, transitions amber
-     → red as worst-case angle approaches threshold. */
+  // ───────────────────────────────────────────────────────
+  // BATHTUB SAFE-ZONE ARC
+  // ───────────────────────────────────────────────────────
   const tubR = r * 0.92;
-  const tubStart = 70 * D2R;
-  const tubEnd = 110 * D2R;
-  const maxAbs = Math.max(Math.abs(pitch), Math.abs(roll));
+  const tubStart = 110 * D2R;
+  const tubEnd = 70 * D2R;
+  const maxAbs = Math.max(Math.abs(pitchSigned), Math.abs(rollSigned));
   const safeRatio = Math.max(0, Math.min(1, maxAbs / S.threshold));
   let tubColor;
   if(safeRatio < 0.5){
@@ -2290,10 +2303,12 @@ function drawTruckDial(pitch, roll){
   tdx.stroke();
   tdx.lineCap = 'butt';
 
-  /* ─── DIGITAL READOUTS ─────────────────────────────────
-     Big P at top, R at bottom. */
-  const dispP = Math.round(pitch * 2) / 2;
-  const dispR = Math.round(roll * 2) / 2;
+  // ───────────────────────────────────────────────────────
+  // DIGITAL READOUTS
+  // ───────────────────────────────────────────────────────
+  // Display the user-facing signed values (matches what indicators show)
+  const dispP = Math.round(pitchSigned * 2) / 2;
+  const dispR = Math.round(rollSigned * 2) / 2;
   const digitFs = Math.max(11, s * 0.065);
   tdx.font = `bold ${digitFs}px 'Rajdhani', sans-serif`;
   tdx.shadowColor = 'rgba(0,0,0,0.6)';
@@ -2312,19 +2327,52 @@ function drawTruckDial(pitch, roll){
   tdx.shadowBlur = 0;
 }
 
-/* Helper for drawing one side's arc + ticks + needle.
-   Centralized so left/right arcs stay symmetric without code duplication. */
-function drawTruckArc(opts){
-  const {ctx, cx, cy, r, ri, startDeg, endDeg, value, maxDeg, label, needleColor, side} = opts;
-  const D2R = Math.PI / 180;
-  const sR = startDeg * D2R;
-  const eR = endDeg * D2R;
+/* Draws one arc (left or right) with tick marks, corner warnings, and
+   a needle. Called twice from drawTruckDial — once per axis.
 
-  // Arc background line — full sweep, dim
+   GEOMETRY CONVENTION (single source of truth for this function):
+     side='left'  → arc spans canvas 135°..225° (left semicircle)
+                    midpoint = 180° (9 o'clock)
+                    positive value → needle rotates COUNTER-CLOCKWISE
+                      (subtract from 180°) → swings UPWARD on left arc
+     side='right' → arc spans canvas -45°..45° (right semicircle)
+                    midpoint = 0° (3 o'clock)
+                    positive value → needle rotates CLOCKWISE
+                      (add to 0°) → swings DOWNWARD on right arc
+
+   The arcs use OPPOSITE rotational directions for positive values. This
+   matches user intuition: "nose up" pitch points up on left arc;
+   "right side down" roll points down on right arc. */
+function drawTruckArc(opts){
+  const {ctx, cx, cy, r, ri, value, maxDeg, needleColor, side} = opts;
+  const D2R = Math.PI / 180;
+
+  // Arc sweep direction depends on side. Both arcs are 90° spans.
+  let startAngle, endAngle, midAngle, valueSign;
+  if(side === 'left'){
+    startAngle = 135 * D2R;
+    endAngle = 225 * D2R;
+    midAngle = 180 * D2R;
+    // Positive value → angle DECREASES from 180 (counter-clockwise = up)
+    valueSign = -1;
+  } else {
+    startAngle = -45 * D2R;
+    endAngle = 45 * D2R;
+    midAngle = 0;
+    // Positive value → angle INCREASES from 0 (clockwise = down on right)
+    valueSign = 1;
+  }
+
+  // Helper: convert a degree value (-45..+45) to canvas angle on this arc
+  function valueToAngle(deg){
+    return midAngle + valueSign * (deg / maxDeg) * 45 * D2R;
+  }
+
+  // Dim arc background line — full sweep
   ctx.strokeStyle = S.dark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.20)';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
-  ctx.arc(cx, cy, r, sR, eR);
+  ctx.arc(cx, cy, r, startAngle, endAngle);
   ctx.stroke();
 
   // Tick marks at 0, 10, 20, 30, 40
@@ -2338,16 +2386,7 @@ function drawTruckArc(opts){
   ticks.forEach(deg => {
     [-1, 1].forEach(dir => {
       if(deg === 0 && dir === -1) return;
-      // pVis/rVis are pre-inverted at source (V3), so positive = forward tilt /
-      // right-side-down. Additive delta on both sides maps correctly.
-      let angle;
-      if(side === 'left'){
-        // Pitch: positive value swings needle UPWARD (canvas angle < 180°)
-        angle = (180 + dir * (deg / maxDeg) * 45) * D2R;
-      } else {
-        // Roll: positive value swings needle DOWNWARD on right arc
-        angle = (0 + dir * (deg / maxDeg) * 45) * D2R;
-      }
+      const angle = valueToAngle(dir * deg);
       const isMajor = (deg % 20 === 0);
       const tickLen = isMajor ? 8 : 5;
       const x1 = cx + r * Math.cos(angle);
@@ -2373,23 +2412,15 @@ function drawTruckArc(opts){
   });
 
   // 0° label at the arc midpoint
-  let midAngle;
-  if(side === 'left') midAngle = 180 * D2R;
-  else                midAngle = 0;
   const zx = cx + labelR * Math.cos(midAngle);
   const zy = cy + labelR * Math.sin(midAngle);
   ctx.fillStyle = S.dark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.55)';
   ctx.fillText('0', zx, zy);
 
-  // Red warning triangles at ±40° corners — same sign convention as ticks.
+  // Red warning triangles at corners (±40°)
   ctx.fillStyle = '#ef4444';
   [-1, 1].forEach(dir => {
-    let angle;
-    if(side === 'left'){
-      angle = (180 + dir * (40 / maxDeg) * 45) * D2R;
-    } else {
-      angle = (0 + dir * (40 / maxDeg) * 45) * D2R;
-    }
+    const angle = valueToAngle(dir * 40);
     const tipX = cx + (r + 4) * Math.cos(angle);
     const tipY = cy + (r + 4) * Math.sin(angle);
     ctx.save();
@@ -2404,15 +2435,8 @@ function drawTruckArc(opts){
     ctx.restore();
   });
 
-  // NEEDLE — pre-inverted pVis/rVis arrive positive on forward-tilt / right-side-down.
-  let needleAngle;
-  if(side === 'left'){
-    // Pitch: positive value → needle swings UP on left arc
-    needleAngle = (180 + (value / maxDeg) * 45) * D2R;
-  } else {
-    // Roll: positive value → needle swings DOWN on right arc
-    needleAngle = (0 + (value / maxDeg) * 45) * D2R;
-  }
+  // NEEDLE at value's angle
+  const needleAngle = valueToAngle(value);
   const nx1 = cx + ri * Math.cos(needleAngle);
   const ny1 = cy + ri * Math.sin(needleAngle);
   const nx2 = cx + (r - 2) * Math.cos(needleAngle);
