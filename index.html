@@ -2347,20 +2347,27 @@ function drawTruckArc(opts){
   const {ctx, cx, cy, r, ri, value, maxDeg, needleColor, side} = opts;
   const D2R = Math.PI / 180;
 
-  // Arc sweep direction depends on side. Both arcs are 90° spans.
-  let startAngle, endAngle, midAngle, valueSign;
+  // Arc sweep geometry. Both arcs use valueSign = +1, meaning the needle
+  // rotates in canvas-clockwise direction when value is positive. The
+  // single source of sign correction lives at the top of drawTruckDial
+  // (see pitchSigned and rollSigned). This function just renders.
+  //
+  // Note that "canvas-clockwise" looks different on each arc:
+  //   - Left arc: clockwise rotation from 180° sweeps DOWNWARD (toward 225°)
+  //   - Right arc: clockwise rotation from 0° sweeps DOWNWARD (toward 45°)
+  // The pitchSigned/rollSigned flips at the top of drawTruckDial decide
+  // whether forward-tilt or right-down-roll produces a positive value,
+  // which then determines whether the needle visibly goes up or down.
+  let startAngle, endAngle, midAngle;
+  const valueSign = 1;
   if(side === 'left'){
     startAngle = 135 * D2R;
     endAngle = 225 * D2R;
     midAngle = 180 * D2R;
-    // Positive value → angle DECREASES from 180 (counter-clockwise = up)
-    valueSign = -1;
   } else {
     startAngle = -45 * D2R;
     endAngle = 45 * D2R;
     midAngle = 0;
-    // Positive value → angle INCREASES from 0 (clockwise = down on right)
-    valueSign = 1;
   }
 
   // Helper: convert a degree value (-45..+45) to canvas angle on this arc
