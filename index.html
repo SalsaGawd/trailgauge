@@ -2246,9 +2246,12 @@ function drawTruckDial(pitch, roll){
   tdx.fillStyle = pOverThr ? '#ef4444' : '#3ddc97';
   tdx.fillRect(ladderX, pFillY, ladderW, pFillH);
 
-  // ROLL FILL (right bar) — same convention as pitch
+  // ROLL FILL (right bar). Inverted from pitch ladder convention because
+  // user testing showed roll ladder/needle were disagreeing while pitch
+  // was reading as correct. Positive rVis now fills LOWER half, matching
+  // the right arc needle which also swings DOWN on positive value.
   const rFillH = (Math.abs(rVis) / 45) * (ladderH / 2);
-  const rFillY = (rVis >= 0) ? (ladderMid - rFillH) : ladderMid;
+  const rFillY = (rVis >= 0) ? ladderMid : (ladderMid - rFillH);
   const rOverThr = Math.abs(rollSigned) >= S.threshold;
   tdx.fillStyle = rOverThr ? '#ef4444' : '#38bdf8';
   tdx.fillRect(ladderX + ladderW + ladderGap, rFillY, ladderW, rFillH);
