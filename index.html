@@ -2216,20 +2216,21 @@ function drawTruckDial(pitch, roll){
   tdx.strokeRect(ladderX, ladderTop, ladderW, ladderH);
   tdx.strokeRect(ladderX + ladderW + ladderGap, ladderTop, ladderW, ladderH);
 
-  // Pitch fill (left bar) — INVERTED from previous build. Positive pitch
-  // (nose up) now fills the bar UPWARD, matching user mental model.
-  // Bug fix: previous version was filling downward on forward tilt.
-  const pFillH = (Math.abs(pVis) / 45) * (ladderH / 2);
-  const pFillY = (pVis >= 0) ? (ladderMid - pFillH) : ladderMid;
-  // Note: this code was already correct; the bug is actually that pitch
-  // SIGN was being read wrong by the device. Patch B.2.2 fixes the source.
+  // Pitch fill (left bar). Sign-flipped to match arc needle direction:
+  // arc was corrected in B.2.2 (180- instead of 180+), but ladder reads
+  // raw pVis. Inverting here keeps them in sync.
+  const pLadderVal = -pVis;
+  const pFillH = (Math.abs(pLadderVal) / 45) * (ladderH / 2);
+  const pFillY = (pLadderVal >= 0) ? (ladderMid - pFillH) : ladderMid;
   const pOverThr = Math.abs(pitch) >= S.threshold;
   tdx.fillStyle = pOverThr ? '#ef4444' : '#3ddc97';
   tdx.fillRect(ladderX, pFillY, ladderW, pFillH);
 
-  // Roll fill (right bar)
-  const rFillH = (Math.abs(rVis) / 45) * (ladderH / 2);
-  const rFillY = (rVis >= 0) ? (ladderMid - rFillH) : ladderMid;
+  // Roll fill (right bar). Same sign-flip as pitch — arc was corrected in
+  // B.2.2 but ladder reads raw rVis. Inverting brings them in sync.
+  const rLadderVal = -rVis;
+  const rFillH = (Math.abs(rLadderVal) / 45) * (ladderH / 2);
+  const rFillY = (rLadderVal >= 0) ? (ladderMid - rFillH) : ladderMid;
   const rOverThr = Math.abs(roll) >= S.threshold;
   tdx.fillStyle = rOverThr ? '#ef4444' : '#38bdf8';
   tdx.fillRect(ladderX + ladderW + ladderGap, rFillY, ladderW, rFillH);
