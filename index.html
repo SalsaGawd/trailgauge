@@ -7295,7 +7295,7 @@ function openSaveModal(isRecovery){
   const effectiveEndMs = isRecovery && TRIP.pts.length
     ? TRIP.pts[TRIP.pts.length-1].t
     : Date.now();
-  const elapsed = effectiveEndMs - TRIP.startMs;
+  const elapsed = Math.max(0, (effectiveEndMs - TRIP.startMs) - (TRIP.pausedTotalMs || 0));
   const moving=TRIP.movingMs;
   const minE = TRIP.minElevM===Infinity ? null : TRIP.minElevM;
   const maxE = TRIP.maxElevM===-Infinity ? null : TRIP.maxElevM;
