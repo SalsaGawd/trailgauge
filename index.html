@@ -139,6 +139,11 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
    so this chip stays hidden on iPhone (display:none in HTML default).
    The JS layer flips it to flex when the API resolves with a battery
    manager instance. */
+.modeToggleBtn{height:30px;padding:0 10px;border-radius:8px;border:1px solid var(--accent);
+  background:transparent;color:var(--accent);font-family:var(--fm);font-size:10px;
+  font-weight:700;letter-spacing:1.5px;cursor:pointer;flex-shrink:0;
+  -webkit-tap-highlight-color:transparent;transition:all var(--tr)}
+.modeToggleBtn:active{background:var(--accent);color:#000}
 .battChip{display:flex;align-items:center;gap:4px;padding:0 8px;
   height:30px;background:var(--card);border:1px solid var(--border);
   border-radius:8px;font-family:var(--fm);font-size:11px;font-weight:600;
@@ -346,6 +351,13 @@ body.light #permOverlay{background:rgba(240,244,248,0.94)}
 #wx.wx-collapsed{max-height:40px}
 #wx.wx-collapsed #wxHandle{opacity:0}
 #wx.wx-collapsed #wxCollapseBtn{transform:rotate(180deg)}
+#wx.wx-big{font-size:1.18em}
+#wx.wx-big #wxCurrent{gap:10px}
+#wxSizeBtn{height:22px;padding:0 8px;border-radius:6px;border:1px solid var(--border);
+  background:transparent;color:var(--txt2);font-family:var(--fm);font-size:9px;
+  font-weight:700;letter-spacing:1px;cursor:pointer;flex-shrink:0;
+  -webkit-tap-highlight-color:transparent;transition:all var(--tr)}
+#wxSizeBtn:active{background:var(--border)}
 
 /* Full weather panel — slides up over the rest of the UI when user taps
    or swipes up the weather strip. Contains larger hourly cards in a
@@ -472,6 +484,15 @@ body.light #permOverlay{background:rgba(240,244,248,0.94)}
   color:var(--accent);text-transform:uppercase;
   margin:18px 0 0;padding-top:14px;border-top:1px solid var(--border);
   opacity:.85}
+.collapseHeader{display:flex;align-items:center;justify-content:space-between;
+  cursor:pointer;user-select:none;-webkit-user-select:none;
+  font-family:var(--fd);font-size:10px;letter-spacing:2px;color:var(--accent);
+  text-transform:uppercase;margin:18px 0 0;padding-top:14px;
+  border-top:1px solid var(--border);opacity:.85;-webkit-tap-highlight-color:transparent}
+.collapseHeader::after{content:'˄';font-size:14px;opacity:.7;transition:transform var(--tr)}
+.collapseHeader.collapsed::after{transform:rotate(180deg)}
+.collapseBody{overflow:hidden;transition:max-height .25s ease}
+.collapseBody.collapsed{max-height:0!important}
 /* Color picker: 5 tappable color swatches inline, the selected one shows
    a ring of the same color. Used for ambient alert customization. */
 .colorPicker{display:flex;gap:8px;align-items:center;flex-shrink:0}
@@ -1127,10 +1148,11 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
 
 <div id="app">
   <div id="hdr">
-    <div style="display:flex;align-items:baseline">
+    <div style="display:flex;align-items:baseline;min-width:0;flex:1 1 auto;overflow:hidden">
       <span class="brand">TrailGauge</span>
       <span class="sub">Off-Road Inclinometer</span>
     </div>
+    <button id="modeToggleBtn" class="modeToggleBtn" title="Switch mode">OFF-ROAD</button>
     <div id="hctl">
       <!-- Battery chip: shows phone battery state when navigator.getBattery() is
            supported (mostly Android; iOS Safari does NOT expose this API as of
@@ -1281,6 +1303,7 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
             <div id="cdot"></div>
             <span id="ctmp">—</span>
           </div>
+          <button id="wxSizeBtn" title="Toggle weather size" aria-label="Toggle weather size">BIG</button>
           <button id="wxCollapseBtn" title="Collapse weather" aria-label="Collapse weather strip">˅</button>
         </div>
       </div>
@@ -1314,118 +1337,142 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
   <div id="stsh">
     <div id="sthdl"></div>
     <div id="sttl">Settings</div>
-    <div class="srow">
-      <div class="sinfo"><span class="sname">Mode</span><span class="sdesc">Tailor the layout to how you're using TrailGauge</span></div>
-    </div>
-    <div class="profSelect">
-      <button class="profBtn" data-prof="offroad">🚙<span>Off-Road</span></button>
-      <button class="profBtn" data-prof="trail">🥾<span>Trail</span></button>
-    </div>
-    <div class="srow">
-      <div class="sinfo"><span class="sname">Tilt Alarm</span><span class="sdesc">Sound + vibration when threshold exceeded</span></div>
-      <label class="tgl"><input type="checkbox" id="alarmTgl"><span class="tsl"></span></label>
-    </div>
-    <div class="srow">
-      <div class="sinfo"><span class="sname">Alarm Threshold</span><span class="sdesc">Trigger angle for pitch or roll</span></div>
-      <div class="thrwrap">
-        <input type="range" id="thrSlider" min="10" max="45" value="30" step="1">
-        <span class="thrval" id="thrDisp">30°</span>
-      </div>
-    </div>
-    <div class="srow">
-      <div class="sinfo"><span class="sname">Vibration Alert</span><span class="sdesc">Vibrate on threshold breach</span></div>
-      <label class="tgl"><input type="checkbox" id="vibTgl" checked><span class="tsl"></span></label>
-    </div>
 
-    <!-- Angle pin auto-capture -->
-    <div class="sectionDivider">Angle Pins</div>
-    <div class="srow">
-      <div class="sinfo"><span class="sname">Auto-Pin Peaks</span><span class="sdesc">Automatically save a pin when pitch or roll exceeds the threshold</span></div>
-      <label class="tgl"><input type="checkbox" id="anglePinAutoTgl" checked><span class="tsl"></span></label>
-    </div>
-    <div class="srow">
-      <div class="sinfo"><span class="sname">Auto-Pin Threshold</span><span class="sdesc">Trigger angle for auto-capture</span></div>
-      <div class="thrwrap">
-        <input type="range" id="anglePinThrSlider" min="5" max="45" value="25" step="1">
-        <span id="anglePinThrVal">25°</span>
+    <!-- Mode section (collapsed by default) -->
+    <div class="collapseHeader" data-section="mode" data-default-collapsed="1">Mode</div>
+    <div class="collapseBody" id="sc-mode">
+      <div class="srow">
+        <div class="sinfo"><span class="sname">Mode</span><span class="sdesc">Tailor the layout to how you're using TrailGauge</span></div>
       </div>
-    </div>
-    <div class="srow">
-      <div class="sinfo"><span class="sname">Cooldown</span><span class="sdesc">Minimum seconds between auto-pins</span></div>
-      <div class="thrwrap">
-        <input type="range" id="anglePinCdSlider" min="5" max="300" value="90" step="5">
-        <span id="anglePinCdVal">90s</span>
+      <div class="profSelect">
+        <button class="profBtn" data-prof="offroad">🚙<span>Off-Road</span></button>
+        <button class="profBtn" data-prof="trail">🥾<span>Trail</span></button>
       </div>
     </div>
 
-    <!-- Ambient alert system: pulse the screen edges for safety warnings -->
-    <div class="sectionDivider">Ambient Alerts</div>
-    <div class="srow">
-      <div class="sinfo"><span class="sname">Pulse Border</span><span class="sdesc">Edge-of-screen color pulse for alerts (no popups)</span></div>
-      <label class="tgl"><input type="checkbox" id="alPulseTgl" checked><span class="tsl"></span></label>
-    </div>
-    <div class="srow">
-      <div class="sinfo"><span class="sname">Haptic Buzz</span><span class="sdesc">Gentle vibration when alerts fire (good for in-pocket hiking)</span></div>
-      <label class="tgl"><input type="checkbox" id="alVibTgl"><span class="tsl"></span></label>
-    </div>
-    <div class="srow">
-      <div class="sinfo"><span class="sname">Driving / DnD Mode</span><span class="sdesc">Dims pulses, mutes haptics — visual safety signals only</span></div>
-      <label class="tgl"><input type="checkbox" id="alDndTgl"><span class="tsl"></span></label>
-    </div>
-
-    <div class="sectionDivider">Sunset Alert</div>
-    <div class="srow">
-      <div class="sinfo"><span class="sname">Sunset Warning</span><span class="sdesc">Alert before sunset</span></div>
-      <label class="tgl"><input type="checkbox" id="alSunTgl" checked><span class="tsl"></span></label>
-    </div>
-    <div class="srow">
-      <div class="sinfo"><span class="sname">Lead Time</span><span class="sdesc">How many minutes before sunset to start alerting</span></div>
-      <div class="thrwrap">
-        <input type="range" id="alSunMinSlider" min="5" max="90" value="30" step="5">
-        <span id="alSunMinVal">30m</span>
+    <!-- Display section (expanded by default) -->
+    <div class="collapseHeader" data-section="display">Display</div>
+    <div class="collapseBody" id="sc-display">
+      <div class="srow">
+        <div class="sinfo"><span class="sname">Theme</span><span class="sdesc">Toggle dark/light mode from the header ☀/☾ button</span></div>
       </div>
-    </div>
-    <div class="srow colorRow">
-      <div class="sinfo"><span class="sname">Sunset Color</span><span class="sdesc">Pulse color for sunset alerts</span></div>
-      <div class="colorPicker" data-target="sunsetColor">
-        <button class="colorSwatch" data-color="red" aria-label="Red"    style="--c:239,68,68"></button>
-        <button class="colorSwatch active" data-color="yellow" aria-label="Yellow" style="--c:234,179,8"></button>
-        <button class="colorSwatch" data-color="green" aria-label="Green"  style="--c:61,220,151"></button>
-        <button class="colorSwatch" data-color="blue" aria-label="Blue"   style="--c:59,130,246"></button>
-        <button class="colorSwatch" data-color="purple" aria-label="Purple" style="--c:168,85,247"></button>
+      <div class="srow">
+        <div class="sinfo"><span class="sname">Units</span><span class="sdesc">Switch °F/°C and mph/km/h from the header unit button</span></div>
       </div>
     </div>
 
-    <div class="sectionDivider">Weather Alert</div>
-    <div class="srow">
-      <div class="sinfo"><span class="sname">Inclement Weather Warning</span><span class="sdesc">Alert when storms or precipitation are within 3 hours</span></div>
-      <label class="tgl"><input type="checkbox" id="alWxTgl" checked><span class="tsl"></span></label>
-    </div>
-    <div class="srow colorRow">
-      <div class="sinfo"><span class="sname">Weather Color</span><span class="sdesc">Pulse color for weather alerts</span></div>
-      <div class="colorPicker" data-target="weatherColor">
-        <button class="colorSwatch active" data-color="red" aria-label="Red" style="--c:239,68,68"></button>
-        <button class="colorSwatch" data-color="yellow" aria-label="Yellow" style="--c:234,179,8"></button>
-        <button class="colorSwatch" data-color="green" aria-label="Green"  style="--c:61,220,151"></button>
-        <button class="colorSwatch" data-color="blue" aria-label="Blue"   style="--c:59,130,246"></button>
-        <button class="colorSwatch" data-color="purple" aria-label="Purple" style="--c:168,85,247"></button>
+    <!-- Tilt Alarm section (collapsed by default) -->
+    <div class="collapseHeader" data-section="alarm" data-default-collapsed="1">Tilt Alarm</div>
+    <div class="collapseBody" id="sc-alarm">
+      <div class="srow">
+        <div class="sinfo"><span class="sname">Tilt Alarm</span><span class="sdesc">Sound + vibration when threshold exceeded</span></div>
+        <label class="tgl"><input type="checkbox" id="alarmTgl"><span class="tsl"></span></label>
+      </div>
+      <div class="srow">
+        <div class="sinfo"><span class="sname">Alarm Threshold</span><span class="sdesc">Trigger angle for pitch or roll</span></div>
+        <div class="thrwrap">
+          <input type="range" id="thrSlider" min="10" max="45" value="30" step="1">
+          <span class="thrval" id="thrDisp">30°</span>
+        </div>
+      </div>
+      <div class="srow">
+        <div class="sinfo"><span class="sname">Vibration Alert</span><span class="sdesc">Vibrate on threshold breach</span></div>
+        <label class="tgl"><input type="checkbox" id="vibTgl" checked><span class="tsl"></span></label>
       </div>
     </div>
 
-    <div class="srow">
-      <div class="sinfo"><span class="sname">Screen Wake Lock</span><span class="sdesc">Keep screen on while app is open</span></div>
-      <label class="tgl"><input type="checkbox" id="wlTgl" checked><span class="tsl"></span></label>
+    <!-- Angle Pins section (collapsed by default) -->
+    <div class="collapseHeader" data-section="pins" data-default-collapsed="1">Angle Pins</div>
+    <div class="collapseBody" id="sc-pins">
+      <div class="srow">
+        <div class="sinfo"><span class="sname">Auto-Pin Peaks</span><span class="sdesc">Automatically save a pin when pitch or roll exceeds the threshold</span></div>
+        <label class="tgl"><input type="checkbox" id="anglePinAutoTgl" checked><span class="tsl"></span></label>
+      </div>
+      <div class="srow">
+        <div class="sinfo"><span class="sname">Auto-Pin Threshold</span><span class="sdesc">Trigger angle for auto-capture</span></div>
+        <div class="thrwrap">
+          <input type="range" id="anglePinThrSlider" min="5" max="45" value="25" step="1">
+          <span id="anglePinThrVal">25°</span>
+        </div>
+      </div>
+      <div class="srow">
+        <div class="sinfo"><span class="sname">Cooldown</span><span class="sdesc">Minimum seconds between auto-pins</span></div>
+        <div class="thrwrap">
+          <input type="range" id="anglePinCdSlider" min="5" max="300" value="90" step="5">
+          <span id="anglePinCdVal">90s</span>
+        </div>
+      </div>
     </div>
 
-    <!-- Help & Feedback section — replay coachmarks + send feedback -->
-    <div class="sectionDivider">Help &amp; Feedback</div>
-    <div class="srow">
-      <div class="sinfo"><span class="sname">Show Hints Again</span><span class="sdesc">Re-trigger the inline feature hints from the beginning</span></div>
-      <button class="modalbtn ghost" id="hintsResetBtn" style="padding:8px 14px;font-size:11px">Replay</button>
+    <!-- Ambient Alerts section (collapsed by default) -->
+    <div class="collapseHeader" data-section="ambient" data-default-collapsed="1">Ambient Alerts</div>
+    <div class="collapseBody" id="sc-ambient">
+      <div class="srow">
+        <div class="sinfo"><span class="sname">Pulse Border</span><span class="sdesc">Edge-of-screen color pulse for alerts (no popups)</span></div>
+        <label class="tgl"><input type="checkbox" id="alPulseTgl" checked><span class="tsl"></span></label>
+      </div>
+      <div class="srow">
+        <div class="sinfo"><span class="sname">Haptic Buzz</span><span class="sdesc">Gentle vibration when alerts fire (good for in-pocket hiking)</span></div>
+        <label class="tgl"><input type="checkbox" id="alVibTgl"><span class="tsl"></span></label>
+      </div>
+      <div class="srow">
+        <div class="sinfo"><span class="sname">Driving / DnD Mode</span><span class="sdesc">Dims pulses, mutes haptics — visual safety signals only</span></div>
+        <label class="tgl"><input type="checkbox" id="alDndTgl"><span class="tsl"></span></label>
+      </div>
+      <div class="sectionDivider">Sunset Alert</div>
+      <div class="srow">
+        <div class="sinfo"><span class="sname">Sunset Warning</span><span class="sdesc">Alert before sunset</span></div>
+        <label class="tgl"><input type="checkbox" id="alSunTgl" checked><span class="tsl"></span></label>
+      </div>
+      <div class="srow">
+        <div class="sinfo"><span class="sname">Lead Time</span><span class="sdesc">How many minutes before sunset to start alerting</span></div>
+        <div class="thrwrap">
+          <input type="range" id="alSunMinSlider" min="5" max="90" value="30" step="5">
+          <span id="alSunMinVal">30m</span>
+        </div>
+      </div>
+      <div class="srow colorRow">
+        <div class="sinfo"><span class="sname">Sunset Color</span><span class="sdesc">Pulse color for sunset alerts</span></div>
+        <div class="colorPicker" data-target="sunsetColor">
+          <button class="colorSwatch" data-color="red" aria-label="Red"    style="--c:239,68,68"></button>
+          <button class="colorSwatch active" data-color="yellow" aria-label="Yellow" style="--c:234,179,8"></button>
+          <button class="colorSwatch" data-color="green" aria-label="Green"  style="--c:61,220,151"></button>
+          <button class="colorSwatch" data-color="blue" aria-label="Blue"   style="--c:59,130,246"></button>
+          <button class="colorSwatch" data-color="purple" aria-label="Purple" style="--c:168,85,247"></button>
+        </div>
+      </div>
+      <div class="sectionDivider">Weather Alert</div>
+      <div class="srow">
+        <div class="sinfo"><span class="sname">Inclement Weather Warning</span><span class="sdesc">Alert when storms or precipitation are within 3 hours</span></div>
+        <label class="tgl"><input type="checkbox" id="alWxTgl" checked><span class="tsl"></span></label>
+      </div>
+      <div class="srow colorRow">
+        <div class="sinfo"><span class="sname">Weather Color</span><span class="sdesc">Pulse color for weather alerts</span></div>
+        <div class="colorPicker" data-target="weatherColor">
+          <button class="colorSwatch active" data-color="red" aria-label="Red" style="--c:239,68,68"></button>
+          <button class="colorSwatch" data-color="yellow" aria-label="Yellow" style="--c:234,179,8"></button>
+          <button class="colorSwatch" data-color="green" aria-label="Green"  style="--c:61,220,151"></button>
+          <button class="colorSwatch" data-color="blue" aria-label="Blue"   style="--c:59,130,246"></button>
+          <button class="colorSwatch" data-color="purple" aria-label="Purple" style="--c:168,85,247"></button>
+        </div>
+      </div>
+      <div class="srow">
+        <div class="sinfo"><span class="sname">Screen Wake Lock</span><span class="sdesc">Keep screen on while app is open</span></div>
+        <label class="tgl"><input type="checkbox" id="wlTgl" checked><span class="tsl"></span></label>
+      </div>
     </div>
-    <div class="srow" style="border-bottom:none">
-      <div class="sinfo"><span class="sname">Send Feedback</span><span class="sdesc">Found a bug or want to suggest a feature? Tell us.</span></div>
-      <button class="modalbtn ghost" id="fbOpenBtn" style="padding:8px 14px;font-size:11px">Open</button>
+
+    <!-- Help & Feedback section (expanded by default) -->
+    <div class="collapseHeader" data-section="help">Help &amp; Feedback</div>
+    <div class="collapseBody" id="sc-help">
+      <div class="srow">
+        <div class="sinfo"><span class="sname">Show Hints Again</span><span class="sdesc">Re-trigger the inline feature hints from the beginning</span></div>
+        <button class="modalbtn ghost" id="hintsResetBtn" style="padding:8px 14px;font-size:11px">Replay</button>
+      </div>
+      <div class="srow" style="border-bottom:none">
+        <div class="sinfo"><span class="sname">Send Feedback</span><span class="sdesc">Found a bug or want to suggest a feature? Tell us.</span></div>
+        <button class="modalbtn ghost" id="fbOpenBtn" style="padding:8px 14px;font-size:11px">Open</button>
+      </div>
     </div>
   </div>
 </div>
@@ -2169,9 +2216,13 @@ function drawTruckDial(pitch, roll){
   tdx.strokeRect(ladderX, ladderTop, ladderW, ladderH);
   tdx.strokeRect(ladderX + ladderW + ladderGap, ladderTop, ladderW, ladderH);
 
-  // Pitch fill (left bar) — fills upward for positive, downward for negative
+  // Pitch fill (left bar) — INVERTED from previous build. Positive pitch
+  // (nose up) now fills the bar UPWARD, matching user mental model.
+  // Bug fix: previous version was filling downward on forward tilt.
   const pFillH = (Math.abs(pVis) / 45) * (ladderH / 2);
   const pFillY = (pVis >= 0) ? (ladderMid - pFillH) : ladderMid;
+  // Note: this code was already correct; the bug is actually that pitch
+  // SIGN was being read wrong by the device. Patch B.2.2 fixes the source.
   const pOverThr = Math.abs(pitch) >= S.threshold;
   tdx.fillStyle = pOverThr ? '#ef4444' : '#3ddc97';
   tdx.fillRect(ladderX, pFillY, ladderW, pFillH);
@@ -2283,8 +2334,11 @@ function drawTruckArc(opts){
       if(deg === 0 && dir === -1) return;
       let angle;
       if(side === 'left'){
-        angle = (180 + dir * (deg / maxDeg) * 45) * D2R;
+        // Pitch arc: positive pitch (nose up) → UPPER portion of left arc.
+        // Subtract delta so positive values go counter-clockwise (upward).
+        angle = (180 - dir * (deg / maxDeg) * 45) * D2R;
       } else {
+        // Roll arc: positive roll (right side down) → lower portion of right arc.
         angle = (0 + dir * (deg / maxDeg) * 45) * D2R;
       }
       const isMajor = (deg % 20 === 0);
@@ -2325,7 +2379,8 @@ function drawTruckArc(opts){
   [-1, 1].forEach(dir => {
     let angle;
     if(side === 'left'){
-      angle = (180 + dir * (40 / maxDeg) * 45) * D2R;
+      // Match tick sign flip: positive → counter-clockwise (upward on left side).
+      angle = (180 - dir * (40 / maxDeg) * 45) * D2R;
     } else {
       angle = (0 + dir * (40 / maxDeg) * 45) * D2R;
     }
@@ -2346,7 +2401,8 @@ function drawTruckArc(opts){
   // NEEDLE
   let needleAngle;
   if(side === 'left'){
-    needleAngle = (180 + (value / maxDeg) * 45) * D2R;
+    // Positive pitch (nose up) → counter-clockwise from 9-o'clock = upward.
+    needleAngle = (180 - (value / maxDeg) * 45) * D2R;
   } else {
     needleAngle = (0 + (value / maxDeg) * 45) * D2R;
   }
@@ -4549,6 +4605,34 @@ function wrapText(ctx, text, maxWidth){
   return lines;
 }
 
+/* ─── SETTINGS COLLAPSE ENGINE ───────────────────────────────── */
+const SETTINGS_COLLAPSE_KEY = 'tg_settings_collapse_v1';
+
+function initSettingsCollapse(){
+  document.querySelectorAll('.collapseHeader').forEach(header => {
+    const sectionId = header.dataset.section;
+    const body = document.getElementById('sc-' + sectionId);
+    if(!body) return;
+
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem(SETTINGS_COLLAPSE_KEY) || '{}'); } catch(_){}
+    const isCollapsed = saved[sectionId] !== false && (saved[sectionId] === true || header.dataset.defaultCollapsed === '1');
+
+    body.style.maxHeight = isCollapsed ? '0' : body.scrollHeight + 'px';
+    if(isCollapsed){ header.classList.add('collapsed'); body.classList.add('collapsed'); }
+
+    header.addEventListener('click', () => {
+      const nowCollapsed = header.classList.toggle('collapsed');
+      body.classList.toggle('collapsed', nowCollapsed);
+      body.style.maxHeight = nowCollapsed ? '0' : body.scrollHeight + 'px';
+      let st = {};
+      try { st = JSON.parse(localStorage.getItem(SETTINGS_COLLAPSE_KEY) || '{}'); } catch(_){}
+      st[sectionId] = nowCollapsed;
+      try { localStorage.setItem(SETTINGS_COLLAPSE_KEY, JSON.stringify(st)); } catch(_){}
+    });
+  });
+}
+
 /* ─── PROFILE SYSTEM ─────────────────────────────────────────
    Three modes targeting different user types:
    - offroad: full inclinometer + alarm (default, current behavior)
@@ -4566,6 +4650,7 @@ function applyProfile(prof){
     btn.classList.toggle('active', btn.dataset.prof === prof);
   });
   try { localStorage.setItem(PROF_KEY, prof); } catch(_){}
+  syncModeToggleLabel();
   // Re-flow the gauge canvas if the inclinometer just got hidden/shown
   setTimeout(() => { if(typeof resize === 'function') resize(); }, 50);
 }
@@ -4573,6 +4658,23 @@ function applyProfile(prof){
 document.querySelectorAll('.profBtn').forEach(btn => {
   btn.addEventListener('click', () => applyProfile(btn.dataset.prof));
 });
+
+function syncModeToggleLabel(){
+  const btn = document.getElementById('modeToggleBtn');
+  if(!btn) return;
+  const prof = localStorage.getItem(PROF_KEY) || 'offroad';
+  btn.textContent = prof === 'trail' ? 'TRAIL' : 'OFF-ROAD';
+}
+
+(function(){
+  const btn = document.getElementById('modeToggleBtn');
+  if(!btn) return;
+  syncModeToggleLabel();
+  btn.addEventListener('click', () => {
+    const current = localStorage.getItem(PROF_KEY) || 'offroad';
+    applyProfile(current === 'trail' ? 'offroad' : 'trail');
+  });
+})();
 
 // Restore saved profile on load (default: offroad). Migrate legacy
 // 'hiking' / 'camping' values from earlier builds → 'trail'.
@@ -4583,6 +4685,7 @@ try {
   else if(raw === 'offroad' || raw === 'trail') _savedProf = raw;
 } catch(_){}
 applyProfile(_savedProf);
+initSettingsCollapse();
 
 /* ─── SERVICE WORKER REGISTRATION ─────────────────────────
    Registered on every page load. The SW handles offline support and
@@ -5725,17 +5828,37 @@ document.getElementById('wx').addEventListener('click', e => {
 document.getElementById('wxPanelClose').addEventListener('click', closeWxPanel);
 document.getElementById('wxPanelHandle').addEventListener('click', closeWxPanel);
 
-// Weather strip collapse toggle — chevron button + localStorage persistence
+// Weather strip collapse + size toggles
 (function(){
   const wx = document.getElementById('wx');
-  const btn = document.getElementById('wxCollapseBtn');
-  if(!wx || !btn) return;
+  const collapseBtn = document.getElementById('wxCollapseBtn');
+  const sizeBtn = document.getElementById('wxSizeBtn');
+  if(!wx) return;
+
+  function applyWxSize(big){
+    wx.classList.toggle('wx-big', big);
+    if(sizeBtn) sizeBtn.textContent = big ? 'STD' : 'BIG';
+    try { localStorage.setItem('tg_wx_size_v1', big ? '1' : '0'); } catch(_){}
+  }
+
+  // Restore persisted states
   if(localStorage.getItem('tg_wx_collapsed') === '1') wx.classList.add('wx-collapsed');
-  btn.addEventListener('click', e => {
-    e.stopPropagation();
-    const collapsed = wx.classList.toggle('wx-collapsed');
-    try { localStorage.setItem('tg_wx_collapsed', collapsed ? '1' : '0'); } catch(_){}
-  });
+  applyWxSize(localStorage.getItem('tg_wx_size_v1') === '1');
+
+  if(collapseBtn){
+    collapseBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      const collapsed = wx.classList.toggle('wx-collapsed');
+      try { localStorage.setItem('tg_wx_collapsed', collapsed ? '1' : '0'); } catch(_){}
+    });
+  }
+
+  if(sizeBtn){
+    sizeBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      applyWxSize(!wx.classList.contains('wx-big'));
+    });
+  }
 })();
 
 // Swipe-down on the panel → close
