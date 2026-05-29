@@ -2213,8 +2213,8 @@ function drawTruckDial(pitch, roll){
      A wide arc at the bottom that's green when safe, transitions amber
      → red as worst-case angle approaches threshold. */
   const tubR = r * 0.92;
-  const tubStart = 110 * D2R;
-  const tubEnd = 70 * D2R;
+  const tubStart = 70 * D2R;
+  const tubEnd = 110 * D2R;
   const maxAbs = Math.max(Math.abs(pitch), Math.abs(roll));
   const safeRatio = Math.max(0, Math.min(1, maxAbs / S.threshold));
   let tubColor;
@@ -2744,7 +2744,7 @@ function doZero(){
   _lastAcceptedR = S.rawRoll;
   zb.classList.remove('hld'); zb.classList.add('zd');
   zh.textContent='Reference plane set ✓';
-  [hc,ac].forEach(c=>{c.classList.add('calib');setTimeout(()=>c.classList.remove('calib'),700);});
+  [hc,ac,tdc].forEach(c=>{c.classList.add('calib');setTimeout(()=>c.classList.remove('calib'),700);});
   if(navigator.vibrate) navigator.vibrate([50,30,80]);
   try{
     const ctx = ensureAudio();
