@@ -1750,6 +1750,15 @@ function loop(){
    drive if the 67° false-reading bug reappears — paste glitch count + raw
    values into a feedback ticket so we can keep narrowing it down. */
 let _debugHud = null;
+// Allow turning on the debug HUD via URL parameter — Safari on newer iOS
+// blocks javascript: URLs from the address bar, so this is the friendly
+// path for users to flip the toggle without a console.
+//   Bookmark: salsagawd.github.io/trailgauge/?debug=1
+// Setting persists for the session; reload without the param to disable.
+try {
+  const params = new URLSearchParams(window.location.search);
+  if(params.get('debug') === '1') window.tgDebug = true;
+} catch(_){}
 function renderDebugHud(){
   if(!_debugHud){
     _debugHud = document.createElement('div');
