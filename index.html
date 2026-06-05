@@ -198,7 +198,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 
 #readouts{display:flex;gap:8px;width:100%;max-width:480px}
 .rcard{flex:1;background:var(--card);border:1px solid var(--border);border-radius:12px;
-  padding:8px 12px;display:flex;flex-direction:column;align-items:center;
+  padding:8px 8px;display:flex;flex-direction:column;align-items:center;
   position:relative;overflow:hidden;transition:border-color var(--tr),box-shadow var(--tr)}
 .rcard::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;border-radius:2px 2px 0 0}
 .rcard.p::before{background:var(--pitch)}
@@ -1216,6 +1216,11 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
           <div class="rval" id="rval_el">0.0°</div>
           <div class="runit">left / right</div>
         </div>
+        <div class="rcard" id="tcard">
+          <div class="rlbl">Total</div>
+          <div class="rval" id="totalTiltVal">0.0°</div>
+          <div class="runit">overall tilt</div>
+        </div>
       </div>
 
       <div id="gwrap">
@@ -1710,9 +1715,21 @@ const S = {
   // lastFiltTs is the timestamp of the previous filter update — used to
   // compute dt for gyro integration. Set to 0 to trigger reset on first
   // update or after a long gap.
+  // 1.8.1: accelDevMs tracks cumulative time |ACC| has been deviating
+  // from gravity baseline. Used to detect sustained acceleration (e.g.,
+  // climbing a steady grade at speed) and raise alpha to trust gyro more.
+  // Resets toward zero when |ACC| is near gravity for an extended period.
   filtPitch: 0,
   filtRoll: 0,
   lastFiltTs: 0,
+  accelDevMs: 0,           // 1.8.1: cumulative ms of |ACC| deviation
+  calSettleUntilTs: 0,     // 1.8.2: lock filter to 0,0 until this ts
+  // 1.8.3: dual-rate smoothing. visPitch/visRoll lag S.pitch/S.roll
+  // via slow exponential moving average — used by gauge needles and
+  // ladder fills. Numerical readouts continue to read raw S.pitch/
+  // S.roll for precision.
+  visPitch: 0,
+  visRoll: 0,
   // Session B.2a: peak-hold tracking for ghost-marker displays.
   // peakPitch/peakRoll store signed values (left-lean roll = negative,
   // right-lean roll = positive) so ghost markers stay on the correct
@@ -1786,9 +1803,11 @@ function loop(){
   const isOffroad = document.body.classList.contains('prof-offroad');
   const isTrail   = document.body.classList.contains('prof-trail');
   if(isOffroad){
-    if(S.gaugeMode === 'truckdial')   drawTruckDial(S.pitch, S.roll);
-    else if(S.gaugeMode === 'analog') drawAnalog(S.pitch, S.roll);
-    else                              drawHorizon(S.pitch, S.roll);
+    // 1.8.3: update visual smoothing before any gauge renders
+    updateVisualSmoothing();
+    if(S.gaugeMode === 'truckdial')   drawTruckDial(S.visPitch, S.visRoll);
+    else if(S.gaugeMode === 'analog') drawAnalog(S.visPitch, S.visRoll);
+    else                              drawHorizon(S.visPitch, S.visRoll);
     updateCards();
     checkAlarm();
     updateMaxAngle();
@@ -2848,16 +2867,52 @@ function complementaryFilterUpdate(){
     return { pitch: cal.pitch, roll: cal.roll };
   }
 
+  // 1.8.2: post-calibration settle period — show 0,0 briefly so user
+  // sees the calibration "took" and the filter has time to re-initialize
+  // cleanly without vibration artifacts from the calibrate button tap.
+  if(now < S.calSettleUntilTs){
+    S.filtPitch = 0;
+    S.filtRoll = 0;
+    S.lastFiltTs = now;
+    return { pitch: 0, roll: 0 };
+  }
+
   // Gyro rotation rate magnitude — used to detect "I'm turning right now"
   const gyroMag = Math.sqrt(
     S.gyroAlpha * S.gyroAlpha +
     S.gyroBeta  * S.gyroBeta +
     S.gyroGamma * S.gyroGamma
   );
-  // Dynamic alpha: trust gyro more during high rotation activity.
-  // Threshold tuned from real drive data — baseline |GYR| ~5 deg/sec at
-  // rest, spikes to 30+ deg/sec during vehicle turns.
-  const alpha = (gyroMag > 15) ? 0.985 : 0.92;
+
+  // 1.8.1: track sustained accel-magnitude deviation from gravity (9.8).
+  // Used to detect sustained linear acceleration (e.g., climbing a hill
+  // at speed) where the accelerometer's "down" vector is biased and
+  // should be trusted less. Counter increments per frame of deviation,
+  // decays during baseline conditions, capped at 3000ms for response
+  // time when conditions change.
+  const accelMag = Math.sqrt(
+    S.accelGravX * S.accelGravX +
+    S.accelGravY * S.accelGravY +
+    S.accelGravZ * S.accelGravZ
+  );
+  const accelDeviation = Math.abs(accelMag - 9.8);
+  if(accelDeviation > 0.5){
+    S.accelDevMs = Math.min(3000, S.accelDevMs + dt * 1000);
+  } else {
+    S.accelDevMs = Math.max(0, S.accelDevMs - dt * 2000);
+  }
+
+  // Dynamic alpha: trust gyro more during high rotation activity
+  // (turning) OR during sustained accel deviation (hill climbing at
+  // speed, prolonged braking, etc).
+  //   - High |GYR| → turning, accel is reading lateral G as tilt
+  //   - Sustained |ACC| deviation → linear accel biasing the gravity
+  //     vector forward/backward, causing pitch under-read
+  // Both cases want the same response: lean on gyro for short-term
+  // truth and let accel slowly correct over a longer window.
+  const turning = gyroMag > 15;
+  const sustainedAccel = S.accelDevMs > 500;
+  const alpha = (turning || sustainedAccel) ? 0.985 : 0.92;
 
   // Gyro angular velocity for pitch and roll.
   // Mapping from device rotation rate to vehicle pitch/roll requires
@@ -2890,6 +2945,35 @@ function complementaryFilterUpdate(){
    sync with the live indicator. */
 const PEAK_HOLD_MS = 2000;
 const PEAK_DECAY_MS = 3000;
+/* 1.8.3: dual-rate visual smoothing.
+   Updates visPitch/visRoll via slow exponential moving average so the
+   gauge needles, ladder fills, and ghost markers respond to sustained
+   tilts without jumping on every bump or rail crossing. Numerical
+   readouts continue to read S.pitch/S.roll for precision.
+
+   Tuning:
+     - tau = 400ms time constant
+     - At 60Hz update rate, that's ~94% per-frame weight on previous
+       value, ~6% on current
+     - Step response: ~63% in 400ms, ~95% in 1.2s, ~99% in 2s
+     - Bumps lasting 100ms barely register; sustained turns/grades
+       converge cleanly within ~1s
+
+   During post-calibration settle period, snap to 0,0 to match the
+   filter's settle behavior. */
+function updateVisualSmoothing(){
+  const now = Date.now();
+  if(now < S.calSettleUntilTs){
+    S.visPitch = 0;
+    S.visRoll = 0;
+    return;
+  }
+  // Slow EMA with ~400ms time constant at 60Hz update rate
+  const visAlpha = 0.94;
+  S.visPitch = visAlpha * S.visPitch + (1 - visAlpha) * S.pitch;
+  S.visRoll  = visAlpha * S.visRoll  + (1 - visAlpha) * S.roll;
+}
+
 function updatePeakHold(){
   const now = Date.now();
   const curP = S.pitch, curR = S.roll;
@@ -3259,6 +3343,12 @@ function updateCards(){
   const dp=halfStep(S.pitch), dr=halfStep(S.roll);
   document.getElementById('pval').textContent   =(dp>=0?'+':'')+dp.toFixed(1)+'°';
   document.getElementById('rval_el').textContent=(dr>=0?'+':'')+dr.toFixed(1)+'°';
+  // 1.8.4: TOTAL TILT magnitude — combines pitch and roll into single
+  // "how tilted am I overall" number. Useful when vehicle isn't aligned
+  // with the slope's fall line (e.g., parked diagonally on a hill).
+  const _totTilt = Math.sqrt(S.pitch * S.pitch + S.roll * S.roll);
+  const _totEl = document.getElementById('totalTiltVal');
+  if(_totEl) _totEl.textContent = _totTilt.toFixed(1) + '°';
   // Grade % = tan(pitch) × 100, displayed at 0.5% resolution
   const grade = Math.tan(S.pitch*Math.PI/180)*100;
   const dg = halfStep(grade);
@@ -3350,6 +3440,12 @@ function doZero(){
   S.filtPitch = 0;
   S.filtRoll = 0;
   S.lastFiltTs = 0;
+  // 1.8.2: lock filter to 0,0 for 1.5s post-calibration so user sees
+  // the zero immediately and any vibration from the calibrate tap has
+  // time to settle before live data resumes.
+  S.calSettleUntilTs = Date.now() + 1500;
+  // Also reset accel-deviation tracking — calibration is a clean slate
+  S.accelDevMs = 0;
   // Reset rate-limit state so the next frame doesn't see the offset
   // change as a 30°+ jump and reject itself.
   _lastAcceptedP = S.rawPitch;
