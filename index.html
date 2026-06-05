@@ -512,6 +512,14 @@ body.light #permOverlay{background:rgba(240,244,248,0.94)}
 .colorRow .sinfo{flex:1;min-width:0}
 .srow:last-child{border-bottom:none}
 .sinfo{display:flex;flex-direction:column;gap:2px}
+/* Session B.2a-FU-V2: toggle button used in Settings rows for
+   theme + units. Compact, fits inline at the right edge of .srow. */
+.settingsRowBtn{background:var(--card);border:1px solid var(--border);
+  color:var(--txt);font-family:var(--fm);font-size:12px;font-weight:600;
+  padding:6px 14px;border-radius:6px;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;flex-shrink:0;
+  transition:all var(--tr);min-width:62px;letter-spacing:.5px}
+.settingsRowBtn:active{transform:scale(.96);border-color:var(--accent);color:var(--accent)}
 .sname{font-family:var(--fb);font-size:14px;font-weight:600;color:var(--txt)}
 .sdesc{font-family:var(--fm);font-size:12px;color:var(--txt2)}
 .tgl{position:relative;width:48px;height:26px;flex-shrink:0}
@@ -1170,8 +1178,6 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
       <button class="ibtn" id="foldersBtn" title="Folders">📁</button>
       <button class="ibtn" id="pinsBtn" title="Pins">📍</button>
       <button class="ibtn" id="tripsBtn" title="Trips">📋</button>
-      <button class="ibtn" id="themeBtn">☀️</button>
-      <button class="ibtn" id="unitBtn">°F</button>
       <button class="ibtn" id="stBtn">⚙️</button>
     </div>
   </div>
@@ -1360,11 +1366,20 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
     <!-- Display section (expanded by default) -->
     <div class="collapseHeader" data-section="display">Display</div>
     <div class="collapseBody" id="sc-display">
+      <!-- Session B.2a-FU-V2: theme + units moved from header to Settings -->
       <div class="srow">
-        <div class="sinfo"><span class="sname">Theme</span><span class="sdesc">Toggle dark/light mode from the header ☀/☾ button</span></div>
+        <div class="sinfo">
+          <span class="sname">Theme</span>
+          <span class="sdesc">Dark interface (default) or light</span>
+        </div>
+        <button id="themeRowBtn" class="settingsRowBtn" onclick="_toggleTheme()">DARK</button>
       </div>
       <div class="srow">
-        <div class="sinfo"><span class="sname">Units</span><span class="sdesc">Switch °F/°C and mph/km/h from the header unit button</span></div>
+        <div class="sinfo">
+          <span class="sname">Units</span>
+          <span class="sdesc">Temperature display preference</span>
+        </div>
+        <button id="unitsRowBtn" class="settingsRowBtn" onclick="_toggleUnits()">°F</button>
       </div>
     </div>
 
@@ -2611,23 +2626,10 @@ function drawTruckArc(opts){
   ctx.fillStyle = S.dark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.55)';
   ctx.fillText('0', zx, zy);
 
-  // Red warning triangles at corners (±40°)
-  ctx.fillStyle = '#ef4444';
-  [-1, 1].forEach(dir => {
-    const angle = valueToAngle(dir * 40);
-    const tipX = cx + (r + 4) * Math.cos(angle);
-    const tipY = cy + (r + 4) * Math.sin(angle);
-    ctx.save();
-    ctx.translate(tipX, tipY);
-    ctx.rotate(angle + Math.PI/2);
-    ctx.beginPath();
-    ctx.moveTo(0, -4);
-    ctx.lineTo(-3, 2);
-    ctx.lineTo(3, 2);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-  });
+  // Session B.2a-FU-V2: corner warning triangles removed — bathtub safe-zone
+  // arc and the tilt alarm threshold already provide threshold indication.
+  // The static triangles were visually noisy at low angles where they
+  // weren't actually warning about anything.
 
   // NEEDLE at value's angle
   const needleAngle = valueToAngle(value);
@@ -6878,8 +6880,13 @@ setTimeout(() => {
 // Apply loaded settings to UI on page load
 function applyLoadedSettings(){
   if(!S.dark) document.body.classList.add('light');
-  document.getElementById('themeBtn').textContent = S.dark ? '☀️' : '🌙';
-  document.getElementById('unitBtn').textContent  = S.cel  ? '°C' : '°F';
+  // Session B.2a-FU-V2: theme + units toggled from Settings panel now.
+  // Safe lookups because applyLoadedSettings may run before the Settings
+  // panel HTML is populated (depends on init order).
+  const _themeRowBtn = document.getElementById('themeRowBtn');
+  if(_themeRowBtn) _themeRowBtn.textContent = S.dark ? 'DARK' : 'LIGHT';
+  const _unitsRowBtn = document.getElementById('unitsRowBtn');
+  if(_unitsRowBtn) _unitsRowBtn.textContent = S.cel ? '°C' : '°F';
   document.getElementById('alarmTgl').checked = S.alarm;
   document.getElementById('vibTgl').checked   = S.vib;
   document.getElementById('thrSlider').value  = S.threshold;
@@ -6888,22 +6895,37 @@ function applyLoadedSettings(){
 }
 applyLoadedSettings();
 
-document.getElementById('themeBtn').addEventListener('click',()=>{
-  S.dark=!S.dark;
-  document.body.classList.toggle('light',!S.dark);
-  document.getElementById('themeBtn').textContent=S.dark?'☀️':'🌙';
+// Session B.2a-FU-V2: theme toggle moved to Settings panel
+function _toggleTheme(){
+  S.dark = !S.dark;
+  document.body.classList.toggle('light', !S.dark);
+  const btn = document.getElementById('themeRowBtn');
+  if(btn) btn.textContent = S.dark ? 'DARK' : 'LIGHT';
   saveSettings();
-});
+}
 
-document.getElementById('unitBtn').addEventListener('click',()=>{
-  S.cel=!S.cel;
-  document.getElementById('unitBtn').textContent=S.cel?'°C':'°F';
+// Session B.2a-FU-V2: units toggle moved to Settings panel
+function _toggleUnits(){
+  S.cel = !S.cel;
+  const btn = document.getElementById('unitsRowBtn');
+  if(btn) btn.textContent = S.cel ? '°C' : '°F';
   if(S.weather) renderWx(S.weather);
   saveSettings();
-});
+  // Trigger weather re-render so the display updates with new units
+  if(typeof renderWeather === 'function') renderWeather();
+}
 
 const stp=document.getElementById('stp'),stb=document.getElementById('stBtn');
-stb.addEventListener('click',()=>{stp.classList.toggle('open');stb.classList.toggle('on',stp.classList.contains('open'));});
+stb.addEventListener('click',()=>{
+  stp.classList.toggle('open');
+  stb.classList.toggle('on', stp.classList.contains('open'));
+  // Session B.2a-FU-V2: sync the moved theme + units buttons each time
+  // the Settings panel opens so their labels always reflect current state.
+  const _t = document.getElementById('themeRowBtn');
+  if(_t) _t.textContent = S.dark ? 'DARK' : 'LIGHT';
+  const _u = document.getElementById('unitsRowBtn');
+  if(_u) _u.textContent = S.cel ? '°C' : '°F';
+});
 stp.addEventListener('click',e=>{if(e.target===stp){stp.classList.remove('open');stb.classList.remove('on');}});
 document.getElementById('alarmTgl').addEventListener('change',e=>{
   S.alarm=e.target.checked;S.alarmFired=false;
