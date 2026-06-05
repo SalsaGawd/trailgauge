@@ -203,6 +203,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 .rcard::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;border-radius:2px 2px 0 0}
 .rcard.p::before{background:var(--pitch)}
 .rcard.r::before{background:var(--roll)}
+.rcard.t::before{background:#f0b429}
 .rcard.ws{border-color:var(--warn);box-shadow:0 0 12px var(--wglow)}
 .rcard.ds{border-color:var(--danger);box-shadow:0 0 16px var(--dglow);animation:dp .8s ease-in-out infinite}
 @keyframes dp{0%,100%{box-shadow:0 0 16px var(--dglow)}50%{box-shadow:0 0 28px rgba(239,68,68,.45)}}
@@ -1216,7 +1217,7 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
           <div class="rval" id="rval_el">0.0°</div>
           <div class="runit">left / right</div>
         </div>
-        <div class="rcard" id="tcard">
+        <div class="rcard t" id="tcard">
           <div class="rlbl">Total</div>
           <div class="rval" id="totalTiltVal">0.0°</div>
           <div class="runit">overall tilt</div>
@@ -6406,7 +6407,7 @@ function openWxPanel(){
   const _wxEl = document.getElementById('wx');
   if(_wxEl && _wxEl.classList.contains('wx-collapsed')){
     _wxEl.classList.remove('wx-collapsed');
-    try { localStorage.setItem('tg_wx_collapsed','0'); } catch(_){}
+    try { localStorage.removeItem('tg_wx_collapsed'); } catch(_){}
     return;
   }
   // If we have data, render it now. Otherwise show a placeholder so the
