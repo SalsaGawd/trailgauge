@@ -139,11 +139,18 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
    so this chip stays hidden on iPhone (display:none in HTML default).
    The JS layer flips it to flex when the API resolves with a battery
    manager instance. */
-.modeToggleBtn{height:30px;padding:0 10px;border-radius:8px;border:1px solid var(--accent);
-  background:transparent;color:var(--accent);font-family:var(--fm);font-size:10px;
-  font-weight:700;letter-spacing:1.5px;cursor:pointer;flex-shrink:0;
-  -webkit-tap-highlight-color:transparent;transition:all var(--tr)}
-.modeToggleBtn:active{background:var(--accent);color:#000}
+.modeToggleBtn{background:var(--card);border:1px solid var(--accent);
+  color:var(--accent);font-family:var(--fd);font-size:11px;font-weight:700;
+  letter-spacing:1.5px;text-transform:uppercase;padding:6px 10px;
+  border-radius:8px;cursor:pointer;-webkit-tap-highlight-color:transparent;
+  flex-shrink:0;height:30px;transition:all var(--tr)}
+.modeToggleBtn:active{transform:scale(.94);background:var(--accent);color:#000}
+@media (max-width:380px){
+  .modeToggleBtn{font-size:9px;letter-spacing:1px;padding:4px 7px;height:28px}
+}
+@media (max-width:340px){
+  .modeToggleBtn{font-size:8px;letter-spacing:.5px;padding:3px 5px}
+}
 .battChip{display:flex;align-items:center;gap:4px;padding:0 8px;
   height:30px;background:var(--card);border:1px solid var(--border);
   border-radius:8px;font-family:var(--fm);font-size:11px;font-weight:600;
@@ -200,7 +207,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 .rcard.ds{border-color:var(--danger);box-shadow:0 0 16px var(--dglow);animation:dp .8s ease-in-out infinite}
 @keyframes dp{0%,100%{box-shadow:0 0 16px var(--dglow)}50%{box-shadow:0 0 28px rgba(239,68,68,.45)}}
 .rlbl{font-family:var(--fm);font-size:9px;color:var(--txt2);letter-spacing:2px;text-transform:uppercase;margin-bottom:2px}
-.rval{font-family:var(--fd);font-size:32px;font-weight:700;line-height:1;letter-spacing:-1px;transition:color var(--tr)}
+.rval{font-family:var(--fd);font-size:37px;font-weight:700;line-height:1;letter-spacing:-1px;transition:color var(--tr)}
 .rcard.p .rval{color:var(--pitch)}
 .rcard.r .rval{color:var(--roll)}
 .rcard.ws .rval{color:var(--warn)!important}
@@ -506,7 +513,7 @@ body.light #permOverlay{background:rgba(240,244,248,0.94)}
 .srow:last-child{border-bottom:none}
 .sinfo{display:flex;flex-direction:column;gap:2px}
 .sname{font-family:var(--fb);font-size:14px;font-weight:600;color:var(--txt)}
-.sdesc{font-family:var(--fm);font-size:10px;color:var(--txt2)}
+.sdesc{font-family:var(--fm);font-size:12px;color:var(--txt2)}
 .tgl{position:relative;width:48px;height:26px;flex-shrink:0}
 .tgl input{opacity:0;width:0;height:0}
 .tsl{position:absolute;inset:0;background:var(--border);border-radius:26px;cursor:pointer;transition:background .3s}
@@ -1682,6 +1689,16 @@ const S = {
   filtPitch: 0,
   filtRoll: 0,
   lastFiltTs: 0,
+  // Session B.2a: peak-hold tracking for ghost-marker displays.
+  // peakPitch/peakRoll store signed values (left-lean roll = negative,
+  // right-lean roll = positive) so ghost markers stay on the correct
+  // side of the gauge during decay. peakPitchTs/peakRollTs store the
+  // timestamp when each peak was last refreshed; render loop uses these
+  // to compute hold + decay phase positioning.
+  peakPitch: 0,
+  peakRoll: 0,
+  peakPitchTs: 0,
+  peakRollTs: 0,
 };
 
 const hc=document.getElementById('hc');
@@ -1871,6 +1888,26 @@ function drawHorizon(pitch,roll){
     if(deg%10===0){hx.fillStyle='rgba(255,255,255,0.5)';hx.fillText(-deg+'°',-lw/2-4,pp+px+4);}
   });
   hx.restore();
+
+  // Session B.2a: peak-hold ghost horizon line — fades to match the live
+  // line as transient peaks decay back to current value.
+  const _peakAlphas = updatePeakHold();
+  if(_peakAlphas.pAlpha > 0.01 || _peakAlphas.rAlpha > 0.01){
+    const ghostAlpha = Math.max(_peakAlphas.pAlpha, _peakAlphas.rAlpha);
+    hx.save();
+    hx.translate(cx, cy);
+    hx.rotate(S.peakRoll * Math.PI / 180);
+    const ghostPP = (S.peakPitch / 90) * r * 1.65;
+    hx.strokeStyle = S.dark ? `rgba(240,180,41,${ghostAlpha})` : `rgba(180,120,20,${ghostAlpha})`;
+    hx.lineWidth = 1.5;
+    hx.setLineDash([4, 3]);
+    hx.beginPath();
+    hx.moveTo(-r * 1.6, ghostPP);
+    hx.lineTo(r * 1.6, ghostPP);
+    hx.stroke();
+    hx.setLineDash([]);
+    hx.restore();
+  }
 
   // P numeric overlay only — placed in the bottom dead zone, below the earth horizon.
   // Roll readout deliberately omitted from the gauge: the roll arc + tick labels +
@@ -2164,6 +2201,19 @@ function drawAnalog(pitch,roll){
   const pLen = r*0.62;
   const rLen = r*0.52;
 
+  // Session B.2a: peak-hold ghost needles — drawn before live needles so
+  // live needles render on top. Reuse drawNeedle geometry at 85% length
+  // and faded rgba color. Angle formulas match live needle convention.
+  const _peakAlphas = updatePeakHold();
+  if(_peakAlphas.pAlpha > 0.01){
+    const gpAngle = clamp(S.peakPitch, 45) * D2R;
+    drawNeedle(gpAngle, pLen * 0.85, r*0.1, 3, `rgba(61,220,151,${_peakAlphas.pAlpha})`);
+  }
+  if(_peakAlphas.rAlpha > 0.01){
+    const grAngle = Math.PI/2 + clamp(S.peakRoll, 45) * D2R;
+    drawNeedle(grAngle, rLen * 0.85, r*0.1, 3, `rgba(56,189,248,${_peakAlphas.rAlpha})`);
+  }
+
   const pAngle = pVis*D2R;
   drawNeedle(pAngle, pLen, r*0.16, 4.5, '#3ddc97');
 
@@ -2265,6 +2315,20 @@ function drawTruckDial(pitch, roll){
   const arcR = r * 0.78;
   const arcRi = r * 0.62;
 
+  // Session B.2a: peak-hold ghost arc needles — drawn before live arcs.
+  // Apply same sign correction as pVis/rVis (pitchSigned = -pitch).
+  const _peakAlphas = updatePeakHold();
+  if(_peakAlphas.pAlpha > 0.01){
+    drawTruckArcGhost(tdx, cx, cy, arcR, arcRi,
+      Math.max(-45, Math.min(45, -S.peakPitch)), 45,
+      `rgba(61,220,151,${_peakAlphas.pAlpha})`, 'left');
+  }
+  if(_peakAlphas.rAlpha > 0.01){
+    drawTruckArcGhost(tdx, cx, cy, arcR, arcRi,
+      Math.max(-45, Math.min(45, -S.peakRoll)), 45,
+      `rgba(56,189,248,${_peakAlphas.rAlpha})`, 'right');
+  }
+
   // Left arc spans canvas angle 135° to 225° (the LEFT semicircle).
   // 180° is the midpoint (9 o'clock). Positive pitch should rotate the
   // needle COUNTER-CLOCKWISE (toward 12 o'clock / "up").
@@ -2312,6 +2376,23 @@ function drawTruckDial(pitch, roll){
   tdx.lineWidth = 1;
   tdx.strokeRect(ladderX, ladderTop, ladderW, ladderH);
   tdx.strokeRect(ladderX + ladderW + ladderGap, ladderTop, ladderW, ladderH);
+
+  // Session B.2a: ghost ladder fills — drawn after bar backgrounds so
+  // they appear inside the bars, before live fills so live is on top.
+  if(_peakAlphas.pAlpha > 0.01){
+    const ghostP = Math.max(-45, Math.min(45, -S.peakPitch));
+    const gpH = (Math.abs(ghostP) / 45) * (ladderH / 2);
+    const gpY = (ghostP >= 0) ? (ladderMid - gpH) : ladderMid;
+    tdx.fillStyle = `rgba(61,220,151,${_peakAlphas.pAlpha * 0.5})`;
+    tdx.fillRect(ladderX, gpY, ladderW, gpH);
+  }
+  if(_peakAlphas.rAlpha > 0.01){
+    const ghostR = Math.max(-45, Math.min(45, -S.peakRoll));
+    const grH = (Math.abs(ghostR) / 45) * (ladderH / 2);
+    const grY = (ghostR >= 0) ? ladderMid : (ladderMid - grH);
+    tdx.fillStyle = `rgba(56,189,248,${_peakAlphas.rAlpha * 0.5})`;
+    tdx.fillRect(ladderX + ladderW + ladderGap, grY, ladderW, grH);
+  }
 
   // PITCH FILL (left bar)
   // pVis >= 0 → fill upper half (from ladderMid - height to ladderMid)
@@ -2422,6 +2503,33 @@ function drawTruckDial(pitch, roll){
    The arcs use OPPOSITE rotational directions for positive values. This
    matches user intuition: "nose up" pitch points up on left arc;
    "right side down" roll points down on right arc. */
+/* Session B.2a: ghost-needle helper for peak-hold display on Truck Dial.
+   Same angle convention as drawTruckArc (valueSign = +1 for both sides,
+   geometry difference handled by midAngle). Renders just the needle in
+   a faded color, no ticks or warnings — keeps the ghost subtle. */
+function drawTruckArcGhost(ctx, cx, cy, r, ri, value, maxDeg, color, side){
+  const D2R = Math.PI / 180;
+  let midAngle;
+  if(side === 'left'){
+    midAngle = 180 * D2R;
+  } else {
+    midAngle = 0;
+  }
+  const needleAngle = midAngle + (value / maxDeg) * 45 * D2R;
+  const nx1 = cx + ri * Math.cos(needleAngle);
+  const ny1 = cy + ri * Math.sin(needleAngle);
+  const nx2 = cx + (r - 2) * Math.cos(needleAngle);
+  const ny2 = cy + (r - 2) * Math.sin(needleAngle);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(nx1, ny1);
+  ctx.lineTo(nx2, ny2);
+  ctx.stroke();
+  ctx.lineCap = 'butt';
+}
+
 function drawTruckArc(opts){
   const {ctx, cx, cy, r, ri, value, maxDeg, needleColor, side} = opts;
   const D2R = Math.PI / 180;
@@ -2759,6 +2867,67 @@ function complementaryFilterUpdate(){
   S.filtRoll  = alpha * (S.filtRoll  + rollRate  * dt) + (1 - alpha) * cal.roll;
 
   return { pitch: S.filtPitch, roll: S.filtRoll };
+}
+
+/* ─── PEAK-HOLD UPDATE (Session B.2a) ───────────────────────
+   Maintains ghost-marker peak values for the gauge displays. Each axis
+   (pitch, roll) tracks its signed peak independently. Peak refreshes
+   immediately when |current| exceeds |peak|; otherwise holds for
+   PEAK_HOLD_MS milliseconds, then decays linearly over PEAK_DECAY_MS
+   back to the live value. Result: brief transients leave a visible
+   ghost that fades naturally, while sustained leans hold the peak in
+   sync with the live indicator. */
+const PEAK_HOLD_MS = 2000;
+const PEAK_DECAY_MS = 3000;
+function updatePeakHold(){
+  const now = Date.now();
+  const curP = S.pitch, curR = S.roll;
+  // PITCH peak
+  if(Math.abs(curP) >= Math.abs(S.peakPitch)){
+    S.peakPitch = curP;
+    S.peakPitchTs = now;
+  } else {
+    const dt = now - S.peakPitchTs;
+    if(dt > PEAK_HOLD_MS){
+      const decayFrac = Math.min(1, (dt - PEAK_HOLD_MS) / PEAK_DECAY_MS);
+      // Linear interpolation from peak toward current value as decay
+      // progresses. At decayFrac=1, peak === current (ghost invisible).
+      S.peakPitch = S.peakPitch + (curP - S.peakPitch) * decayFrac;
+      if(decayFrac >= 1){
+        S.peakPitch = curP;
+        S.peakPitchTs = now;
+      }
+    }
+    // During hold phase (dt <= PEAK_HOLD_MS): no change to peak
+  }
+  // ROLL peak — same logic
+  if(Math.abs(curR) >= Math.abs(S.peakRoll)){
+    S.peakRoll = curR;
+    S.peakRollTs = now;
+  } else {
+    const dt = now - S.peakRollTs;
+    if(dt > PEAK_HOLD_MS){
+      const decayFrac = Math.min(1, (dt - PEAK_HOLD_MS) / PEAK_DECAY_MS);
+      S.peakRoll = S.peakRoll + (curR - S.peakRoll) * decayFrac;
+      if(decayFrac >= 1){
+        S.peakRoll = curR;
+        S.peakRollTs = now;
+      }
+    }
+  }
+  // Return current opacity for ghost markers — fully visible during
+  // hold, fading during decay. Used by the gauge render functions.
+  const pAge = now - S.peakPitchTs;
+  const rAge = now - S.peakRollTs;
+  let pAlpha, rAlpha;
+  if(pAge <= PEAK_HOLD_MS) pAlpha = 0.6;
+  else pAlpha = Math.max(0, 0.6 * (1 - (pAge - PEAK_HOLD_MS) / PEAK_DECAY_MS));
+  if(rAge <= PEAK_HOLD_MS) rAlpha = 0.6;
+  else rAlpha = Math.max(0, 0.6 * (1 - (rAge - PEAK_HOLD_MS) / PEAK_DECAY_MS));
+  // Hide ghost entirely when it's within 1° of current (visually identical)
+  if(Math.abs(S.peakPitch - curP) < 1) pAlpha = 0;
+  if(Math.abs(S.peakRoll - curR) < 1) rAlpha = 0;
+  return { pAlpha, rAlpha };
 }
 
 function handleOri(e){
