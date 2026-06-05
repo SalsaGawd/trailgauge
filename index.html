@@ -360,6 +360,15 @@ body.light #permOverlay{background:rgba(240,244,248,0.94)}
 #wx.wx-collapsed #wxCollapseBtn{transform:rotate(180deg)}
 #wx.wx-big{font-size:1.18em}
 #wx.wx-big #wxCurrent{gap:10px}
+/* Expanded weather strip — taller hourly cards with more legible text.
+   Toggled by tapping the BIG/STD button next to the collapse chevron. */
+#wx.wx-big .hcard{min-width:82px;padding:10px 12px;gap:6px}
+#wx.wx-big .hico{font-size:20px}
+#wx.wx-big .htemp{font-size:19px}
+#wx.wx-big .hprc{font-size:11px}
+#wx.wx-big .hwspd{font-size:14px}
+#wx.wx-big .hwlbl{font-size:9px}
+#wx.wx-big #hscroll{padding-bottom:14px}
 #wxSizeBtn{height:22px;padding:0 8px;border-radius:6px;border:1px solid var(--border);
   background:transparent;color:var(--txt2);font-family:var(--fm);font-size:9px;
   font-weight:700;letter-spacing:1px;cursor:pointer;flex-shrink:0;
@@ -6430,6 +6439,16 @@ document.getElementById('wxPanelHandle').addEventListener('click', closeWxPanel)
       e.stopPropagation();
       applyWxSize(!wx.classList.contains('wx-big'));
     });
+    // Weather size fix: stop touchend/touchstart from bubbling to the strip's
+    // panel-open handler. The button's click stopPropagation alone is too
+    // late on iOS — touchend fires first and the strip handler opens the
+    // panel before the click handler can intercept.
+    sizeBtn.addEventListener('touchend', e => {
+      e.stopPropagation();
+    }, { passive: true });
+    sizeBtn.addEventListener('touchstart', e => {
+      e.stopPropagation();
+    }, { passive: true });
   }
 })();
 
