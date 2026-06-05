@@ -1653,7 +1653,19 @@ const S = {
   lat:null, lon:null, elev:null, hdg:null,
   holding:false, holdT:null,
   sensorLive:false,
-  sunrises:null, sunsets:null,  // populated when weather data arrives
+  sunrises:null, sunsets:null,
+  // Session 1.7a: raw DeviceMotion data for upcoming complementary filter.
+  // Populated by handleMotion() when DeviceMotionEvent permission granted.
+  // Independent from S.tPitch/S.tRoll — does NOT affect rendering yet.
+  motionLive: false,           // true once first valid DeviceMotion event arrives
+  accelGravX: 0,               // m/s² — accel including gravity, device X axis
+  accelGravY: 0,               // m/s² — accel including gravity, device Y axis
+  accelGravZ: 0,               // m/s² — accel including gravity, device Z axis
+  gyroAlpha: 0,                // deg/sec — rotation rate around device Z
+  gyroBeta: 0,                 // deg/sec — rotation rate around device X
+  gyroGamma: 0,                // deg/sec — rotation rate around device Y
+  motionTs: 0,                 // timestamp of last accepted DeviceMotion event
+  motionRateHz: 0,             // measured event rate (updated every second)
 };
 
 const hc=document.getElementById('hc');
@@ -1742,19 +1754,51 @@ function renderDebugHud(){
   if(!_debugHud){
     _debugHud = document.createElement('div');
     _debugHud.style.cssText = 'position:fixed;top:60px;right:8px;z-index:500;'+
-      'background:rgba(0,0,0,.85);color:#3ddc97;font-family:monospace;'+
-      'font-size:10px;padding:8px 10px;border-radius:6px;border:1px solid #3ddc97;'+
-      'pointer-events:none;line-height:1.4;white-space:pre;min-width:160px';
+      'background:rgba(0,0,0,.88);color:#3ddc97;font-family:monospace;'+
+      'font-size:9px;padding:8px 10px;border-radius:6px;border:1px solid #3ddc97;'+
+      'pointer-events:none;line-height:1.35;white-space:pre;min-width:175px';
     document.body.appendChild(_debugHud);
   }
+  // Compute accelerometer magnitude — at rest this should be ~9.8 m/s² (1g).
+  // Deviation from 1g indicates the vehicle is accelerating/decelerating/turning.
+  // This is the signal we'll use in 1.7c to dynamically trust the gyro more.
+  const accelMag = Math.sqrt(
+    S.accelGravX * S.accelGravX +
+    S.accelGravY * S.accelGravY +
+    S.accelGravZ * S.accelGravZ
+  );
+  // Gyro magnitude — total rotation rate. At rest should be near 0.
+  // During a vehicle turn, expect significant values on one axis (gamma
+  // typically, which is rotation around the vertical/Y axis when phone
+  // is dash-mounted upright).
+  const gyroMag = Math.sqrt(
+    S.gyroAlpha * S.gyroAlpha +
+    S.gyroBeta  * S.gyroBeta +
+    S.gyroGamma * S.gyroGamma
+  );
+  const motionAge = S.motionTs ? (Date.now() - S.motionTs) : 999999;
+  const motionStatus = !S.motionLive ? 'OFF' :
+                       (motionAge > 500 ? 'STALE' : 'OK');
   _debugHud.textContent =
-    `RAW P ${S.rawPitch.toFixed(2)}\n`+
-    `RAW R ${S.rawRoll.toFixed(2)}\n`+
-    `FIL P ${S.pitch.toFixed(2)}\n`+
-    `FIL R ${S.roll.toFixed(2)}\n`+
-    `OFF P ${S.pOff.toFixed(2)}\n`+
-    `OFF R ${S.rOff.toFixed(2)}\n`+
-    `GLITCH ${_glitchCount}`;
+    `═ ORIENTATION ═\n`+
+    `RAW P ${S.rawPitch.toFixed(1).padStart(6)}°\n`+
+    `RAW R ${S.rawRoll.toFixed(1).padStart(6)}°\n`+
+    `FIL P ${S.pitch.toFixed(1).padStart(6)}°\n`+
+    `FIL R ${S.roll.toFixed(1).padStart(6)}°\n`+
+    `OFF P ${S.pOff.toFixed(1).padStart(6)}°\n`+
+    `OFF R ${S.rOff.toFixed(1).padStart(6)}°\n`+
+    `GLITCH ${String(_glitchCount).padStart(6)}\n`+
+    `═ MOTION (1.7a) ═\n`+
+    `STAT  ${motionStatus.padStart(8)}\n`+
+    `RATE  ${String(S.motionRateHz).padStart(5)} Hz\n`+
+    `ACC X ${S.accelGravX.toFixed(2).padStart(6)}\n`+
+    `ACC Y ${S.accelGravY.toFixed(2).padStart(6)}\n`+
+    `ACC Z ${S.accelGravZ.toFixed(2).padStart(6)}\n`+
+    `|ACC| ${accelMag.toFixed(2).padStart(6)}\n`+
+    `GYR A ${S.gyroAlpha.toFixed(1).padStart(6)}\n`+
+    `GYR B ${S.gyroBeta.toFixed(1).padStart(6)}\n`+
+    `GYR G ${S.gyroGamma.toFixed(1).padStart(6)}\n`+
+    `|GYR| ${gyroMag.toFixed(1).padStart(6)}`;
 }
 
 requestAnimationFrame(loop);
@@ -2497,6 +2541,56 @@ function median5(a, b, c, d, e){
   return arr[2];
 }
 
+/* ─── DEVICEMOTION HANDLER (Session 1.7a) ───────────────────
+   Captures raw accelerometer + gyroscope data into S. This data is
+   intentionally NOT wired into the rendering pipeline yet — Session 1.7b
+   will add the complementary filter that consumes it. For now it just
+   feeds the debug HUD so we can verify the sensor stream is healthy.
+
+   Why this matters: the existing DeviceOrientationEvent gives us Apple's
+   pre-fused sensor output (alpha/beta/gamma). That fusion doesn't know
+   we're in a moving vehicle, which is why turns produce false roll
+   readings. DeviceMotionEvent exposes raw accel + gyro separately,
+   letting us build a vehicle-aware filter on top.
+
+   The handler is defensive about partial sensor availability — some
+   browsers/devices populate only some of the fields. Each branch
+   guards against null values. */
+let _motionEventCount = 0;
+let _motionRateWindow = Date.now();
+function handleMotion(e){
+  // accelerationIncludingGravity is what we want for tilt math (includes
+  // the 1g gravity vector). e.acceleration WITHOUT gravity is for motion-
+  // only detection, not useful here.
+  const ag = e.accelerationIncludingGravity;
+  if(ag && Number.isFinite(ag.x) && Number.isFinite(ag.y) && Number.isFinite(ag.z)){
+    S.accelGravX = ag.x;
+    S.accelGravY = ag.y;
+    S.accelGravZ = ag.z;
+  }
+  // rotationRate is in degrees per second. iOS provides these directly,
+  // Android sometimes needs conversion but DeviceMotionEvent spec says
+  // deg/sec — we trust the spec here.
+  const rr = e.rotationRate;
+  if(rr && Number.isFinite(rr.alpha) && Number.isFinite(rr.beta) && Number.isFinite(rr.gamma)){
+    S.gyroAlpha = rr.alpha;
+    S.gyroBeta  = rr.beta;
+    S.gyroGamma = rr.gamma;
+  }
+  S.motionTs = Date.now();
+  S.motionLive = true;
+  // Rate measurement — count events per second, updated every 1000ms.
+  // Useful for verifying we're actually getting 60Hz data on iPhone vs
+  // some lower throttled rate.
+  _motionEventCount++;
+  const now = Date.now();
+  if(now - _motionRateWindow >= 1000){
+    S.motionRateHz = _motionEventCount;
+    _motionEventCount = 0;
+    _motionRateWindow = now;
+  }
+}
+
 function handleOri(e){
   // Use proper rotation-matrix math instead of direct beta/gamma mapping.
   //
@@ -2668,22 +2762,53 @@ function attachOrientationListener(){
   }
 }
 
+/* Session 1.7a: separate attach function for DeviceMotion. Kept distinct
+   from orientation listener because the two streams serve different
+   purposes (motion = raw gyro+accel for filter, orientation = pre-fused
+   for current inclinometer math + compass). One can fail without the
+   other — partial sensor availability is normal on some devices. */
+function attachMotionListener(){
+  if(typeof DeviceMotionEvent === 'undefined') return;
+  window.addEventListener('devicemotion', handleMotion, true);
+}
+
 async function requestMotionPermission(){
   const btn = document.getElementById('permBtn');
   const hint = document.getElementById('permHint');
   const msg = document.getElementById('permMsg');
-  // Reset state in case this is being shown again after a previous denial/error
   btn.disabled = true;
   btn.textContent = 'Requesting…';
   btn.style.display = '';
   hint.style.display = 'none';
   try {
+    // Session 1.7a: request DeviceMotion permission alongside Orientation.
+    // iOS may grant them together or separately; we request both
+    // sequentially and proceed if at least Orientation is granted (since
+    // the existing inclinometer math depends on Orientation; Motion is
+    // additive for the upcoming filter work). Failing to get Motion is
+    // not a hard error — the gauge still works with reduced quality.
     const result = await DeviceOrientationEvent.requestPermission();
+    let motionResult = 'denied';
+    if(typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function'){
+      try {
+        motionResult = await DeviceMotionEvent.requestPermission();
+      } catch(motionErr){
+        console.warn('DeviceMotion permission error:', motionErr);
+      }
+    } else {
+      // Non-iOS or older iOS: no permission gate exists, just attach
+      motionResult = 'granted';
+    }
     if(result === 'granted'){
       try { localStorage.setItem(PERM_KEY, 'granted'); } catch(_){}
       attachOrientationListener();
+      // Attach DeviceMotion listener if we have permission. Failure is
+      // non-fatal — Session 1.7b will gracefully fall back to the
+      // existing orientation-only code path if motionLive stays false.
+      if(motionResult === 'granted'){
+        attachMotionListener();
+      }
       hidePermOverlay();
-      // Reset button state for next time the overlay might show
       btn.disabled = false;
       btn.textContent = 'Enable Motion Sensors';
     } else {
@@ -2708,6 +2833,7 @@ function initOri(){
   if(!needsIOSPermission){
     // Android, desktop, older iOS — no permission gate, just listen
     attachOrientationListener();
+    attachMotionListener();  // 1.7a: motion stream too where available
     return;
   }
 
