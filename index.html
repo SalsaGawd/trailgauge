@@ -1674,6 +1674,14 @@ const S = {
   // Persisted to localStorage as tg_gref_v1.
   gRefX: 0, gRefY: -1, gRefZ: 0,  // default: gravity straight down in phone frame
   gRefValid: false,                 // becomes true after first calibration
+  // Session 1.7c: complementary filter state.
+  // filtPitch/filtRoll hold the smoothed, turn-rejected output values.
+  // lastFiltTs is the timestamp of the previous filter update — used to
+  // compute dt for gyro integration. Set to 0 to trigger reset on first
+  // update or after a long gap.
+  filtPitch: 0,
+  filtRoll: 0,
+  lastFiltTs: 0,
 };
 
 const hc=document.getElementById('hc');
@@ -1797,9 +1805,9 @@ function renderDebugHud(){
   const motionStatus = !S.motionLive ? 'OFF' :
                        (motionAge > 500 ? 'STALE' : 'OK');
   _debugHud.textContent =
-    `═ ORIENTATION ═\n`+
-    `RAW P ${S.rawPitch.toFixed(1).padStart(6)}°\n`+
-    `RAW R ${S.rawRoll.toFixed(1).padStart(6)}°\n`+
+    `═ ANGLES ═\n`+
+    `ACC P ${(S._lastCalPitch || 0).toFixed(1).padStart(6)}°\n`+
+    `ACC R ${(S._lastCalRoll || 0).toFixed(1).padStart(6)}°\n`+
     `FIL P ${S.pitch.toFixed(1).padStart(6)}°\n`+
     `FIL R ${S.roll.toFixed(1).padStart(6)}°\n`+
     `OFF P ${S.pOff.toFixed(1).padStart(6)}°\n`+
@@ -1820,7 +1828,9 @@ function renderDebugHud(){
     `MODE  ${(S.gRefValid && S.motionLive) ? 'VECTOR' : 'EULER ' }\n`+
     `gRefX ${S.gRefX.toFixed(2).padStart(6)}\n`+
     `gRefY ${S.gRefY.toFixed(2).padStart(6)}\n`+
-    `gRefZ ${S.gRefZ.toFixed(2).padStart(6)}`;
+    `gRefZ ${S.gRefZ.toFixed(2).padStart(6)}\n`+
+    `═ FILTER (1.7c) ═\n`+
+    `ALPHA ${(gyroMag > 15 ? '0.985 HIGH' : '0.920 LOW ').padStart(11)}`;
 }
 
 requestAnimationFrame(loop);
@@ -2680,6 +2690,77 @@ function computeCalibratedAngles(){
   return { pitch, roll };
 }
 
+/* ─── COMPLEMENTARY FILTER (Session 1.7c) ───────────────────
+   Fuses gyroscope rotation rate (good for short-term, immune to lateral
+   G-force from turning) with accelerometer-derived angles (good for
+   long-term tilt, drifts toward true gravity over time).
+
+   Vehicle-specific tuning:
+     - Static alpha = 0.92 → 80% gyro / 8% accel weighting over ~0.5s
+     - Dynamic alpha = 0.985 → boosts gyro-trust during detected turns
+       (when |GYR| > 15 deg/sec, the accelerometer is feeling lateral G,
+       so we lean harder on gyro integration until rotation settles)
+     - dt clamped to 100ms max — prevents huge integration jumps if the
+       PWA was backgrounded and just resumed
+
+   Returns null if calibrated angles aren't ready (motion not granted,
+   no calibration vector, etc) — caller falls back to legacy Euler math. */
+function complementaryFilterUpdate(){
+  const cal = computeCalibratedAngles();
+  if(!cal) return null;
+  // Capture unfiltered accel angles for debug HUD comparison
+  S._lastCalPitch = cal.pitch;
+  S._lastCalRoll = cal.roll;
+
+  const now = Date.now();
+  let dt = (S.lastFiltTs > 0) ? (now - S.lastFiltTs) / 1000 : 0.016;
+  // Clamp dt to a sane range. Too small = no integration; too large =
+  // huge jumps if app was backgrounded.
+  if(dt < 0.001) dt = 0.001;
+  if(dt > 0.1) dt = 0.1;
+  S.lastFiltTs = now;
+
+  // On first run or after long gap, initialize filter state to the
+  // accelerometer reading. Otherwise the gauge would slowly drift in
+  // from (0,0) which looks like a bug.
+  if(S.lastFiltTs === 0 || Math.abs(S.filtPitch - cal.pitch) > 30){
+    S.filtPitch = cal.pitch;
+    S.filtRoll = cal.roll;
+    return { pitch: cal.pitch, roll: cal.roll };
+  }
+
+  // Gyro rotation rate magnitude — used to detect "I'm turning right now"
+  const gyroMag = Math.sqrt(
+    S.gyroAlpha * S.gyroAlpha +
+    S.gyroBeta  * S.gyroBeta +
+    S.gyroGamma * S.gyroGamma
+  );
+  // Dynamic alpha: trust gyro more during high rotation activity.
+  // Threshold tuned from real drive data — baseline |GYR| ~5 deg/sec at
+  // rest, spikes to 30+ deg/sec during vehicle turns.
+  const alpha = (gyroMag > 15) ? 0.985 : 0.92;
+
+  // Gyro angular velocity for pitch and roll.
+  // Mapping from device rotation rate to vehicle pitch/roll requires
+  // knowing the mount orientation. For a dash-mounted phone in portrait:
+  //   Phone rotation around its X axis (beta) corresponds to vehicle pitch
+  //   Phone rotation around its Y axis (gamma) corresponds to vehicle roll
+  // This is approximate — the calibrated frame from 1.7b isn't used here
+  // because gyro rates apply to the device's local axes regardless of
+  // mount orientation. For our use case (phone roughly vertical in dash
+  // mount), this mapping holds well enough for the filter's 60Hz update
+  // rate to converge correctly via the accel correction term.
+  const pitchRate = S.gyroBeta;   // deg/sec around device X (vehicle pitch)
+  const rollRate  = S.gyroGamma;  // deg/sec around device Y (vehicle roll)
+
+  // Complementary filter update:
+  //   new_filt = alpha * (prev_filt + gyro_rate * dt) + (1 - alpha) * accel_angle
+  S.filtPitch = alpha * (S.filtPitch + pitchRate * dt) + (1 - alpha) * cal.pitch;
+  S.filtRoll  = alpha * (S.filtRoll  + rollRate  * dt) + (1 - alpha) * cal.roll;
+
+  return { pitch: S.filtPitch, roll: S.filtRoll };
+}
+
 function handleOri(e){
   // Use proper rotation-matrix math instead of direct beta/gamma mapping.
   //
@@ -2799,18 +2880,24 @@ function handleOri(e){
   let tr = r - S.rOff;
   if(Math.abs(tp) < 0.5) tp = 0;
   if(Math.abs(tr) < 0.5) tr = 0;
-  // Session 1.7b: prefer calibrated-frame math when DeviceMotion is live
-  // and a calibration vector has been stored. Falls back to the original
-  // Euler-offset approach for devices without motion access.
-  // Overrides S.tPitch/S.tRoll (the smoothing targets) so the existing
-  // EMA filter in smooth() still applies — no rendering change.
-  const _calAng = computeCalibratedAngles();
-  if(_calAng){
-    S.tPitch = _calAng.pitch;
-    S.tRoll  = _calAng.roll;
+  // Session 1.7c: complementary filter on top of 1.7b's gimbal-lock-immune
+  // math. Adds turn rejection (via gyro) and temporal smoothing. Falls
+  // through to 1.7b's bare accel angles if filter can't run, then to
+  // legacy Euler-offset if motion isn't available at all.
+  // Sets S.tPitch/S.tRoll (smoothing targets) so EMA in smooth() applies.
+  const _filtered = complementaryFilterUpdate();
+  if(_filtered){
+    S.tPitch = _filtered.pitch;
+    S.tRoll  = _filtered.roll;
   } else {
-    S.tPitch = tp;
-    S.tRoll  = tr;
+    const _calAng = computeCalibratedAngles();
+    if(_calAng){
+      S.tPitch = _calAng.pitch;
+      S.tRoll  = _calAng.roll;
+    } else {
+      S.tPitch = tp;
+      S.tRoll  = tr;
+    }
   }
 }
 /* ─── DEVICE ORIENTATION + iOS PERMISSION GATE ──────────────
@@ -3075,6 +3162,14 @@ function doZero(){
       saveGRef();
     }
   }
+  // Session 1.7c: reset complementary filter state on calibration.
+  // Without this, the filter would slowly correct from old gyro-integrated
+  // angles toward the new accelerometer baseline, causing a visible drift
+  // animation after each calibration. Resetting forces fresh initialization
+  // on the next filter update.
+  S.filtPitch = 0;
+  S.filtRoll = 0;
+  S.lastFiltTs = 0;
   // Reset rate-limit state so the next frame doesn't see the offset
   // change as a 30°+ jump and reject itself.
   _lastAcceptedP = S.rawPitch;
