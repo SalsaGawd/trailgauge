@@ -139,6 +139,12 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
    so this chip stays hidden on iPhone (display:none in HTML default).
    The JS layer flips it to flex when the API resolves with a battery
    manager instance. */
+.settingsBtn{background:var(--card);border:1px solid var(--border);
+  color:var(--txt);font-family:var(--fm);font-size:12px;font-weight:600;
+  padding:6px 14px;border-radius:6px;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;flex-shrink:0;
+  transition:all var(--tr);min-width:60px}
+.settingsBtn:active{transform:scale(.96);border-color:var(--accent);color:var(--accent)}
 .modeToggleBtn{background:var(--card);border:1px solid var(--accent);
   color:var(--accent);font-family:var(--fd);font-size:11px;font-weight:700;
   letter-spacing:1.5px;text-transform:uppercase;padding:6px 10px;
@@ -1170,8 +1176,6 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
       <button class="ibtn" id="foldersBtn" title="Folders">📁</button>
       <button class="ibtn" id="pinsBtn" title="Pins">📍</button>
       <button class="ibtn" id="tripsBtn" title="Trips">📋</button>
-      <button class="ibtn" id="themeBtn">☀️</button>
-      <button class="ibtn" id="unitBtn">°F</button>
       <button class="ibtn" id="stBtn">⚙️</button>
     </div>
   </div>
@@ -1360,11 +1364,20 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
     <!-- Display section (expanded by default) -->
     <div class="collapseHeader" data-section="display">Display</div>
     <div class="collapseBody" id="sc-display">
-      <div class="srow">
-        <div class="sinfo"><span class="sname">Theme</span><span class="sdesc">Toggle dark/light mode from the header ☀/☾ button</span></div>
+      <!-- Session B.2a-FU: theme and units moved from header to Settings -->
+      <div class="srow" id="themeRow">
+        <div class="sinfo">
+          <span class="sname">Theme</span>
+          <span class="sdesc">Dark interface (default) or light</span>
+        </div>
+        <button id="themeToggleSettings" class="settingsBtn">DARK</button>
       </div>
-      <div class="srow">
-        <div class="sinfo"><span class="sname">Units</span><span class="sdesc">Switch °F/°C and mph/km/h from the header unit button</span></div>
+      <div class="srow" id="unitsRow">
+        <div class="sinfo">
+          <span class="sname">Units</span>
+          <span class="sdesc">Temperature display preference</span>
+        </div>
+        <button id="unitsToggleSettings" class="settingsBtn">°F</button>
       </div>
     </div>
 
@@ -2610,24 +2623,6 @@ function drawTruckArc(opts){
   const zy = cy + labelR * Math.sin(midAngle);
   ctx.fillStyle = S.dark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.55)';
   ctx.fillText('0', zx, zy);
-
-  // Red warning triangles at corners (±40°)
-  ctx.fillStyle = '#ef4444';
-  [-1, 1].forEach(dir => {
-    const angle = valueToAngle(dir * 40);
-    const tipX = cx + (r + 4) * Math.cos(angle);
-    const tipY = cy + (r + 4) * Math.sin(angle);
-    ctx.save();
-    ctx.translate(tipX, tipY);
-    ctx.rotate(angle + Math.PI/2);
-    ctx.beginPath();
-    ctx.moveTo(0, -4);
-    ctx.lineTo(-3, 2);
-    ctx.lineTo(3, 2);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-  });
 
   // NEEDLE at value's angle
   const needleAngle = valueToAngle(value);
@@ -6522,6 +6517,10 @@ const SK = 'tg_settings_v1';
 function loadSettings(){
   try {
     const raw = localStorage.getItem(SK);
+    // Session B.2a-FU: dark mode is the default on first launch.
+    // S.dark starts true (S object default). If no saved settings exist,
+    // we return early and dark stays true. Only overrides if user has
+    // explicitly chosen light mode (s.dark === false in the saved blob).
     if(!raw) return;
     const s = JSON.parse(raw);
     if(typeof s.dark === 'boolean') S.dark = s.dark;
@@ -6878,29 +6877,64 @@ setTimeout(() => {
 // Apply loaded settings to UI on page load
 function applyLoadedSettings(){
   if(!S.dark) document.body.classList.add('light');
-  document.getElementById('themeBtn').textContent = S.dark ? '☀️' : '🌙';
-  document.getElementById('unitBtn').textContent  = S.cel  ? '°C' : '°F';
+  // themeBtn and unitBtn removed from header (B.2a-FU.2/3) — guard for safety
+  const _tb = document.getElementById('themeBtn');
+  if(_tb) _tb.textContent = S.dark ? '☀️' : '🌙';
+  const _ub = document.getElementById('unitBtn');
+  if(_ub) _ub.textContent = S.cel ? '°C' : '°F';
   document.getElementById('alarmTgl').checked = S.alarm;
   document.getElementById('vibTgl').checked   = S.vib;
   document.getElementById('thrSlider').value  = S.threshold;
   document.getElementById('thrDisp').textContent = S.threshold + '°';
   if(S._wlEnabled === false) document.getElementById('wlTgl').checked = false;
+  // Sync Settings panel buttons to loaded state (B.2a-FU)
+  if(typeof syncSettingsButtonLabels === 'function') syncSettingsButtonLabels();
 }
 applyLoadedSettings();
 
-document.getElementById('themeBtn').addEventListener('click',()=>{
+// themeBtn/unitBtn removed from header (B.2a-FU.2/3) — handlers guarded
+document.getElementById('themeBtn')?.addEventListener('click',()=>{
   S.dark=!S.dark;
   document.body.classList.toggle('light',!S.dark);
   document.getElementById('themeBtn').textContent=S.dark?'☀️':'🌙';
   saveSettings();
 });
 
-document.getElementById('unitBtn').addEventListener('click',()=>{
+document.getElementById('unitBtn')?.addEventListener('click',()=>{
   S.cel=!S.cel;
   document.getElementById('unitBtn').textContent=S.cel?'°C':'°F';
   if(S.weather) renderWx(S.weather);
   saveSettings();
 });
+
+// Session B.2a-FU: wire the new in-Settings theme + units buttons
+const _themeBtnSettings = document.getElementById('themeToggleSettings');
+const _unitsBtnSettings = document.getElementById('unitsToggleSettings');
+function syncSettingsButtonLabels(){
+  if(_themeBtnSettings){
+    _themeBtnSettings.textContent = S.dark ? 'DARK' : 'LIGHT';
+  }
+  if(_unitsBtnSettings){
+    _unitsBtnSettings.textContent = S.cel ? '°C' : '°F';
+  }
+}
+if(_themeBtnSettings){
+  _themeBtnSettings.addEventListener('click', () => {
+    S.dark = !S.dark;
+    document.body.classList.toggle('light', !S.dark);
+    saveSettings();
+    syncSettingsButtonLabels();
+  });
+}
+if(_unitsBtnSettings){
+  _unitsBtnSettings.addEventListener('click', () => {
+    S.cel = !S.cel;
+    if(S.weather) renderWx(S.weather);
+    saveSettings();
+    syncSettingsButtonLabels();
+  });
+}
+syncSettingsButtonLabels();
 
 const stp=document.getElementById('stp'),stb=document.getElementById('stBtn');
 stb.addEventListener('click',()=>{stp.classList.toggle('open');stb.classList.toggle('on',stp.classList.contains('open'));});
