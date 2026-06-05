@@ -1666,6 +1666,14 @@ const S = {
   gyroGamma: 0,                // deg/sec — rotation rate around device Y
   motionTs: 0,                 // timestamp of last accepted DeviceMotion event
   motionRateHz: 0,             // measured event rate (updated every second)
+  // Session 1.7b: calibrated gravity vector for gimbal-lock-immune math.
+  // Captured when user hits Zero/Calibrate. Used by computeCalibratedAngles
+  // to compute pitch/roll relative to mount orientation rather than to
+  // Earth's horizontal plane. Immune to Euler-angle instability near
+  // vertical mount positions (typical dash mount setup).
+  // Persisted to localStorage as tg_gref_v1.
+  gRefX: 0, gRefY: -1, gRefZ: 0,  // default: gravity straight down in phone frame
+  gRefValid: false,                 // becomes true after first calibration
 };
 
 const hc=document.getElementById('hc');
@@ -1807,7 +1815,12 @@ function renderDebugHud(){
     `GYR A ${S.gyroAlpha.toFixed(1).padStart(6)}\n`+
     `GYR B ${S.gyroBeta.toFixed(1).padStart(6)}\n`+
     `GYR G ${S.gyroGamma.toFixed(1).padStart(6)}\n`+
-    `|GYR| ${gyroMag.toFixed(1).padStart(6)}`;
+    `|GYR| ${gyroMag.toFixed(1).padStart(6)}\n`+
+    `═ CAL (1.7b) ═\n`+
+    `MODE  ${(S.gRefValid && S.motionLive) ? 'VECTOR' : 'EULER ' }\n`+
+    `gRefX ${S.gRefX.toFixed(2).padStart(6)}\n`+
+    `gRefY ${S.gRefY.toFixed(2).padStart(6)}\n`+
+    `gRefZ ${S.gRefZ.toFixed(2).padStart(6)}`;
 }
 
 requestAnimationFrame(loop);
@@ -2600,6 +2613,73 @@ function handleMotion(e){
   }
 }
 
+/* ─── COMPUTE CALIBRATED ANGLES (Session 1.7b) ──────────────
+   Returns pitch/roll relative to calibrated mount orientation using raw
+   accelerometer + stored reference gravity vector. Immune to gimbal lock
+   because the math operates in a coordinate frame where the calibrated
+   position IS the new horizontal — Euler decomposition stays well away
+   from instability zones regardless of physical mount orientation.
+
+   Math overview (vector geometry, no quaternions needed):
+     1. Normalize current gravity vector from accelerometer (gx, gy, gz)
+     2. Build a calibrated coordinate frame from the stored reference:
+          Z' axis = -reference  (up from calibrated horizontal)
+          Y' axis = phone Y projected onto plane perpendicular to Z'
+                    (longitudinal — toward vehicle forward/back)
+          X' axis = Y' × Z'    (lateral — toward vehicle right/left)
+     3. Express current gravity in this frame via dot products
+     4. Decompose into pitch and roll using atan2 — same as standard
+        accel math, but now operating in a frame where the calibrated
+        position is (0,0,-1), far from any gimbal lock zone.
+
+   Returns null if motion sensors not available or calibration not set —
+   caller falls back to the existing Euler-angle code path. */
+function computeCalibratedAngles(){
+  if(!S.motionLive || !S.gRefValid) return null;
+  const ax = S.accelGravX, ay = S.accelGravY, az = S.accelGravZ;
+  const mag = Math.sqrt(ax*ax + ay*ay + az*az);
+  if(mag < 1) return null;  // sensor garbage / not yet streaming
+
+  // Normalize current gravity vector
+  const gx = ax / mag, gy = ay / mag, gz = az / mag;
+  const rx = S.gRefX, ry = S.gRefY, rz = S.gRefZ;
+
+  // Build Y' = phone Y axis (0,1,0) projected onto plane perpendicular to ref
+  // Rejection: v - (v·n)n where v = (0,1,0), n = (rx,ry,rz)
+  // v·n = ry, so rejection = (0-rx*ry, 1-ry*ry, 0-rz*ry)
+  let pyx = -rx * ry;
+  let pyy = 1 - ry * ry;
+  let pyz = -rz * ry;
+  let pyMag = Math.sqrt(pyx*pyx + pyy*pyy + pyz*pyz);
+  if(pyMag < 0.01){
+    // Phone Y axis is parallel to gravity — unusual calibration orientation.
+    // Fall back to projecting phone X axis (1,0,0) instead.
+    pyx = 1 - rx * rx;
+    pyy = -ry * rx;
+    pyz = -rz * rx;
+    pyMag = Math.sqrt(pyx*pyx + pyy*pyy + pyz*pyz);
+    if(pyMag < 0.01) return null;
+  }
+  pyx /= pyMag; pyy /= pyMag; pyz /= pyMag;
+
+  // X' = Y' × Z' where Z' = -reference
+  // Y' × (-ref) = -(Y' × ref) = (pyz*ry - pyy*rz, pyx*rz - pyz*rx, pyy*rx - pyx*ry)
+  const pxx = pyz * ry - pyy * rz;
+  const pxy = pyx * rz - pyz * rx;
+  const pxz = pyy * rx - pyx * ry;
+
+  // Express current gravity in calibrated frame via dot products
+  const gXc = gx * pxx + gy * pxy + gz * pxz;  // lateral
+  const gYc = gx * pyx + gy * pyy + gz * pyz;  // longitudinal
+  const gZc = -(gx * rx + gy * ry + gz * rz);  // vertical (negative dot product
+                                                // = +1 when current matches ref)
+
+  // Decompose into pitch and roll in the calibrated frame
+  const pitch = Math.atan2(gYc, -gZc) * 180 / Math.PI;
+  const roll  = Math.atan2(gXc, -gZc) * 180 / Math.PI;
+  return { pitch, roll };
+}
+
 function handleOri(e){
   // Use proper rotation-matrix math instead of direct beta/gamma mapping.
   //
@@ -2719,8 +2799,19 @@ function handleOri(e){
   let tr = r - S.rOff;
   if(Math.abs(tp) < 0.5) tp = 0;
   if(Math.abs(tr) < 0.5) tr = 0;
-  S.tPitch = tp;
-  S.tRoll  = tr;
+  // Session 1.7b: prefer calibrated-frame math when DeviceMotion is live
+  // and a calibration vector has been stored. Falls back to the original
+  // Euler-offset approach for devices without motion access.
+  // Overrides S.tPitch/S.tRoll (the smoothing targets) so the existing
+  // EMA filter in smooth() still applies — no rendering change.
+  const _calAng = computeCalibratedAngles();
+  if(_calAng){
+    S.tPitch = _calAng.pitch;
+    S.tRoll  = _calAng.roll;
+  } else {
+    S.tPitch = tp;
+    S.tRoll  = tr;
+  }
 }
 /* ─── DEVICE ORIENTATION + iOS PERMISSION GATE ──────────────
    iOS Safari 13+ requires DeviceOrientationEvent.requestPermission() to be
@@ -2970,6 +3061,20 @@ function cancelHold(){S.holding=false;clearTimeout(S.holdT);if(!zb.classList.con
 function doZero(){
   S.pOff=S.rawPitch; S.rOff=S.rawRoll;
   S.tPitch=0; S.tRoll=0;
+  // Session 1.7b: also capture the gravity vector as the new reference.
+  // The legacy pOff/rOff offsets stay populated so the fallback path
+  // works if DeviceMotion ever becomes unavailable mid-session.
+  if(S.motionLive){
+    const _ax = S.accelGravX, _ay = S.accelGravY, _az = S.accelGravZ;
+    const _mag = Math.sqrt(_ax*_ax + _ay*_ay + _az*_az);
+    if(_mag > 1){
+      S.gRefX = _ax / _mag;
+      S.gRefY = _ay / _mag;
+      S.gRefZ = _az / _mag;
+      S.gRefValid = true;
+      saveGRef();
+    }
+  }
   // Reset rate-limit state so the next frame doesn't see the offset
   // change as a 30°+ jump and reject itself.
   _lastAcceptedP = S.rawPitch;
@@ -4816,6 +4921,31 @@ function initSettingsCollapse(){
    - camping: hide inclinometer, emphasize weather/sun/freeze warnings
    Profile is persisted across sessions. Free for all users. */
 const PROF_KEY = 'tg_profile_v1';
+
+// Session 1.7b: persistence for the gimbal-lock-immune calibration vector.
+// Lives alongside the existing pOff/rOff offsets — the offsets stay as a
+// fallback for devices without DeviceMotion access (Android browsers
+// without permission, older iOS, etc).
+const G_REF_KEY = 'tg_gref_v1';
+function loadGRef(){
+  try {
+    const raw = localStorage.getItem(G_REF_KEY);
+    if(!raw) return false;
+    const obj = JSON.parse(raw);
+    if(typeof obj.x === 'number' && typeof obj.y === 'number' && typeof obj.z === 'number'){
+      S.gRefX = obj.x; S.gRefY = obj.y; S.gRefZ = obj.z;
+      S.gRefValid = true;
+      return true;
+    }
+  } catch(_){}
+  return false;
+}
+function saveGRef(){
+  try {
+    localStorage.setItem(G_REF_KEY, JSON.stringify({x: S.gRefX, y: S.gRefY, z: S.gRefZ}));
+  } catch(_){}
+}
+loadGRef();  // attempt restore on script init
 
 function applyProfile(prof){
   // Remove all known profile classes (including legacy hiking/camping in case
