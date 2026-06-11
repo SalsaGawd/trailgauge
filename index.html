@@ -345,7 +345,9 @@ body.light #permOverlay{background:rgba(240,244,248,0.94)}
      on it so users discover the swipe-up panel. */
   cursor:pointer;-webkit-tap-highlight-color:transparent;position:relative;
   overflow:hidden;max-height:400px;
-  transition:max-height .35s cubic-bezier(.4,0,.2,1), background var(--tr)}
+  /* WX-SWIPE: transform merged in so the live-drag nudge eases back on release */
+  transition:max-height .35s cubic-bezier(.4,0,.2,1), background var(--tr), transform .18s ease-out}
+#wx.wx-dragging{transition:none}
 #wx:active{background:var(--card)}
 /* Drag handle indicator at the top of the weather strip — subtle pill that
    tells users "this expands". */
@@ -6432,8 +6434,7 @@ function openWxPanel(){
   // If the strip is collapsed, expand it instead of opening the full panel.
   const _wxEl = document.getElementById('wx');
   if(_wxEl && _wxEl.classList.contains('wx-collapsed')){
-    _wxEl.classList.remove('wx-collapsed');
-    try { localStorage.removeItem('tg_wx_collapsed'); } catch(_){}
+    setWxCollapsed(false);
     return;
   }
   // If we have data, render it now. Otherwise show a placeholder so the
@@ -6487,30 +6488,54 @@ function closeWxPanel(){
 let _wxSwipeStartY = null;
 let _wxSwipeStartX = null;
 let _wxSwipeStartT = 0;
+let _wxDragging = false;
 document.getElementById('wx').addEventListener('touchstart', e => {
   _wxSwipeStartY = e.touches[0].clientY;
   _wxSwipeStartX = e.touches[0].clientX;
   _wxSwipeStartT = Date.now();
+  _wxDragging = false;
+}, {passive: true});
+// WX-SWIPE: live drag feedback. Only engages on a clearly-vertical intent so
+// horizontal card scrolling in #hscroll is never hijacked. Passive — we never
+// preventDefault, so native scroll keeps working underneath.
+document.getElementById('wx').addEventListener('touchmove', e => {
+  if(_wxSwipeStartY == null) return;
+  const dx = e.touches[0].clientX - _wxSwipeStartX;
+  const dy = e.touches[0].clientY - _wxSwipeStartY;
+  if(!_wxDragging){
+    if(Math.abs(dy) > 8 && Math.abs(dy) > Math.abs(dx) * 1.2){
+      _wxDragging = true;
+      document.getElementById('wx').classList.add('wx-dragging');
+    } else {
+      return;
+    }
+  }
+  // Damped follow, clamped to ±24px — the strip nudges to hint the gesture
+  // rather than flying off-screen.
+  const damped = Math.max(-24, Math.min(24, dy * 0.35));
+  document.getElementById('wx').style.transform = 'translateY(' + damped + 'px)';
 }, {passive: true});
 document.getElementById('wx').addEventListener('touchend', e => {
   if(_wxSwipeStartY == null) return;
   const dy = e.changedTouches[0].clientY - _wxSwipeStartY;
   const dx = e.changedTouches[0].clientX - _wxSwipeStartX;
   const dt = Date.now() - _wxSwipeStartT;
+  const vy = dy / Math.max(dt, 1);   // signed px/ms — flick velocity
   _wxSwipeStartY = null;
   _wxSwipeStartX = null;
-  // Downward swipe (>40px vertical, mostly vertical) → collapse strip
-  if(dy > 40 && Math.abs(dy) > Math.abs(dx)){
-    const _wxEl = document.getElementById('wx');
-    if(_wxEl && !_wxEl.classList.contains('wx-collapsed')){
-      _wxEl.classList.add('wx-collapsed');
-      try { localStorage.setItem('tg_wx_collapsed','1'); } catch(_){}
-    }
+  // Release the live-drag visual before deciding the outcome.
+  const _wxEl = document.getElementById('wx');
+  if(_wxEl){ _wxEl.classList.remove('wx-dragging'); _wxEl.style.transform = ''; }
+  _wxDragging = false;
+  // Downward swipe → collapse. Fires on enough displacement OR a quick flick.
+  if((dy > 24 || (dy > 12 && vy > 0.35)) && Math.abs(dy) > Math.abs(dx)){
+    if(_wxEl && !_wxEl.classList.contains('wx-collapsed')) setWxCollapsed(true);
     return;
   }
-  // Upward swipe (>40px vertical, mostly vertical) → open panel
-  if(dy < -40 && Math.abs(dy) > Math.abs(dx)){
-    openWxPanel();
+  // Upward swipe → expand if collapsed, otherwise open the full panel.
+  if((dy < -24 || (dy < -12 && vy < -0.35)) && Math.abs(dy) > Math.abs(dx)){
+    if(_wxEl && _wxEl.classList.contains('wx-collapsed')) setWxCollapsed(false);
+    else openWxPanel();
     return;
   }
   // Pure tap (small movement, quick) → open panel.
@@ -6532,6 +6557,20 @@ document.getElementById('wx').addEventListener('click', e => {
 document.getElementById('wxPanelClose').addEventListener('click', closeWxPanel);
 document.getElementById('wxPanelHandle').addEventListener('click', closeWxPanel);
 
+// WX-SWIPE: single source of truth for the collapsed state. Routed through
+// by the chevron button, the swipe gesture, and openWxPanel so all three
+// stay in sync. Defined at script scope (not inside the IIFE) because the
+// touch handlers and openWxPanel above need to call it.
+function setWxCollapsed(collapsed){
+  const _wx = document.getElementById('wx');
+  if(!_wx) return;
+  _wx.classList.toggle('wx-collapsed', collapsed);
+  try {
+    if(collapsed) localStorage.setItem('tg_wx_collapsed','1');
+    else localStorage.removeItem('tg_wx_collapsed');
+  } catch(_){}
+}
+
 // Weather strip collapse + size toggles
 (function(){
   const wx = document.getElementById('wx');
@@ -6552,8 +6591,7 @@ document.getElementById('wxPanelHandle').addEventListener('click', closeWxPanel)
   if(collapseBtn){
     collapseBtn.addEventListener('click', e => {
       e.stopPropagation();
-      const collapsed = wx.classList.toggle('wx-collapsed');
-      try { localStorage.setItem('tg_wx_collapsed', collapsed ? '1' : '0'); } catch(_){}
+      setWxCollapsed(!document.getElementById('wx').classList.contains('wx-collapsed'));
     });
   }
 
