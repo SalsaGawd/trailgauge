@@ -387,10 +387,13 @@ body.light #permOverlay{background:rgba(240,244,248,0.94)}
   border-top:1px solid var(--border);
   box-shadow:0 -8px 30px rgba(0,0,0,.4);
   z-index:120;transform:translateY(100%);
-  transition:transform .35s cubic-bezier(.34,1.2,.64,1);
+  /* WXP-SWIPE: .2s ease-out drives both the open/close slide and the
+     drag-release snapback. .wxp-dragging kills it for 1:1 finger tracking. */
+  transition:transform .2s ease-out;
   display:flex;flex-direction:column;
   padding-bottom:env(safe-area-inset-bottom,0px)}
 #wxPanel.show{transform:translateY(0)}
+#wxPanel.wxp-dragging{transition:none}
 #wxPanelHandle{flex-shrink:0;display:flex;justify-content:center;padding:10px 0 6px;
   cursor:pointer;-webkit-tap-highlight-color:transparent}
 #wxPanelHandle::before{content:"";width:48px;height:4px;border-radius:2px;background:var(--border)}
@@ -6613,17 +6616,38 @@ function setWxCollapsed(collapsed){
   }
 })();
 
-// Swipe-down on the panel → close
-let _wxPanelSwipeStartY = null;
-document.getElementById('wxPanelHandle').addEventListener('touchstart', e => {
-  _wxPanelSwipeStartY = e.touches[0].clientY;
-}, {passive: true});
-document.getElementById('wxPanelHandle').addEventListener('touchend', e => {
-  if(_wxPanelSwipeStartY == null) return;
-  const dy = e.changedTouches[0].clientY - _wxPanelSwipeStartY;
-  _wxPanelSwipeStartY = null;
-  if(dy > 40) closeWxPanel();
-}, {passive: true});
+// WXP-SWIPE: full-sheet drag-to-dismiss with live tracking. Replaces the old
+// handle-only touchend swipe. Drag-dismiss only engages when the inner card
+// list is scrolled to the top (or the touch began outside it), so vertical
+// card scrolling in #wxPanelHourly is never hijacked. The handle's separate
+// click-to-close (bound above) is preserved.
+let _wxpY0=0,_wxpT0=0,_wxpDrag=false,_wxpEligible=false;
+const _wxpScroller = document.getElementById('wxPanelHourly');
+wxPanel.addEventListener('touchstart', e=>{
+  _wxpY0=e.touches[0].clientY; _wxpT0=Date.now();
+  _wxpDrag=false;
+  // Eligible to drag-dismiss only if inner content is scrolled to top
+  // OR the touch began outside the scroller.
+  _wxpEligible = !_wxpScroller || _wxpScroller.scrollTop<=0 ||
+                 !_wxpScroller.contains(e.target);
+},{passive:true});
+wxPanel.addEventListener('touchmove', e=>{
+  if(!_wxpEligible) return;
+  const dy=e.touches[0].clientY-_wxpY0;
+  if(!_wxpDrag){
+    if(dy>10){ _wxpDrag=true; wxPanel.classList.add('wxp-dragging'); }
+    else return;
+  }
+  wxPanel.style.transform='translateY('+Math.max(0,dy)+'px)';
+},{passive:true});
+wxPanel.addEventListener('touchend', e=>{
+  if(!_wxpDrag){ return; }   // taps/scrolls: untouched
+  wxPanel.classList.remove('wxp-dragging');
+  const dy=e.changedTouches[0].clientY-_wxpY0;
+  const vy=dy/Math.max(Date.now()-_wxpT0,1);
+  wxPanel.style.transform='';
+  if(dy>110 || (dy>40 && vy>0.5)) closeWxPanel();
+},{passive:true});
 function fmtT(d){let h=d.getHours();const m=d.getMinutes(),ap=h>=12?'pm':'am';h=h%12||12;return`${h}${m>0?':'+String(m).padStart(2,'0'):''}${ap}`;}
 
 function tick(){const n=new Date();let h=n.getHours();const m=String(n.getMinutes()).padStart(2,'0'),ap=h>=12?'PM':'AM';h=h%12||12;document.getElementById('ctime').textContent=`${h}:${m} ${ap}`;}
