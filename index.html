@@ -638,6 +638,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 body.prof-trail #gwrap,
 body.prof-trail #pcard,
 body.prof-trail #rcard_el,
+body.prof-trail #tcard,
 body.prof-trail #tripLive,
 body.prof-trail #maxAngleCard,
 body.prof-trail #zhintRow,
@@ -5342,6 +5343,36 @@ function applyProfile(prof){
   syncModeToggleLabel();
   // Re-flow the gauge canvas if the inclinometer just got hidden/shown
   setTimeout(() => { if(typeof resize === 'function') resize(); }, 50);
+
+  // TEMP DEBUG (Bug 2 probe — remove after diagnosis): report weather
+  // strip computed heights in trail mode via a small overlay.
+  setTimeout(() => {
+    let probe = document.getElementById('wxProbe');
+    if(prof === 'trail'){
+      const wx = document.getElementById('wx');
+      const hs = document.getElementById('hscroll');
+      if(!probe){
+        probe = document.createElement('div');
+        probe.id = 'wxProbe';
+        probe.style.cssText = 'position:fixed;bottom:8px;left:8px;z-index:600;'+
+          'background:rgba(0,0,0,.85);color:#f0b429;font-family:monospace;'+
+          'font-size:11px;padding:6px 8px;border-radius:6px;border:1px solid #f0b429;'+
+          'pointer-events:none;line-height:1.4;white-space:pre';
+        document.body.appendChild(probe);
+      }
+      const wxR = wx ? wx.getBoundingClientRect() : null;
+      const hsR = hs ? hs.getBoundingClientRect() : null;
+      probe.textContent =
+        'WX  h=' + (wxR ? Math.round(wxR.height) : 'null') +
+        ' top=' + (wxR ? Math.round(wxR.top) : '-') + '\n' +
+        'HSC h=' + (hsR ? Math.round(hsR.height) : 'null') +
+        ' kids=' + (hs ? hs.children.length : '-') + '\n' +
+        'WXdisp=' + (wx ? getComputedStyle(wx).display : '-') +
+        ' ovf=' + (wx ? getComputedStyle(wx).overflow : '-');
+    } else if(probe){
+      probe.remove();
+    }
+  }, 300);
 }
 
 document.querySelectorAll('.profBtn').forEach(btn => {
