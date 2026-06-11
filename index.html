@@ -1174,7 +1174,7 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
 <div id="app">
   <div id="hdr">
     <div style="display:flex;align-items:baseline;min-width:0;flex:1 1 auto;overflow:hidden">
-      <span class="brand">TrailGauge</span>
+      <span class="brand">TrailGauge<sup style="font-size:.45em;opacity:.7" aria-hidden="true">™</sup></span>
       <span class="sub">Off-Road Inclinometer</span>
     </div>
     <button id="modeToggleBtn" class="modeToggleBtn" title="Switch mode">OFF-ROAD</button>
@@ -1366,18 +1366,6 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
     <div id="sthdl"></div>
     <div id="sttl">Settings</div>
 
-    <!-- Mode section (collapsed by default) -->
-    <div class="collapseHeader" data-section="mode" data-default-collapsed="1">Mode</div>
-    <div class="collapseBody" id="sc-mode">
-      <div class="srow">
-        <div class="sinfo"><span class="sname">Mode</span><span class="sdesc">Tailor the layout to how you're using TrailGauge</span></div>
-      </div>
-      <div class="profSelect">
-        <button class="profBtn" data-prof="offroad">🚙<span>Off-Road</span></button>
-        <button class="profBtn" data-prof="trail">🥾<span>Trail</span></button>
-      </div>
-    </div>
-
     <!-- Display section (expanded by default) -->
     <div class="collapseHeader" data-section="display">Display</div>
     <div class="collapseBody" id="sc-display">
@@ -1398,63 +1386,20 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
       </div>
     </div>
 
-    <!-- Tilt Alarm section (collapsed by default) -->
-    <div class="collapseHeader" data-section="alarm" data-default-collapsed="1">Tilt Alarm</div>
-    <div class="collapseBody" id="sc-alarm">
+    <!-- Alerts section (collapsed by default) — B.2b: merges Tilt Alarm + Ambient Alerts -->
+    <div class="collapseHeader" data-section="alerts" data-default-collapsed="1">Alerts</div>
+    <div class="collapseBody" id="sc-alerts">
       <div class="srow">
-        <div class="sinfo"><span class="sname">Tilt Alarm</span><span class="sdesc">Sound + vibration when threshold exceeded</span></div>
-        <label class="tgl"><input type="checkbox" id="alarmTgl"><span class="tsl"></span></label>
-      </div>
-      <div class="srow">
-        <div class="sinfo"><span class="sname">Alarm Threshold</span><span class="sdesc">Trigger angle for pitch or roll</span></div>
-        <div class="thrwrap">
-          <input type="range" id="thrSlider" min="10" max="45" value="30" step="1">
-          <span class="thrval" id="thrDisp">30°</span>
-        </div>
-      </div>
-      <div class="srow">
-        <div class="sinfo"><span class="sname">Vibration Alert</span><span class="sdesc">Vibrate on threshold breach</span></div>
-        <label class="tgl"><input type="checkbox" id="vibTgl" checked><span class="tsl"></span></label>
-      </div>
-    </div>
-
-    <!-- Angle Pins section (collapsed by default) -->
-    <div class="collapseHeader" data-section="pins" data-default-collapsed="1">Angle Pins</div>
-    <div class="collapseBody" id="sc-pins">
-      <div class="srow">
-        <div class="sinfo"><span class="sname">Auto-Pin Peaks</span><span class="sdesc">Automatically save a pin when pitch or roll exceeds the threshold</span></div>
-        <label class="tgl"><input type="checkbox" id="anglePinAutoTgl" checked><span class="tsl"></span></label>
-      </div>
-      <div class="srow">
-        <div class="sinfo"><span class="sname">Auto-Pin Threshold</span><span class="sdesc">Trigger angle for auto-capture</span></div>
-        <div class="thrwrap">
-          <input type="range" id="anglePinThrSlider" min="5" max="45" value="25" step="1">
-          <span id="anglePinThrVal">25°</span>
-        </div>
-      </div>
-      <div class="srow">
-        <div class="sinfo"><span class="sname">Cooldown</span><span class="sdesc">Minimum seconds between auto-pins</span></div>
-        <div class="thrwrap">
-          <input type="range" id="anglePinCdSlider" min="5" max="300" value="90" step="5">
-          <span id="anglePinCdVal">90s</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Ambient Alerts section (collapsed by default) -->
-    <div class="collapseHeader" data-section="ambient" data-default-collapsed="1">Ambient Alerts</div>
-    <div class="collapseBody" id="sc-ambient">
-      <div class="srow">
-        <div class="sinfo"><span class="sname">Pulse Border</span><span class="sdesc">Edge-of-screen color pulse for alerts (no popups)</span></div>
-        <label class="tgl"><input type="checkbox" id="alPulseTgl" checked><span class="tsl"></span></label>
+        <div class="sinfo"><span class="sname">Driving / DnD Mode</span><span class="sdesc">Dims pulses, mutes haptics — visual safety signals only</span></div>
+        <label class="tgl"><input type="checkbox" id="alDndTgl"><span class="tsl"></span></label>
       </div>
       <div class="srow">
         <div class="sinfo"><span class="sname">Haptic Buzz</span><span class="sdesc">Gentle vibration when alerts fire (good for in-pocket hiking)</span></div>
         <label class="tgl"><input type="checkbox" id="alVibTgl"><span class="tsl"></span></label>
       </div>
       <div class="srow">
-        <div class="sinfo"><span class="sname">Driving / DnD Mode</span><span class="sdesc">Dims pulses, mutes haptics — visual safety signals only</span></div>
-        <label class="tgl"><input type="checkbox" id="alDndTgl"><span class="tsl"></span></label>
+        <div class="sinfo"><span class="sname">Pulse Border</span><span class="sdesc">Edge-of-screen color pulse for alerts (no popups)</span></div>
+        <label class="tgl"><input type="checkbox" id="alPulseTgl" checked><span class="tsl"></span></label>
       </div>
       <div class="sectionDivider">Sunset Alert</div>
       <div class="srow">
@@ -1478,6 +1423,22 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
           <button class="colorSwatch" data-color="purple" aria-label="Purple" style="--c:168,85,247"></button>
         </div>
       </div>
+      <div class="sectionDivider">Tilt Alarm</div>
+      <div class="srow">
+        <div class="sinfo"><span class="sname">Tilt Alarm</span><span class="sdesc">Sound + vibration when threshold exceeded</span></div>
+        <label class="tgl"><input type="checkbox" id="alarmTgl"><span class="tsl"></span></label>
+      </div>
+      <div class="srow">
+        <div class="sinfo"><span class="sname">Alarm Threshold</span><span class="sdesc">Trigger angle for pitch or roll</span></div>
+        <div class="thrwrap">
+          <input type="range" id="thrSlider" min="10" max="45" value="30" step="1">
+          <span class="thrval" id="thrDisp">30°</span>
+        </div>
+      </div>
+      <div class="srow">
+        <div class="sinfo"><span class="sname">Vibration Alert</span><span class="sdesc">Vibrate on threshold breach</span></div>
+        <label class="tgl"><input type="checkbox" id="vibTgl" checked><span class="tsl"></span></label>
+      </div>
       <div class="sectionDivider">Weather Alert</div>
       <div class="srow">
         <div class="sinfo"><span class="sname">Inclement Weather Warning</span><span class="sdesc">Alert when storms or precipitation are within 3 hours</span></div>
@@ -1492,6 +1453,41 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
           <button class="colorSwatch" data-color="blue" aria-label="Blue"   style="--c:59,130,246"></button>
           <button class="colorSwatch" data-color="purple" aria-label="Purple" style="--c:168,85,247"></button>
         </div>
+      </div>
+    </div>
+
+    <!-- Pins section (collapsed by default) -->
+    <div class="collapseHeader" data-section="pins" data-default-collapsed="1">Pins</div>
+    <div class="collapseBody" id="sc-pins">
+      <div class="srow">
+        <div class="sinfo"><span class="sname">Auto-Pin Peaks</span><span class="sdesc">Automatically save a pin when pitch or roll exceeds the threshold</span></div>
+        <label class="tgl"><input type="checkbox" id="anglePinAutoTgl" checked><span class="tsl"></span></label>
+      </div>
+      <div class="srow">
+        <div class="sinfo"><span class="sname">Auto-Pin Threshold</span><span class="sdesc">Trigger angle for auto-capture</span></div>
+        <div class="thrwrap">
+          <input type="range" id="anglePinThrSlider" min="5" max="45" value="25" step="1">
+          <span id="anglePinThrVal">25°</span>
+        </div>
+      </div>
+      <div class="srow">
+        <div class="sinfo"><span class="sname">Cooldown</span><span class="sdesc">Minimum seconds between auto-pins</span></div>
+        <div class="thrwrap">
+          <input type="range" id="anglePinCdSlider" min="5" max="300" value="90" step="5">
+          <span id="anglePinCdVal">90s</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- System section (collapsed by default) — B.2b: Mode picker + Wake Lock -->
+    <div class="collapseHeader" data-section="system" data-default-collapsed="1">System</div>
+    <div class="collapseBody" id="sc-system">
+      <div class="srow">
+        <div class="sinfo"><span class="sname">Mode</span><span class="sdesc">Tailor the layout to how you're using TrailGauge</span></div>
+      </div>
+      <div class="profSelect">
+        <button class="profBtn" data-prof="offroad">🚙<span>Off-Road</span></button>
+        <button class="profBtn" data-prof="trail">🥾<span>Trail</span></button>
       </div>
       <div class="srow">
         <div class="sinfo"><span class="sname">Screen Wake Lock</span><span class="sdesc">Keep screen on while app is open</span></div>
