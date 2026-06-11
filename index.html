@@ -1804,11 +1804,13 @@ function loop(){
   const isOffroad = document.body.classList.contains('prof-offroad');
   const isTrail   = document.body.classList.contains('prof-trail');
   if(isOffroad){
-    // 1.8.3: update visual smoothing before any gauge renders
+    // 1.8.3: update visual smoothing before any gauge renders.
+    // 1.8F: needles/ladders use smoothed values (params 1-2); in-canvas
+    // digit readouts use live values (params 3-4) for precision.
     updateVisualSmoothing();
-    if(S.gaugeMode === 'truckdial')   drawTruckDial(S.visPitch, S.visRoll);
-    else if(S.gaugeMode === 'analog') drawAnalog(S.visPitch, S.visRoll);
-    else                              drawHorizon(S.visPitch, S.visRoll);
+    if(S.gaugeMode === 'truckdial')   drawTruckDial(S.visPitch, S.visRoll, S.pitch, S.roll);
+    else if(S.gaugeMode === 'analog') drawAnalog(S.visPitch, S.visRoll, S.pitch, S.roll);
+    else                              drawHorizon(S.visPitch, S.visRoll, S.pitch, S.roll);
     updateCards();
     checkAlarm();
     updateMaxAngle();
@@ -1896,7 +1898,7 @@ function renderDebugHud(){
 
 requestAnimationFrame(loop);
 
-function drawHorizon(pitch,roll){
+function drawHorizon(pitch,roll,livePitch,liveRoll){
   const s=SZ,cx=s/2,cy=s/2,r=s/2-4;
   hx.clearRect(0,0,s,s);
   hx.save();
@@ -1957,7 +1959,7 @@ function drawHorizon(pitch,roll){
   // Roll readout deliberately omitted from the gauge: the roll arc + tick labels +
   // red pointer triangle at the top already communicate roll, and adding a number
   // in that space causes overlap. Roll readout lives on the card above the gauge.
-  const dispP=Math.round(pitch*2)/2;
+  const dispP=Math.round((typeof livePitch === 'number' ? livePitch : pitch)*2)/2;
   const ovf=Math.max(10,s*0.058);
   hx.font=`bold ${ovf}px 'Rajdhani',sans-serif`;
   hx.shadowColor='rgba(0,0,0,0.85)'; hx.shadowBlur=5;
@@ -2051,7 +2053,7 @@ function drawHorizon(pitch,roll){
 
    ZONE ARCS: drawn as pairs of 90°-arcs along each axis quadrant.
 ══════════════════════════════════════════════════════════ */
-function drawAnalog(pitch,roll){
+function drawAnalog(pitch,roll,livePitch,liveRoll){
   const s=SZ,cx=s/2,cy=s/2,r=s/2-4;
   const D2R=Math.PI/180;
   ax.clearRect(0,0,s,s);
@@ -2276,7 +2278,7 @@ function drawAnalog(pitch,roll){
   // P / R numeric readouts — placed in the lower dead zone below the hub,
   // away from needles and major ticks. Side-by-side so neither is a focal
   // point on its own; they're a quick supplement to the cards above.
-  const dispPa=Math.round(pitch*2)/2, dispRa=Math.round(roll*2)/2;
+  const dispPa=Math.round((typeof livePitch === 'number' ? livePitch : pitch)*2)/2, dispRa=Math.round((typeof liveRoll === 'number' ? liveRoll : roll)*2)/2;
   const ofA=Math.max(10,s*0.058);
   ax.font=`bold ${ofA}px 'Rajdhani',sans-serif`;
   ax.shadowColor='rgba(0,0,0,0.6)'; ax.shadowBlur=3;
@@ -2312,7 +2314,7 @@ function drawAnalog(pitch,roll){
        as max(|pitch|, |roll|) approaches threshold
      - Digital P readout above gauge, R readout below gauge
    ══════════════════════════════════════════════════════════ */
-function drawTruckDial(pitch, roll){
+function drawTruckDial(pitch, roll, livePitch, liveRoll){
   const s = SZ, cx = s/2, cy = s/2, r = s/2 - 4;
   const D2R = Math.PI / 180;
   tdx.clearRect(0, 0, s, s);
@@ -2346,7 +2348,12 @@ function drawTruckDial(pitch, roll){
   // ROLL: TrailGauge upstream sends right-side-down as POSITIVE already.
   //   But user testing shows the current convention has roll inverted on
   //   the gauge, so we invert here too.
-  const pitchSigned = -pitch;
+  // 1.8F: PITCH negation removed — sign now corrected at source in
+  // computeCalibratedAngles (avoids double-negation). ROLL negation
+  // KEPT: 1.8F.1 only flipped pitch at source, not roll, so roll still
+  // needs the B.1.1 inversion that user testing established. Removing
+  // it here would flip the truck-dial roll needle/ladder/digit.
+  const pitchSigned = pitch;
   const rollSigned  = -roll;
 
   // Visual clamp ±45 so indicators stay inside their arcs
@@ -2511,8 +2518,8 @@ function drawTruckDial(pitch, roll){
   // DIGITAL READOUTS
   // ───────────────────────────────────────────────────────
   // Display the user-facing signed values (matches what indicators show)
-  const dispP = Math.round(pitchSigned * 2) / 2;
-  const dispR = Math.round(rollSigned * 2) / 2;
+  const dispP = Math.round((typeof livePitch === 'number' ? livePitch : pitchSigned) * 2) / 2;
+  const dispR = Math.round((typeof liveRoll === 'number' ? liveRoll : rollSigned) * 2) / 2;
   const digitFs = Math.max(11, s * 0.065);
   tdx.font = `bold ${digitFs}px 'Rajdhani', sans-serif`;
   tdx.shadowColor = 'rgba(0,0,0,0.6)';
@@ -2823,8 +2830,12 @@ function computeCalibratedAngles(){
   const gZc = -(gx * rx + gy * ry + gz * rz);  // vertical (negative dot product
                                                 // = +1 when current matches ref)
 
-  // Decompose into pitch and roll in the calibrated frame
-  const pitch = Math.atan2(gYc, -gZc) * 180 / Math.PI;
+  // Decompose into pitch and roll in the calibrated frame.
+  // 1.8F: pitch negated at source — real-world testing showed downhill
+  // reading positive. Convention: nose-up/climbing = positive,
+  // nose-down/descending = negative. Single sign decision here;
+  // no consumer should re-negate.
+  const pitch = -Math.atan2(gYc, -gZc) * 180 / Math.PI;
   const roll  = Math.atan2(gXc, -gZc) * 180 / Math.PI;
   return { pitch, roll };
 }
@@ -3341,17 +3352,21 @@ setTimeout(()=>{
 // Round to nearest 0.5 — readable, no flicker in low-order digits at rest
 const halfStep = v => Math.round(v*2)/2;
 function updateCards(){
-  const dp=halfStep(S.pitch), dr=halfStep(S.roll);
+  // 1.8F: cards display SMOOTHED values (visPitch/visRoll) — these are
+  // the primary at-a-glance readouts and were unusably jittery reading
+  // raw values. Alarm/threshold logic below still uses raw S.pitch/
+  // S.roll so safety response never lags behind reality.
+  const dp=halfStep(S.visPitch), dr=halfStep(S.visRoll);
   document.getElementById('pval').textContent   =(dp>=0?'+':'')+dp.toFixed(1)+'°';
   document.getElementById('rval_el').textContent=(dr>=0?'+':'')+dr.toFixed(1)+'°';
   // 1.8.4: TOTAL TILT magnitude — combines pitch and roll into single
   // "how tilted am I overall" number. Useful when vehicle isn't aligned
   // with the slope's fall line (e.g., parked diagonally on a hill).
-  const _totTilt = Math.sqrt(S.pitch * S.pitch + S.roll * S.roll);
+  const _totTilt = Math.sqrt(S.visPitch * S.visPitch + S.visRoll * S.visRoll);
   const _totEl = document.getElementById('totalTiltVal');
   if(_totEl) _totEl.textContent = _totTilt.toFixed(1) + '°';
   // Grade % = tan(pitch) × 100, displayed at 0.5% resolution
-  const grade = Math.tan(S.pitch*Math.PI/180)*100;
+  const grade = Math.tan(S.visPitch*Math.PI/180)*100;
   const dg = halfStep(grade);
   const gradeStr = (dg>=0?'+':'')+dg.toFixed(1)+'%';
   document.getElementById('pgrade').textContent = gradeStr;
