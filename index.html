@@ -5368,7 +5368,10 @@ function applyProfile(prof){
         'HSC h=' + (hsR ? Math.round(hsR.height) : 'null') +
         ' kids=' + (hs ? hs.children.length : '-') + '\n' +
         'WXdisp=' + (wx ? getComputedStyle(wx).display : '-') +
-        ' ovf=' + (wx ? getComputedStyle(wx).overflow : '-');
+        ' ovf=' + (wx ? getComputedStyle(wx).overflow : '-') +
+        '\nFX ' + (window.__wxDbg ? window.__wxDbg.t + ' hourly=' +
+          window.__wxDbg.hasHourly + ' err=' + window.__wxDbg.err : 'none') +
+        '\nLL ' + (window.__wxDbg ? window.__wxDbg.lat + ',' + window.__wxDbg.lon : '-');
     } else if(probe){
       probe.remove();
     }
@@ -6236,6 +6239,15 @@ async function fetchWx(lat,lon){
       +`&daily=sunrise,sunset&temperature_unit=celsius&windspeed_unit=mph&timezone=auto&forecast_days=2`;
     const res=await fetch(url); if(!res.ok) throw new Error('fail');
     const d=await res.json();
+    // TEMP DEBUG (Bug 2): record last weather response state
+    window.__wxDbg = {
+      t: new Date().toTimeString().slice(0,8),
+      url: (typeof url === 'string' ? url.slice(0, 120) : 'n/a'),
+      lat: (typeof lat !== 'undefined' ? lat : 'n/a'),
+      lon: (typeof lon !== 'undefined' ? lon : 'n/a'),
+      hasHourly: !!(d && d.hourly),
+      err: (d && d.error) ? String(d.reason || d.error).slice(0,80) : ''
+    };
     S.weather=d; S.wxTs=Date.now();
     try{localStorage.setItem(WK,JSON.stringify({data:d,ts:S.wxTs}));}catch(e){}
     renderWx(d); setWDot('live');
