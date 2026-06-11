@@ -587,6 +587,11 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 .onbBody{font-family:var(--fm);font-size:14px;color:var(--txt);line-height:1.6;
   max-width:340px}
 .onbBody b{color:var(--accent)}
+/* ONB: feature grid + legal fine-print on the onboarding cards */
+.onbGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
+.onbFeat{font-size:13px;padding:8px 10px;border:1px solid var(--border);
+  border-radius:10px;text-align:left;white-space:nowrap;overflow:hidden;color:var(--txt)}
+.onbLegal{font-size:11px;opacity:.55;margin-top:14px;line-height:1.45}
 #onbDots{display:flex;gap:8px;justify-content:center;align-self:center}
 .onbDot{width:8px;height:8px;border-radius:50%;background:var(--border);
   transition:all var(--tr);cursor:pointer}
@@ -1101,7 +1106,7 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
 <body>
 
 <!-- First-launch onboarding — three swipeable cards. Hidden by default;
-     shown only when localStorage flag tg_onboarded_v1 is unset. -->
+     shown only when localStorage flag tg_onboarded_v5 is unset. -->
 <div id="onb">
   <div id="onbInner">
     <div id="onbCards">
@@ -1109,22 +1114,26 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
         <div class="onbCard">
           <div class="onbHero">📐</div>
           <div class="onbTitle">Welcome to TrailGauge</div>
-          <div class="onbBody">A trail tool for off-road drivers and hikers. Pitch and roll readings, weather, GPS, trip recording, and saved pins — all built for the dash or the trail.</div>
+          <div class="onbBody">Your dashboard for the dirt.</div>
+          <div class="onbGrid">
+            <div class="onbFeat">📐 Pitch &amp; roll</div>
+            <div class="onbFeat">🎛 3 gauge styles</div>
+            <div class="onbFeat">🥾 Trail mode</div>
+            <div class="onbFeat">🌤 Live weather</div>
+            <div class="onbFeat">📍 Pins &amp; trips</div>
+            <div class="onbFeat">🔥 Fire alerts</div>
+          </div>
         </div>
         <div class="onbCard">
           <div class="onbHero">🎯</div>
           <div class="onbTitle">First: Calibrate</div>
-          <div class="onbBody">Mount your phone, then <b>hold ZERO/CALIBRATE for 1.5 seconds</b> to set your resting angle as the reference.<br><br>Re-calibrate any time you change how the phone is mounted.</div>
-        </div>
-        <div class="onbCard">
-          <div class="onbHero">📍 📸</div>
-          <div class="onbTitle">Pins &amp; Trips</div>
-          <div class="onbBody">Tap the <b>📍 coordinates chip</b> to drop a pin (add a photo for a shareable image card).<br><br>Hit <b>START TRIP</b> to record distance, elevation gain, and your full route — view and re-share later from the 📋 trips list.</div>
+          <div class="onbBody">Mount your phone, then <b>hold ZERO/CALIBRATE for 1.5 seconds</b> to set your resting angle. Re-calibrate any time you change the mount.</div>
         </div>
         <div class="onbCard">
           <div class="onbHero">💡</div>
-          <div class="onbTitle">More Hints Will Appear</div>
-          <div class="onbBody">Other features (angle pins, ambient alerts, weather panel) will explain themselves <b>the first time you encounter them</b> with small inline hints.<br><br>Replay any hints any time via <b>Settings → Show Hints Again</b>. Have fun out there.</div>
+          <div class="onbTitle">It Teaches As You Go</div>
+          <div class="onbBody">Small hints appear the first time you meet each feature — replay them any time from Settings. Have fun out there.</div>
+          <div class="onbLegal">TrailGauge is an informational tool, not a safety device. Readings and alerts can be wrong or delayed — always use your own judgment. Full disclaimer in Settings.</div>
         </div>
       </div>
     </div>
@@ -1132,7 +1141,6 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
       <span class="onbDot active" data-i="0"></span>
       <span class="onbDot" data-i="1"></span>
       <span class="onbDot" data-i="2"></span>
-      <span class="onbDot" data-i="3"></span>
     </div>
     <label id="onbDontShow">
       <input type="checkbox" id="onbDontShowCb" />
@@ -1508,9 +1516,13 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
         <div class="sinfo"><span class="sname">Show Hints Again</span><span class="sdesc">Re-trigger the inline feature hints from the beginning</span></div>
         <button class="modalbtn ghost" id="hintsResetBtn" style="padding:8px 14px;font-size:11px">Replay</button>
       </div>
-      <div class="srow" style="border-bottom:none">
+      <div class="srow">
         <div class="sinfo"><span class="sname">Send Feedback</span><span class="sdesc">Found a bug or want to suggest a feature? Tell us.</span></div>
         <button class="modalbtn ghost" id="fbOpenBtn" style="padding:8px 14px;font-size:11px">Open</button>
+      </div>
+      <div class="srow" style="border-bottom:none">
+        <div class="sinfo"><span class="sname">Disclaimer</span><span class="sdesc">Legal terms &amp; limitations of use</span></div>
+        <button class="modalbtn ghost" id="disclaimerBtn" style="padding:8px 14px;font-size:11px">View</button>
       </div>
     </div>
   </div>
@@ -5497,12 +5509,12 @@ function showUpdateNotice(newSW){
 // again" checkbox. Anyone with v1/v2/v3 set should see the cards once more
 // since they may have dismissed under the old auto-persist behavior without
 // realizing it would silence the cards forever.
-const ONB_KEY = 'tg_onboarded_v4';
+const ONB_KEY = 'tg_onboarded_v5';
 const onb = document.getElementById('onb');
 const onbCards = document.getElementById('onbCards');   // viewport (touch target)
 const onbTrack = document.getElementById('onbTrack');   // sliding track (transform target)
 let _onbStep = 0;
-const ONB_STEPS = 4;
+const ONB_STEPS = 3;
 
 function setOnbStep(i){
   _onbStep = Math.max(0, Math.min(ONB_STEPS - 1, i));
@@ -5526,8 +5538,21 @@ function dismissOnboarding(){
 }
 
 document.getElementById('onbNext').addEventListener('click', () => {
-  if(_onbStep === ONB_STEPS - 1) dismissOnboarding();
-  else setOnbStep(_onbStep + 1);
+  if(_onbStep === ONB_STEPS - 1){
+    // ONB: chain into the iOS motion-permission prompt while we still have
+    // the user's tap gesture. There's no boolean granted flag — the perm
+    // overlay's .show state is the real "still needs permission this
+    // session" signal (hidePermOverlay clears it on grant). The overlay
+    // stays as a fallback for users who deny or skip.
+    const _permOv = document.getElementById('permOverlay');
+    const _stillNeedsPerm = _permOv && _permOv.classList.contains('show');
+    if(needsIOSPermission && _stillNeedsPerm && typeof requestMotionPermission === 'function'){
+      requestMotionPermission();   // user gesture: prompt fires now
+    }
+    dismissOnboarding();
+  } else {
+    setOnbStep(_onbStep + 1);
+  }
 });
 document.getElementById('onbSkip').addEventListener('click', dismissOnboarding);
 document.querySelectorAll('.onbDot').forEach(d => {
@@ -7457,6 +7482,28 @@ function closeFeedback(){
   fbp.classList.remove('open');
 }
 document.getElementById('fbOpenBtn')?.addEventListener('click', openFeedback);
+
+// ONB: Disclaimer modal. Mirrors showDangerConfirm's .dangerSheet pattern
+// (self-contained builder, reuses the existing danger-sheet CSS), but with a
+// single acknowledge button and no return value.
+function showDisclaimer(){
+  const el = document.createElement('div');
+  el.className = 'dangerSheet';
+  el.innerHTML = `<div class="dangerSheetBox">
+    <div class="dangerSheetTitle">Disclaimer</div>
+    <div class="dangerSheetBody">TrailGauge provides angle, location, weather, and (when available) fire/closure information for general reference only. It is not a safety device and must not be your sole basis for decisions. Sensor readings can be inaccurate; calibration, mounting, terrain, and device limits all affect accuracy. Weather, fire, and closure data come from third-party sources and may be incomplete, delayed, or wrong. Off-road travel is inherently risky — you are responsible for your own safety, your vehicle, and compliance with local laws and closures. By using TrailGauge you accept that the developer is not liable for any damage, injury, or loss arising from its use.</div>
+    <div class="dangerSheetBtns">
+      <button class="modalbtn ghost" style="flex:1" id="_dsclOk">Got it</button>
+    </div></div>`;
+  document.body.appendChild(el);
+  const cleanup = () => el.remove();
+  el.querySelector('#_dsclOk').onclick = cleanup;
+  el.addEventListener('click', e => { if(e.target === el) cleanup(); });
+}
+// The .dangerSheet (z-index 310) overlays the settings panel (z-index 200),
+// so we leave settings open — dismissing the disclaimer returns the user
+// right where they were.
+document.getElementById('disclaimerBtn')?.addEventListener('click', showDisclaimer);
 
 // Show Hints Again — clears all coachmark "seen" flags and replays.
 // Close the settings panel first so the user can actually see the
