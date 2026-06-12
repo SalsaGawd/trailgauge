@@ -7024,12 +7024,6 @@ function buildFireMap(){
     }).addTo(_fireMap);
     _fireMapLayers  = L.layerGroup().addTo(_fireMap);   // markers + tier rings
     _firePerimLayer = L.layerGroup().addTo(_fireMap);   // perimeters (separate)
-    // C4.1: shield the map from the panel's drag-to-dismiss (same pattern as
-    // the wxSizeBtn shield) so map pans don't dismiss the fire panel. Dismiss
-    // still works from the handle/header/lists — just not inside the map.
-    ['touchstart','touchmove','touchend'].forEach(ev =>
-      document.getElementById('fireMap').addEventListener(ev,
-        e => e.stopPropagation(), { passive: true }));
     _fireSearchLayer = L.layerGroup().addTo(_fireMap);   // C4.2: searched-point results
 
     // C4.2: overlay controls (appended to the Leaflet container).
@@ -7238,7 +7232,12 @@ if(firePanel){
   const _fpScroller = document.getElementById('firePanelBody');
   firePanel.addEventListener('touchstart', e=>{
     _fpY0=e.touches[0].clientY; _fpT0=Date.now(); _fpDrag=false;
-    _fpEligible = !_fpScroller || _fpScroller.scrollTop<=0 || !_fpScroller.contains(e.target);
+    // C4.3: touches originating inside the map are never eligible for sheet
+    // drag-dismiss — Leaflet owns those (pan/zoom). Replaces the C4.1 shield,
+    // which froze the map by swallowing its touch events entirely.
+    const _mapEl = document.getElementById('fireMap');
+    _fpEligible = (!_fpScroller || _fpScroller.scrollTop<=0 || !_fpScroller.contains(e.target)) &&
+                  !(_mapEl && _mapEl.contains(e.target));
   },{passive:true});
   firePanel.addEventListener('touchmove', e=>{
     if(!_fpEligible) return;
