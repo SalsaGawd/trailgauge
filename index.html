@@ -431,6 +431,12 @@ body.light #permOverlay{background:rgba(240,244,248,0.94)}
 #firePanelMeta{display:flex;justify-content:space-around;padding:10px 18px;border-bottom:1px solid var(--border);gap:10px;flex-wrap:wrap;font-family:var(--fm);font-size:11px;color:var(--txt2)}
 #firePanelMeta .fpMetaWarn{color:var(--warn)}
 #firePanelBody{flex:1;overflow-y:auto;padding:14px 16px;-webkit-overflow-scrolling:touch}
+/* C4: fire map (Leaflet). Dark tile-container background so blank/loading
+   tiles read as part of the dark UI rather than flashing white. */
+#fireMapWrap{margin:10px 16px}
+#fireMap{height:240px;border-radius:12px;overflow:hidden;background:#1a1a1a}
+#fireMap .leaflet-container{background:#1a1a1a}
+#fireMapNote{font-size:11px;opacity:.5;margin-top:4px;font-family:var(--fm);color:var(--txt3)}
 .fpSection{margin-bottom:16px}
 .fpHdr{font-family:var(--fd);font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--txt2);margin-bottom:8px}
 .fpEmpty{font-family:var(--fm);font-size:12px;color:var(--txt3);padding:8px 0}
@@ -1468,6 +1474,9 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
     <button id="firePanelClose" aria-label="Close">×</button>
   </div>
   <div id="firePanelMeta"></div>
+  <!-- C4: lazy Leaflet map (persists across renders — sits outside the
+       innerHTML-replaced #firePanelBody so the map instance survives). -->
+  <div id="fireMapWrap"><div id="fireMap"></div><div id="fireMapNote"></div></div>
   <div id="firePanelBody"></div>
 </div>
 
@@ -6947,8 +6956,133 @@ function renderFireChip(){
 }
 
 // ── Fire panel (clone of the weather panel open/close/drag) ────────────
+// ── Fire map (C4: Leaflet + OSM, lazy-loaded) ──────────────────────────
+// Leaflet is NOT loaded at boot — only the first time the fire panel opens
+// online. Keeps startup lean and offline launches clean.
+let _leafletLoading = null;
+function ensureLeaflet(){
+  if(window.L) return Promise.resolve();
+  if(_leafletLoading) return _leafletLoading;
+  _leafletLoading = new Promise((res, rej)=>{
+    const css = document.createElement('link');
+    css.rel='stylesheet';
+    css.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    document.head.appendChild(css);
+    const s = document.createElement('script');
+    s.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    s.onload=()=>res(); s.onerror=()=>{ _leafletLoading=null; rej(); };
+    document.head.appendChild(s);
+  });
+  return _leafletLoading;
+}
+
+let _fireMap = null, _fireMapLayers = null, _firePerimLayer = null;
+let _firePerimCache = null;   // session cache of last good perimeters
+
+function initFireMap(){
+  const mapEl = document.getElementById('fireMap');
+  const note = document.getElementById('fireMapNote');
+  if(!mapEl) return;
+  if(S.lat == null || S.lon == null || !navigator.onLine){
+    mapEl.style.display = 'none';
+    if(note) note.textContent = 'Map requires a connection';
+    return;
+  }
+  mapEl.style.display = '';
+  if(note) note.textContent = '';
+  ensureLeaflet().then(() => buildFireMap()).catch(() => {
+    mapEl.style.display = 'none';
+    if(note) note.textContent = 'Map requires a connection';
+  });
+}
+
+function buildFireMap(){
+  const mapEl = document.getElementById('fireMap');
+  if(!mapEl || !window.L || S.lat == null || S.lon == null) return;
+  if(!_fireMap){
+    _fireMap = L.map(mapEl, { zoomControl: true, attributionControl: true });
+    // OSM tiles — attribution is REQUIRED; Leaflet's default control keeps it.
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18, attribution: '© OpenStreetMap contributors'
+    }).addTo(_fireMap);
+    _fireMapLayers  = L.layerGroup().addTo(_fireMap);   // markers + tier rings
+    _firePerimLayer = L.layerGroup().addTo(_fireMap);   // perimeters (separate)
+  }
+  _fireMap.setView([S.lat, S.lon], 9);
+  // The container was hidden during the panel's open transition, so tiles can
+  // render gray until the map re-measures. Re-invalidate after the transition.
+  setTimeout(() => { if(_fireMap) _fireMap.invalidateSize(); }, 250);
+
+  // Rebuild marker/ring overlays each open.
+  _fireMapLayers.clearLayers();
+  L.circleMarker([S.lat, S.lon], { radius:6, color:'#3ddc97', weight:2, fillColor:'#3ddc97', fillOpacity:.9 })
+    .bindPopup('Your location').addTo(_fireMapLayers);
+  // Tier rings tie the map to the alert tiers: 10mi red, 25mi amber.
+  L.circle([S.lat, S.lon], { radius:16093, color:'#ef4444', weight:1, fill:true, fillOpacity:.05 }).addTo(_fireMapLayers);
+  L.circle([S.lat, S.lon], { radius:40234, color:'#f0b429', weight:1, fill:false }).addTo(_fireMapLayers);
+  const fires = (S.fire && Array.isArray(S.fire.fires)) ? S.fire.fires : [];
+  fires.forEach(f => {
+    if(!Number.isFinite(f.lat) || !Number.isFinite(f.lon)) return;
+    if(f.type === 'WF'){
+      const col = (f.distance_mi != null && f.distance_mi >= 25) ? '#f0b429' : '#ef4444';
+      L.circleMarker([f.lat, f.lon], { radius:5, color:col, weight:2, fillColor:col, fillOpacity:.8 })
+        .bindPopup('<b>'+escapeHtml(f.name)+'</b><br>'+
+          (f.distance_mi!=null ? f.distance_mi+' mi' : '')+
+          (f.acres!=null ? ' · '+f.acres.toLocaleString()+' ac' : '')+
+          (f.discovered ? '<br>Discovered '+escapeHtml(_fpDate(f.discovered)) : ''))
+        .addTo(_fireMapLayers);
+    } else if(f.type === 'RX'){
+      L.circleMarker([f.lat, f.lon], { radius:4, color:'#888', weight:1, fillColor:'#888', fillOpacity:.6 })
+        .bindPopup('<b>Prescribed burn</b><br>'+escapeHtml(f.name)+
+          (f.distance_mi!=null ? '<br>'+f.distance_mi+' mi' : ''))
+        .addTo(_fireMapLayers);
+    }
+  });
+
+  // Perimeters: show cached immediately (snappy reopen), then refresh.
+  _firePerimLayer.clearLayers();
+  if(_firePerimCache) addFirePerimeters(_firePerimCache);
+  fetchFirePerimeters();
+}
+
+function addFirePerimeters(perimeters){
+  if(!_firePerimLayer || !window.L || !Array.isArray(perimeters)) return;
+  perimeters.forEach(p => {
+    if(!p || !p.geometry) return;
+    try {
+      L.geoJSON(p.geometry, { style: { color:'#ef4444', weight:2, fillColor:'#ef4444', fillOpacity:.15 } })
+        .bindPopup('<b>'+escapeHtml(p.name||'Fire perimeter')+'</b>'+
+          (p.acres!=null ? '<br>'+p.acres.toLocaleString()+' ac' : ''))
+        .addTo(_firePerimLayer);
+    } catch(_){}
+  });
+}
+
+function fetchFirePerimeters(){
+  const note = document.getElementById('fireMapNote');
+  if(S.lat == null || S.lon == null) return;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 10000);
+  fetch(FIRE_API_BASE + '/v1/fireperimeters?lat=' + S.lat + '&lon=' + S.lon, { signal: ctrl.signal })
+    .then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP')))
+    .then(j => {
+      clearTimeout(timer);
+      if(j && Array.isArray(j.perimeters)){
+        _firePerimCache = j.perimeters;
+        if(_firePerimLayer) _firePerimLayer.clearLayers();   // replace cached with fresh
+        addFirePerimeters(j.perimeters);
+        if(note) note.textContent = '';
+      } else { throw new Error('bad body'); }
+    })
+    .catch(() => {
+      clearTimeout(timer);
+      // Markers + rings still show; only the polygons are missing.
+      if(note) note.textContent = 'Perimeter data unavailable';
+    });
+}
+
 const firePanel = document.getElementById('firePanel');
-function openFirePanel(){ renderFirePanel(); if(firePanel) firePanel.classList.add('show'); }
+function openFirePanel(){ renderFirePanel(); if(firePanel) firePanel.classList.add('show'); initFireMap(); }
 function closeFirePanel(){ if(firePanel) firePanel.classList.remove('show'); }
 document.getElementById('fireStatus')?.addEventListener('click', openFirePanel);
 if(firePanel){
