@@ -7714,7 +7714,7 @@ function computeFireThreat(){
   if(!S.fire || !Array.isArray(S.fire.fires)) return null;
   const wf = S.fire.fires.filter(f=>f.type==='WF');
   const nearest = wf.length ? wf[0] : null;  // API pre-sorts by distance
-  if(nearest && nearest.distance_mi < 10)
+  if(nearest && nearest.distance_mi < 11)
     return {tier:'red', key:'wf:'+nearest.name, name:nearest.name, dist:nearest.distance_mi};
   const rf = Array.isArray(S.fire.alerts) &&
     S.fire.alerts.find(a=>/red flag/i.test(a.event||''));
