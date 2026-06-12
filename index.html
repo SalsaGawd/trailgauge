@@ -6473,6 +6473,23 @@ function renderWx(data,ageMs){
 function renderWxPanel(data, ageMs, si){
   const el = document.getElementById('wxPanelHourly');
   if(!el) return;
+  // WX-TAP: guard against missing/partial data — render the same placeholder
+  // openWxPanel's else-branch uses rather than dereferencing data.hourly and
+  // leaving the panel blank on a throw.
+  if(!data || !data.hourly){
+    const reason = (S.lat == null) ? 'Waiting for GPS location' : 'Loading weather data';
+    el.innerHTML = `
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;
+                    padding:40px 20px;text-align:center;color:var(--txt3);
+                    font-family:var(--fm);font-size:13px;line-height:1.6">
+          <div style="font-size:32px;margin-bottom:12px;opacity:.6">🌤️</div>
+          <div>${reason}…</div>
+          <div style="font-size:11px;margin-top:8px;color:var(--txt3);opacity:.7">
+            Live weather populates automatically once we know where you are.
+          </div>
+        </div>`;
+    return;
+  }
   // Top meta block
   document.getElementById('wxpNow').textContent = c2d(data.hourly.temperature_2m[si]);
   if(data.hourly.apparent_temperature && Number.isFinite(data.hourly.apparent_temperature[si])){
@@ -6640,7 +6657,7 @@ document.getElementById('wx').addEventListener('touchend', e => {
   // Pure tap (small movement, quick) → open panel.
   // Threshold: <10px movement in any direction, <300ms duration.
   // This filters out accidental drags from horizontal scrolling.
-  if(Math.abs(dy) < 10 && Math.abs(dx) < 10 && dt < 300){
+  if(Math.abs(dy) < 6 && Math.abs(dx) < 6 && dt < 300){
     openWxPanel();
   }
 }, {passive: true});
