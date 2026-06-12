@@ -437,6 +437,18 @@ body.light #permOverlay{background:rgba(240,244,248,0.94)}
 #fireMap{height:240px;border-radius:12px;overflow:hidden;background:#1a1a1a}
 #fireMap .leaflet-container{background:#1a1a1a}
 #fireMapNote{font-size:11px;opacity:.5;margin-top:4px;font-family:var(--fm);color:var(--txt3)}
+/* C4.2: area-search overlay controls (children of #fireMap, which Leaflet
+   sets position:relative). z above tiles/panes. */
+#fireMapSearchBtn{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);z-index:1000;
+  display:none;align-items:center;gap:5px;background:var(--card);border:1px solid var(--accent);
+  border-radius:20px;padding:7px 14px;font-family:var(--fm);font-size:12px;font-weight:600;color:var(--txt);
+  box-shadow:0 4px 14px rgba(0,0,0,.5);cursor:pointer;-webkit-tap-highlight-color:transparent}
+#fireMapSearchBtn.show{display:flex}
+#fireMapMyLoc{position:absolute;left:8px;top:8px;z-index:1000;display:none;
+  background:var(--card);border:1px solid var(--border);border-radius:8px;padding:5px 10px;
+  font-family:var(--fm);font-size:11px;color:var(--txt);box-shadow:0 2px 8px rgba(0,0,0,.4);
+  cursor:pointer;-webkit-tap-highlight-color:transparent}
+#fireMapMyLoc.show{display:block}
 .fpSection{margin-bottom:16px}
 .fpHdr{font-family:var(--fd);font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--txt2);margin-bottom:8px}
 .fpEmpty{font-family:var(--fm);font-size:12px;color:var(--txt3);padding:8px 0}
@@ -6978,6 +6990,11 @@ function ensureLeaflet(){
 
 let _fireMap = null, _fireMapLayers = null, _firePerimLayer = null;
 let _firePerimCache = null;   // session cache of last good perimeters
+// C4.2: area search ("research before you go"). _fireSearchLayer holds
+// map-scoped searched-point results; _lastQueriedLat/Lon is the point the
+// visible map data is keyed to (user location, or a searched point).
+let _fireSearchLayer = null;
+let _lastQueriedLat = null, _lastQueriedLon = null;
 
 function initFireMap(){
   const mapEl = document.getElementById('fireMap');
@@ -7013,7 +7030,38 @@ function buildFireMap(){
     ['touchstart','touchmove','touchend'].forEach(ev =>
       document.getElementById('fireMap').addEventListener(ev,
         e => e.stopPropagation(), { passive: true }));
+    _fireSearchLayer = L.layerGroup().addTo(_fireMap);   // C4.2: searched-point results
+
+    // C4.2: overlay controls (appended to the Leaflet container).
+    const searchBtn = document.createElement('button');
+    searchBtn.id = 'fireMapSearchBtn';
+    searchBtn.textContent = '🔍 Search this area';
+    mapEl.appendChild(searchBtn);
+    L.DomEvent.disableClickPropagation(searchBtn);
+    searchBtn.addEventListener('click', e => { e.stopPropagation(); doFireAreaSearch(); });
+
+    const myLocBtn = document.createElement('button');
+    myLocBtn.id = 'fireMapMyLoc';
+    myLocBtn.textContent = '↩ My location';
+    mapEl.appendChild(myLocBtn);
+    L.DomEvent.disableClickPropagation(myLocBtn);
+    myLocBtn.addEventListener('click', e => { e.stopPropagation(); fireMapMyLocation(); });
+
+    // Show "Search this area" once the map center drifts >15mi from the
+    // point the visible data is keyed to.
+    _fireMap.on('moveend', () => {
+      if(_lastQueriedLat == null) return;
+      const c = _fireMap.getCenter();
+      const distMi = m2mi(haversineM({ lat:c.lat, lon:c.lng }, { lat:_lastQueriedLat, lon:_lastQueriedLon }));
+      const b = document.getElementById('fireMapSearchBtn');
+      if(b) b.classList.toggle('show', distMi > 15);
+    });
   }
+  // C4.2: each open resets to a clean user-centered view.
+  if(_fireSearchLayer) _fireSearchLayer.clearLayers();
+  _lastQueriedLat = S.lat; _lastQueriedLon = S.lon;
+  { const b = document.getElementById('fireMapSearchBtn'); if(b) b.classList.remove('show');
+    const m = document.getElementById('fireMapMyLoc'); if(m) m.classList.remove('show'); }
   _fireMap.setView([S.lat, S.lon], 9);
   // The container was hidden during the panel's open transition, so tiles can
   // render gray until the map re-measures. Re-invalidate after the transition.
@@ -7086,6 +7134,96 @@ function fetchFirePerimeters(){
       // Markers + rings still show; only the polygons are missing.
       if(note) note.textContent = 'Perimeter data unavailable';
     });
+}
+
+// ── C4.2: map area search ──────────────────────────────────────────────
+// Map-scoped only — fetches firerisk + perimeters at the MAP CENTER and
+// renders into _fireSearchLayer. S.fire and all alert/tier logic stay keyed
+// to the real GPS location; this never feeds the panel sections or alerts.
+function doFireAreaSearch(){
+  if(!_fireMap) return;
+  const c = _fireMap.getCenter();
+  const lat = c.lat, lon = c.lng;
+  const note = document.getElementById('fireMapNote');
+  const btn = document.getElementById('fireMapSearchBtn');
+  if(btn) btn.classList.remove('show');
+  if(note) note.textContent = 'Searching…';
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 10000);
+  fetch(FIRE_API_BASE + '/v1/firerisk?lat=' + lat + '&lon=' + lon, { signal: ctrl.signal })
+    .then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP')))
+    .then(j => { clearTimeout(timer); renderFireSearch(j, lat, lon); })
+    .catch(() => { clearTimeout(timer); if(note) note.textContent = 'Area search unavailable'; });
+  fetchFireSearchPerimeters(lat, lon);
+}
+
+function renderFireSearch(j, lat, lon){
+  if(!_fireSearchLayer || !window.L) return;
+  _fireSearchLayer.clearLayers();
+  _lastQueriedLat = lat; _lastQueriedLon = lon;   // data now keyed to searched point
+  // Tier rings AROUND THE SEARCHED POINT (dashed to distinguish from user's).
+  L.circle([lat, lon], { radius:16093, color:'#ef4444', weight:1, dashArray:'4', fill:false }).addTo(_fireSearchLayer);
+  L.circle([lat, lon], { radius:40234, color:'#f0b429', weight:1, dashArray:'4', fill:false }).addTo(_fireSearchLayer);
+  L.circleMarker([lat, lon], { radius:6, color:'#fff', weight:2, fillColor:'#3b82f6', fillOpacity:.9 })
+    .bindPopup('Searched area').addTo(_fireSearchLayer);
+  const fires = (j && Array.isArray(j.fires)) ? j.fires : [];
+  let n = 0;
+  fires.forEach(f => {
+    if(!Number.isFinite(f.lat) || !Number.isFinite(f.lon)) return;
+    if(f.type === 'WF'){
+      n++;
+      const col = (f.distance_mi != null && f.distance_mi >= 25) ? '#f0b429' : '#ef4444';
+      L.circleMarker([f.lat, f.lon], { radius:5, color:col, weight:2, fillColor:col, fillOpacity:.8 })
+        .bindPopup('<b>'+escapeHtml(f.name)+'</b><br>'+
+          (f.acres!=null ? f.acres.toLocaleString()+' ac' : '')+
+          ((f.acres === 0 && f.containment == null) ? '<br><span style="opacity:.6">Initial report — size unverified</span>' : ''))
+        .addTo(_fireSearchLayer);
+    } else if(f.type === 'RX'){
+      L.circleMarker([f.lat, f.lon], { radius:4, color:'#888', weight:1, fillColor:'#888', fillOpacity:.6 })
+        .bindPopup('<b>Prescribed burn</b><br>'+escapeHtml(f.name)).addTo(_fireSearchLayer);
+    }
+  });
+  const danger = (j && j.forest && j.forest.danger) || (j && j.areaDanger) || null;
+  const place = (j && j.forest && j.forest.forest) ? j.forest.forest
+              : (danger && danger.psa) ? danger.psa
+              : lat.toFixed(3)+', '+lon.toFixed(3);
+  const lvl = danger ? danger.level : '—';
+  const note = document.getElementById('fireMapNote');
+  if(note) note.textContent = 'Showing: '+place+' · '+n+' incidents · danger '+lvl+' (derived)';
+  const myLoc = document.getElementById('fireMapMyLoc');
+  if(myLoc) myLoc.classList.add('show');
+}
+
+function fetchFireSearchPerimeters(lat, lon){
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 10000);
+  fetch(FIRE_API_BASE + '/v1/fireperimeters?lat=' + lat + '&lon=' + lon, { signal: ctrl.signal })
+    .then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP')))
+    .then(j => {
+      clearTimeout(timer);
+      if(j && Array.isArray(j.perimeters) && _fireSearchLayer){
+        j.perimeters.forEach(p => {
+          if(!p || !p.geometry) return;
+          try {
+            L.geoJSON(p.geometry, { style: { color:'#ef4444', weight:2, fillColor:'#ef4444', fillOpacity:.12, dashArray:'3' } })
+              .bindPopup('<b>'+escapeHtml(p.name||'Fire perimeter')+'</b>'+
+                (p.acres!=null ? '<br>'+p.acres.toLocaleString()+' ac' : ''))
+              .addTo(_fireSearchLayer);
+          } catch(_){}
+        });
+      }
+    })
+    .catch(() => { clearTimeout(timer); });
+}
+
+function fireMapMyLocation(){
+  if(!_fireMap || S.lat == null || S.lon == null) return;
+  if(_fireSearchLayer) _fireSearchLayer.clearLayers();
+  _lastQueriedLat = S.lat; _lastQueriedLon = S.lon;
+  _fireMap.setView([S.lat, S.lon], 9);
+  const note = document.getElementById('fireMapNote');   if(note) note.textContent = '';
+  const myLoc = document.getElementById('fireMapMyLoc');  if(myLoc) myLoc.classList.remove('show');
+  const btn = document.getElementById('fireMapSearchBtn'); if(btn) btn.classList.remove('show');
 }
 
 const firePanel = document.getElementById('firePanel');
