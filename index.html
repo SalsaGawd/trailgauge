@@ -7651,6 +7651,7 @@ function ambientVibrate(){
 // Check if hazardous weather is in the next 3 hours
 function checkWeatherHazard(){
   if(!ALERTS.weatherEnabled || !S.weather || !S.weather.hourly) return false;
+  if(isInfoAcked('wx')) return false;   // C2c: dismissed within the last hour
   const now = new Date();
   const times = S.weather.hourly.time;
   let si = 0;
@@ -7673,16 +7674,25 @@ function checkWeatherHazard(){
   return false;
 }
 
-// Check if we're inside the user's sunset warning window
-function checkSunsetAlert(){
-  if(!ALERTS.sunsetEnabled || !S.sunsets) return false;
+// Minutes until the next sunset, or null. Extracted so the sunset toast
+// can reuse it without duplicating the sunset-finding loop (C2c).
+function sunsetMinsUntil(){
+  if(!S.sunsets) return null;
   const now = new Date();
   let nextSunset = null;
   for(let i = 0; i < S.sunsets.length; i++){
     if(S.sunsets[i] > now){ nextSunset = S.sunsets[i]; break; }
   }
-  if(!nextSunset) return false;
-  const minsUntil = (nextSunset - now) / 60_000;
+  if(!nextSunset) return null;
+  return (nextSunset - now) / 60_000;
+}
+// Check if we're inside the user's sunset warning window
+function checkSunsetAlert(){
+  if(!ALERTS.sunsetEnabled) return false;
+  // C2c: one ack covers tonight only (keyed by local date).
+  if(isInfoAcked('sunset:'+todayDateString())) return false;
+  const minsUntil = sunsetMinsUntil();
+  if(minsUntil == null) return false;
   return (minsUntil > 0 && minsUntil <= ALERTS.sunsetLeadMin);
 }
 
@@ -7709,6 +7719,28 @@ function isFireAcked(key, currentDist){
      && currentDist <= a.dist - 2) return false;
   return true;
 }
+
+/* Session C2c: acknowledgments for INFO alerts (sunset / weather). Same
+   time-boxed pattern as fire acks but with no distance dimension. */
+const INFO_ACK_KEY = 'tg_info_ack_v1';
+function getInfoAcks(){ try{ return JSON.parse(localStorage.getItem(INFO_ACK_KEY)||'{}'); }catch(_){ return {}; } }
+function ackInfo(key, hours){
+  const a = getInfoAcks();
+  a[key] = { until: Date.now()+hours*3600_000 };
+  try{ localStorage.setItem(INFO_ACK_KEY, JSON.stringify(a)); }catch(_){}
+}
+function isInfoAcked(key){
+  const a = getInfoAcks()[key];
+  if(!a) return false;
+  if(Date.now() > a.until) return false;
+  return true;
+}
+// Local calendar date (YYYY-M-D) — keys a sunset ack to tonight only.
+function todayDateString(){
+  const d = new Date();
+  return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate();
+}
+
 function computeFireThreat(){
   if(!ALERTS.fireEnabled) return null;
   if(!S.fire || !Array.isArray(S.fire.fires)) return null;
@@ -7775,6 +7807,10 @@ function evaluateAlerts(){
   // independently of the single-source pulse so a red fire banner can show
   // alongside (and above) the ambient glow.
   try{ renderFireBanner(); maybeFireToast(); }catch(_){}
+  // C2c: surface a dismissable toast for info-tier sources (sunset/weather).
+  if(newSource === 'sunset' || newSource === 'weather'){
+    try{ maybeInfoToast(newSource); }catch(_){}
+  }
 }
 
 /* ─── FIRE BANNER + TOAST (Session C2b) ─────────────────────────────────
@@ -7824,7 +7860,9 @@ document.getElementById('fireBanner')?.addEventListener('click', () => {
 
 // Amber / red-flag dismissable toast (clone of showAnglePinToast).
 let _fireToastTimer = null;
-function showFireToast(text, key, dist, hours){
+// Generalized dismissable toast (C2c) — reused by fire + info alerts.
+// onDismiss runs when the × is tapped (auto-fade after 12s does not ack).
+function showAlertToast(text, onDismiss){
   let toast = document.getElementById('fireToast');
   if(!toast){
     toast = document.createElement('div');
@@ -7834,12 +7872,15 @@ function showFireToast(text, key, dist, hours){
   toast.innerHTML = `<span class="apt-msg">${escapeHtml(text)}</span><button class="apt-x" aria-label="Dismiss">×</button>`;
   toast.classList.add('show');
   toast.querySelector('.apt-x').addEventListener('click', () => {
-    ackFire(key, hours, dist);
+    if(typeof onDismiss === 'function') onDismiss();
     toast.classList.remove('show');
     if(_fireToastTimer){ clearTimeout(_fireToastTimer); _fireToastTimer = null; }
   });
   if(_fireToastTimer) clearTimeout(_fireToastTimer);
   _fireToastTimer = setTimeout(() => { toast.classList.remove('show'); }, 12000);
+}
+function showFireToast(text, key, dist, hours){
+  showAlertToast(text, () => ackFire(key, hours, dist));
 }
 
 let _lastFireToastKey = null;
@@ -7853,6 +7894,27 @@ function maybeFireToast(){
     showFireToast('🔥 Wildfire '+t.dist.toFixed(1)+' mi away — '+t.name, t.key, t.dist, 6);
   else if(t.tier==='redflag')
     showFireToast('🚩 Red Flag Warning in effect — extreme fire weather', t.key, null, 6);
+}
+
+// Session C2c: info-alert toast (sunset / weather). One per key per session;
+// the × acknowledges (sunset 12h keyed to tonight, weather 1h) and re-runs
+// evaluateAlerts so the pulse clears immediately. Auto-fade does not ack.
+let _lastInfoToastKey = null;
+function maybeInfoToast(source){
+  let key, text, onDismiss;
+  if(source === 'sunset'){
+    key = 'sunset:'+todayDateString();
+    const mins = sunsetMinsUntil();
+    text = '🌅 Sunset in '+Math.round(mins ?? 0)+'m';
+    onDismiss = () => { ackInfo(key, 12); evaluateAlerts(); };
+  } else if(source === 'weather'){
+    key = 'wx';
+    text = '🌧 Weather hazard in the next 3h';
+    onDismiss = () => { ackInfo(key, 1); evaluateAlerts(); };
+  } else { return; }
+  if(key === _lastInfoToastKey) return;   // once per key per session
+  _lastInfoToastKey = key;
+  showAlertToast(text, onDismiss);
 }
 
 // Settings controls — wire each input to its ALERTS state slot
