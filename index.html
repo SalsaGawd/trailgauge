@@ -488,6 +488,25 @@ body.light #permOverlay{background:rgba(240,244,248,0.94)}
 #fwarn{display:none;margin:0 12px 6px;background:rgba(240,180,41,.12);border:1px solid var(--warn);
   border-radius:8px;padding:5px 10px;font-family:var(--fm);font-size:10px;color:var(--warn);text-align:center}
 #fwarn.show{display:block}
+/* Session C2b: severe-fire banner (red, persistent, full-width under header) */
+#fireBanner{display:none;padding:8px 14px;font-size:13px;font-weight:600;
+  background:rgba(220,60,50,.16);border-bottom:1px solid var(--danger, #e25);
+  color:#ff8a80;cursor:pointer;-webkit-tap-highlight-color:transparent;text-align:center}
+#fireBanner.show{display:block}
+/* Session C2b: amber fire toast (clone of #anglePinToast, warn-colored) */
+#fireToast{position:fixed;top:calc(60px + env(safe-area-inset-top,0px));
+  left:50%;transform:translate(-50%,-20px);z-index:251;
+  background:var(--card);border:1px solid var(--warn);border-radius:24px;
+  padding:8px 8px 8px 16px;display:none;align-items:center;gap:8px;
+  font-family:var(--fm);font-size:12px;color:var(--txt);
+  box-shadow:0 8px 24px rgba(0,0,0,.5);
+  max-width:calc(100% - 24px);opacity:0;
+  transition:opacity .25s ease, transform .25s ease}
+#fireToast.show{display:flex;opacity:1;transform:translate(-50%,0)}
+#fireToast .apt-msg{flex:1;font-weight:500}
+#fireToast .apt-x{background:transparent;border:none;color:var(--txt3);
+  font-size:18px;line-height:1;padding:2px 6px;cursor:pointer;flex-shrink:0;
+  -webkit-tap-highlight-color:transparent}
 #hscroll{display:flex;gap:6px;overflow-x:auto;padding:4px 12px 8px;
   scroll-behavior:smooth;-webkit-overflow-scrolling:touch;scrollbar-width:none}
 #hscroll::-webkit-scrollbar{display:none}
@@ -1253,6 +1272,9 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
     </div>
   </div>
 
+  <!-- Session C2b: persistent severe-fire banner. Tap → confirm-to-hide. -->
+  <div id="fireBanner" role="button"></div>
+
   <!-- Persistent live trip overlay — visible whenever a trip is active.
        Glanceable status bar; tapping opens the trip controls. -->
   <div id="liveBanner">
@@ -1528,6 +1550,11 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
           <button class="colorSwatch" data-color="blue" aria-label="Blue"   style="--c:59,130,246"></button>
           <button class="colorSwatch" data-color="purple" aria-label="Purple" style="--c:168,85,247"></button>
         </div>
+      </div>
+      <div class="sectionDivider">Fire Alert</div>
+      <div class="srow">
+        <div class="sinfo"><span class="sname">Severe Fire Warning</span><span class="sdesc">Alert when a wildfire is nearby or a Red Flag Warning is in effect</span></div>
+        <label class="tgl"><input type="checkbox" id="alFireTgl" checked><span class="tsl"></span></label>
       </div>
     </div>
 
@@ -6785,6 +6812,7 @@ async function fetchFire(lat, lon){
       const degraded = d.sources && d.sources.nifc && !d.sources.nifc.ok;
       setFireDot(degraded ? 'stale' : 'live');   // setFireDot re-renders the chip
       renderFirePanel();
+      try{ evaluateAlerts(); }catch(_){}   // C2b: re-evaluate fire tiers on fresh data
     } else {
       // 200 but unusable body — keep the last good data, show honest stale.
       setFireDot('stale');
@@ -7533,6 +7561,7 @@ const ALERTS = {
   dndMode:        false,
   sunsetEnabled:  true,
   weatherEnabled: true,
+  fireEnabled:    true,
   sunsetLeadMin:  30,
   sunsetColor:    'yellow',
   weatherColor:   'red',
@@ -7546,7 +7575,7 @@ try {
   const raw = localStorage.getItem(ALERT_KEY);
   if(raw){
     const s = JSON.parse(raw);
-    for(const k of ['pulseEnabled','vibrateEnabled','dndMode','sunsetEnabled','weatherEnabled']){
+    for(const k of ['pulseEnabled','vibrateEnabled','dndMode','sunsetEnabled','weatherEnabled','fireEnabled']){
       if(typeof s[k] === 'boolean') ALERTS[k] = s[k];
     }
     if(typeof s.sunsetLeadMin === 'number' && s.sunsetLeadMin >= 5 && s.sunsetLeadMin <= 90){
@@ -7565,6 +7594,7 @@ function saveAlertSettings(){
       dndMode: ALERTS.dndMode,
       sunsetEnabled: ALERTS.sunsetEnabled,
       weatherEnabled: ALERTS.weatherEnabled,
+      fireEnabled: ALERTS.fireEnabled,
       sunsetLeadMin: ALERTS.sunsetLeadMin,
       sunsetColor: ALERTS.sunsetColor,
       weatherColor: ALERTS.weatherColor
@@ -7656,6 +7686,49 @@ function checkSunsetAlert(){
   return (minsUntil > 0 && minsUntil <= ALERTS.sunsetLeadMin);
 }
 
+/* ─── FIRE THREAT TIERS (Session C2b) ───────────────────────────────────
+   Tiers from the proxy's WF incidents + NWS alerts:
+     red     — a WF wildfire < 10mi (persistent banner, confirm-to-hide)
+     redflag — an active Red Flag Warning (dismissable amber toast)
+     amber   — a WF wildfire < 25mi (dismissable amber toast)
+   Acknowledgments are time-boxed and auto-void if the fire moves ≥2mi
+   closer than when the user dismissed it. */
+const FIRE_ACK_KEY = 'tg_fire_ack_v1';
+function getFireAcks(){ try{ return JSON.parse(localStorage.getItem(FIRE_ACK_KEY)||'{}'); }catch(_){ return {}; } }
+function ackFire(key, hours, dist){
+  const a = getFireAcks();
+  a[key] = { until: Date.now()+hours*3600_000, dist: dist };
+  try{ localStorage.setItem(FIRE_ACK_KEY, JSON.stringify(a)); }catch(_){}
+}
+function isFireAcked(key, currentDist){
+  const a = getFireAcks()[key];
+  if(!a) return false;
+  if(Date.now() > a.until) return false;
+  // ack voided if the fire got >=2mi closer than when acknowledged
+  if(typeof currentDist==='number' && typeof a.dist==='number'
+     && currentDist <= a.dist - 2) return false;
+  return true;
+}
+function computeFireThreat(){
+  if(!ALERTS.fireEnabled) return null;
+  if(!S.fire || !Array.isArray(S.fire.fires)) return null;
+  const wf = S.fire.fires.filter(f=>f.type==='WF');
+  const nearest = wf.length ? wf[0] : null;  // API pre-sorts by distance
+  if(nearest && nearest.distance_mi < 10)
+    return {tier:'red', key:'wf:'+nearest.name, name:nearest.name, dist:nearest.distance_mi};
+  const rf = Array.isArray(S.fire.alerts) &&
+    S.fire.alerts.find(a=>/red flag/i.test(a.event||''));
+  if(rf) return {tier:'redflag', key:'rf:'+(rf.event||'redflag'),
+    name:rf.event, dist:null};
+  if(nearest && nearest.distance_mi < 25)
+    return {tier:'amber', key:'wf:'+nearest.name, name:nearest.name, dist:nearest.distance_mi};
+  return null;
+}
+function checkFireHazard(){
+  const t = computeFireThreat();
+  return !!(t && t.tier==='red' && !isFireAcked(t.key, t.dist));
+}
+
 // Main evaluator — called every 30s from updateDaylight + on weather refresh.
 // Weather hazards win over sunset (more urgent).
 // Vibration strategy:
@@ -7669,7 +7742,10 @@ function evaluateAlerts(){
   if(!ALERTS.pulseEnabled){ setAmbient(null); return; }
   let newSource = null;
   let newColor = null;
-  if(checkWeatherHazard()){
+  if(checkFireHazard()){
+    newSource = 'fire';
+    newColor = 'red';
+  } else if(checkWeatherHazard()){
     newSource = 'weather';
     newColor = ALERTS.weatherColor;
   } else if(checkSunsetAlert()){
@@ -7695,6 +7771,88 @@ function evaluateAlerts(){
   } else {
     setAmbient(null);
   }
+  // C2b: fire banner (red, persistent) + amber/redflag toast are driven
+  // independently of the single-source pulse so a red fire banner can show
+  // alongside (and above) the ambient glow.
+  try{ renderFireBanner(); maybeFireToast(); }catch(_){}
+}
+
+/* ─── FIRE BANNER + TOAST (Session C2b) ─────────────────────────────────
+   Red banner: persistent, confirm-to-hide (mirrors showDisclaimer's
+   .dangerSheet modal). Amber/redflag toast: dismissable (clone of
+   showAnglePinToast); × dismiss acknowledges the threat. */
+function renderFireBanner(){
+  const el = document.getElementById('fireBanner');
+  if(!el) return;
+  const t = computeFireThreat();
+  const show = !!(t && t.tier==='red' && !isFireAcked(t.key, t.dist));
+  if(show) el.textContent = '🔥 SEVERE — '+t.name+' · '+
+    t.dist.toFixed(1)+' mi away · tap for options';
+  el.classList.toggle('show', show);
+  el.dataset.key = show ? t.key : '';
+  el.dataset.dist = show ? t.dist : '';
+}
+
+document.getElementById('fireBanner')?.addEventListener('click', () => {
+  const el = document.getElementById('fireBanner');
+  const key = el && el.dataset.key;
+  if(!key) return;
+  const dist = parseFloat(el.dataset.dist);
+  const t = computeFireThreat();
+  const name = (t && t.name) || 'A wildfire';
+  // MIRROR of showDisclaimer's .dangerSheet modal (self-contained builder,
+  // backdrop-tap closes) but with two action buttons.
+  const sheet = document.createElement('div');
+  sheet.className = 'dangerSheet';
+  sheet.innerHTML = `<div class="dangerSheetBox">
+    <div class="dangerSheetTitle">Severe Fire Hazard</div>
+    <div class="dangerSheetBody">${escapeHtml(name)} is ${isNaN(dist)?'—':dist.toFixed(1)} mi from your location. Hide this alert for 1 hour? It will return if the fire moves closer.</div>
+    <div class="dangerSheetBtns">
+      <button class="modalbtn ghost" style="flex:1" id="_fbKeep">Keep Showing</button>
+      <button class="modalbtn danger" style="flex:1" id="_fbHide">Hide 1 Hour</button>
+    </div></div>`;
+  document.body.appendChild(sheet);
+  const cleanup = () => sheet.remove();
+  sheet.querySelector('#_fbKeep').onclick = cleanup;
+  sheet.querySelector('#_fbHide').onclick = () => {
+    ackFire(key, 1, isNaN(dist) ? null : dist);
+    cleanup();
+    evaluateAlerts();
+  };
+  sheet.addEventListener('click', e => { if(e.target === sheet) cleanup(); });
+});
+
+// Amber / red-flag dismissable toast (clone of showAnglePinToast).
+let _fireToastTimer = null;
+function showFireToast(text, key, dist, hours){
+  let toast = document.getElementById('fireToast');
+  if(!toast){
+    toast = document.createElement('div');
+    toast.id = 'fireToast';
+    document.body.appendChild(toast);
+  }
+  toast.innerHTML = `<span class="apt-msg">${escapeHtml(text)}</span><button class="apt-x" aria-label="Dismiss">×</button>`;
+  toast.classList.add('show');
+  toast.querySelector('.apt-x').addEventListener('click', () => {
+    ackFire(key, hours, dist);
+    toast.classList.remove('show');
+    if(_fireToastTimer){ clearTimeout(_fireToastTimer); _fireToastTimer = null; }
+  });
+  if(_fireToastTimer) clearTimeout(_fireToastTimer);
+  _fireToastTimer = setTimeout(() => { toast.classList.remove('show'); }, 12000);
+}
+
+let _lastFireToastKey = null;
+function maybeFireToast(){
+  const t = computeFireThreat();
+  if(!t || t.tier==='red') return;
+  if(isFireAcked(t.key, t.dist)) return;
+  if(t.key === _lastFireToastKey) return;   // once per threat per session
+  _lastFireToastKey = t.key;
+  if(t.tier==='amber')
+    showFireToast('🔥 Wildfire '+t.dist.toFixed(1)+' mi away — '+t.name, t.key, t.dist, 6);
+  else if(t.tier==='redflag')
+    showFireToast('🚩 Red Flag Warning in effect — extreme fire weather', t.key, null, 6);
 }
 
 // Settings controls — wire each input to its ALERTS state slot
@@ -7704,7 +7862,8 @@ function evaluateAlerts(){
     alVibTgl:   'vibrateEnabled',
     alDndTgl:   'dndMode',
     alSunTgl:   'sunsetEnabled',
-    alWxTgl:    'weatherEnabled'
+    alWxTgl:    'weatherEnabled',
+    alFireTgl:  'fireEnabled'
   };
   for(const [id, key] of Object.entries(tgls)){
     const el = document.getElementById(id);
