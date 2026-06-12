@@ -7007,6 +7007,12 @@ function buildFireMap(){
     }).addTo(_fireMap);
     _fireMapLayers  = L.layerGroup().addTo(_fireMap);   // markers + tier rings
     _firePerimLayer = L.layerGroup().addTo(_fireMap);   // perimeters (separate)
+    // C4.1: shield the map from the panel's drag-to-dismiss (same pattern as
+    // the wxSizeBtn shield) so map pans don't dismiss the fire panel. Dismiss
+    // still works from the handle/header/lists — just not inside the map.
+    ['touchstart','touchmove','touchend'].forEach(ev =>
+      document.getElementById('fireMap').addEventListener(ev,
+        e => e.stopPropagation(), { passive: true }));
   }
   _fireMap.setView([S.lat, S.lon], 9);
   // The container was hidden during the panel's open transition, so tiles can
@@ -7029,7 +7035,8 @@ function buildFireMap(){
         .bindPopup('<b>'+escapeHtml(f.name)+'</b><br>'+
           (f.distance_mi!=null ? f.distance_mi+' mi' : '')+
           (f.acres!=null ? ' · '+f.acres.toLocaleString()+' ac' : '')+
-          (f.discovered ? '<br>Discovered '+escapeHtml(_fpDate(f.discovered)) : ''))
+          (f.discovered ? '<br>Discovered '+escapeHtml(_fpDate(f.discovered)) : '')+
+          ((f.acres === 0 && f.containment == null) ? '<br><span style="opacity:.6">Initial report — size unverified</span>' : ''))
         .addTo(_fireMapLayers);
     } else if(f.type === 'RX'){
       L.circleMarker([f.lat, f.lon], { radius:4, color:'#888', weight:1, fillColor:'#888', fillOpacity:.6 })
@@ -7162,7 +7169,9 @@ function renderFirePanel(){
       html += '<div class="fpFire ' + accent + '"><div class="fpFireName">' + escapeHtml(f.name) + '</div>' +
         '<div class="fpFireMeta">' + f.distance_mi + ' mi · ' +
         (f.acres != null ? f.acres.toLocaleString() + ' ac' : 'size n/a') +
-        (f.containment != null ? ' · ' + f.containment + '% contained' : '') + '</div>' +
+        (f.containment != null ? ' · ' + f.containment + '% contained' : '') +
+        ((f.acres === 0 && f.containment == null) ? ' <span style="opacity:.55">· initial report — size unverified</span>' : '') +
+        '</div>' +
         (f.discovered ? '<div class="fpFireDate">Discovered ' + escapeHtml(_fpDate(f.discovered)) + '</div>' : '') +
         '</div>';
     }
