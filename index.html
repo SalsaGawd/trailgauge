@@ -449,6 +449,19 @@ body.light #permOverlay{background:rgba(240,244,248,0.94)}
 .fpForest{border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:16px;background:var(--card)}
 .fpForestName{font-family:var(--fd);font-size:14px;font-weight:700;color:var(--accent)}
 .fpForestStage{font-family:var(--fm);font-size:12px;color:var(--txt);margin:6px 0 10px}
+/* C3: fire danger meter (NFDRS-style 5-segment) */
+.dangerMeter{margin:8px 0 12px}
+.dangerSegs{display:flex;gap:3px}
+.danger-seg{flex:1;text-align:center;font-family:var(--fd);font-size:11px;font-weight:700;
+  color:#fff;padding:5px 0;border-radius:4px}
+.dangerLabel{font-family:var(--fd);font-size:13px;font-weight:700;margin-top:7px;letter-spacing:.5px}
+.dangerEscalated{font-family:var(--fm);font-size:10px;color:var(--warn);margin-top:4px}
+.dangerUpdated{font-family:var(--fm);font-size:9px;color:var(--txt3);margin-top:3px}
+/* C3: TODAY block */
+.fpTodayHdr{font-family:var(--fd);font-size:11px;letter-spacing:1px;text-transform:uppercase;
+  color:var(--txt2);margin:10px 0 6px}
+.fpTodayDist{font-size:9px;color:var(--txt3);letter-spacing:.5px}
+.fpToday{display:flex;flex-direction:column;gap:2px;margin-bottom:4px}
 .fpList{margin:6px 0}
 .fpBan{font-family:var(--fm);font-size:12px;color:var(--danger);line-height:1.6}
 .fpAllow{font-family:var(--fm);font-size:12px;color:var(--accent);line-height:1.6}
@@ -6852,6 +6865,39 @@ function fireAgeStr(){
 }
 
 // ── Trail fire chip ────────────────────────────────────────────────────
+// ── Fire danger rating (C3) ────────────────────────────────────────────
+// NFDRS-style palette + label maps shared by the chip badge and panel meter.
+const DANGER_ORDER = ['low','moderate','high','very_high','extreme'];
+const DANGER_COLORS = { low:'#2e7d32', moderate:'#1976d2', high:'#f9a825', very_high:'#ef6c00', extreme:'#c62828' };
+const DANGER_SEG_LABELS = ['L','M','H','VH','E'];
+const DANGER_FULL  = { low:'LOW', moderate:'MODERATE', high:'HIGH', very_high:'VERY HIGH', extreme:'EXTREME' };
+const DANGER_SHORT = { low:'Low', moderate:'Mod', high:'High', very_high:'V.High', extreme:'EXTREME' };
+
+// 5-segment danger meter for the fire panel forest card. Returns '' if the
+// danger field is missing/unrecognized (meter omitted gracefully).
+function renderDangerMeter(danger){
+  if(!danger || !danger.level || DANGER_ORDER.indexOf(danger.level) < 0) return '';
+  const activeIdx = DANGER_ORDER.indexOf(danger.level);
+  let segs = '';
+  for(let i = 0; i < 5; i++){
+    const lvl = DANGER_ORDER[i];
+    const op = (i === activeIdx) ? '1' : '.25';
+    segs += '<div class="danger-seg" style="background:'+DANGER_COLORS[lvl]+';opacity:'+op+'">'+DANGER_SEG_LABELS[i]+'</div>';
+  }
+  let html = '<div class="dangerMeter"><div class="dangerSegs">'+segs+'</div>'+
+    '<div class="dangerLabel" style="color:'+DANGER_COLORS[danger.level]+'">Fire Danger: '+DANGER_FULL[danger.level]+'</div>';
+  if(danger.escalated){
+    html += '<div class="dangerEscalated">↑ escalated from '+
+      escapeHtml(DANGER_FULL[danger.base] || danger.base || '')+' by '+
+      escapeHtml(danger.escalatedBy || 'alert')+'</div>';
+  }
+  if(danger.updated){
+    html += '<div class="dangerUpdated">Danger level: '+escapeHtml(danger.updated)+'</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
 function renderFireChip(){
   const chip = document.getElementById('fireStatus');
   if(!chip) return;
@@ -6876,10 +6922,21 @@ function renderFireChip(){
       val = 'No fires reported within 100mi · ' + age;
     }
   }
+  // C3.2: append Stage + danger badge when forest data is present. The
+  // existing nearest-fire/no-fires/unavailable text above is untouched.
+  let badge = '';
+  const fr = d && d.forest;
+  if(fr && fr.danger && fr.danger.level){
+    const lvl = fr.danger.level;
+    const short = DANGER_SHORT[lvl] || lvl;
+    const col = DANGER_COLORS[lvl] || 'var(--txt)';
+    badge = ' · Stage ' + (fr.stage != null ? fr.stage : '?') +
+      ' · <span style="color:'+col+';font-weight:700">' + escapeHtml(short) + '</span>';
+  }
   chip.style.borderColor = border;
   chip.innerHTML = '<span class="gico">🔥</span><div class="gdata">' +
     '<span class="glbl">Fire &amp; Restrictions · tap for detail</span>' +
-    '<span class="gval">' + escapeHtml(val) + '</span></div>';
+    '<span class="gval">' + escapeHtml(val) + badge + '</span></div>';
 }
 
 // ── Fire panel (clone of the weather panel open/close/drag) ────────────
@@ -6987,12 +7044,17 @@ function renderFirePanel(){
   if(fr){
     html += '<div class="fpForest"><div class="fpForestName">' + escapeHtml(fr.forest) +
       (fr.matchedDistrict ? ' · ' + escapeHtml(fr.matchedDistrict) : '') +
-      (fr.distance_mi != null ? ' · ' + fr.distance_mi + ' mi' : '') + '</div>' +
-      '<div class="fpForestStage">' + escapeHtml(fr.stageLabel || ('Stage ' + fr.stage)) + '</div>';
-    if(Array.isArray(fr.banned) && fr.banned.length)
-      html += '<div class="fpList">' + fr.banned.map(b => '<div class="fpBan">✕ ' + escapeHtml(b) + '</div>').join('') + '</div>';
-    if(Array.isArray(fr.allowed) && fr.allowed.length)
-      html += '<div class="fpList">' + fr.allowed.map(a => '<div class="fpAllow">✓ ' + escapeHtml(a) + '</div>').join('') + '</div>';
+      (fr.distance_mi != null ? ' · ' + fr.distance_mi + ' mi' : '') + '</div>';
+    // C3.1: danger meter at the top of the card.
+    html += renderDangerMeter(fr.danger);
+    html += '<div class="fpForestStage">' + escapeHtml(fr.stageLabel || ('Stage ' + fr.stage)) + '</div>';
+    // C3.3: TODAY block — ✕ banned (always before) then ✓ allowed, tightened.
+    html += '<div class="fpTodayHdr">TODAY IN ' + escapeHtml((fr.forest || '').toUpperCase()) +
+      (fr.matchedDistrict ? ' <span class="fpTodayDist">' + escapeHtml(fr.matchedDistrict) + '</span>' : '') + '</div>';
+    html += '<div class="fpToday">';
+    if(Array.isArray(fr.banned)) fr.banned.forEach(b => { html += '<div class="fpBan">✕ ' + escapeHtml(b) + '</div>'; });
+    if(Array.isArray(fr.allowed)) fr.allowed.forEach(a => { html += '<div class="fpAllow">✓ ' + escapeHtml(a) + '</div>'; });
+    html += '</div>';
     if(fr.lastVerified) html += '<div class="fpVerified">Last verified: ' + escapeHtml(fr.lastVerified) + '</div>';
     if(fr.phone) html += '<a class="fpCall" href="tel:' + encodeURIComponent(fr.phone) + '">📞 Call ' + escapeHtml(fr.ranger || 'ranger') + '</a>';
     html += '</div>';
