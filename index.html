@@ -6891,7 +6891,14 @@ function renderDangerMeter(danger){
       escapeHtml(DANGER_FULL[danger.base] || danger.base || '')+' by '+
       escapeHtml(danger.escalatedBy || 'alert')+'</div>';
   }
-  if(danger.updated){
+  // C3.5: fine print varies by how the base rating was determined.
+  if(danger.source === 'ca_nfdrs_derived'){
+    const pct = (danger.ercPct != null) ? Math.round(danger.ercPct) : '—';
+    html += '<div class="dangerUpdated">Derived from ERC '+escapeHtml(String(pct))+' percentile'+
+      (danger.psa ? ' · '+escapeHtml(danger.psa) : '')+
+      ' · NIFC CA_NFDRS'+
+      (danger.updated ? ' · updated '+escapeHtml(danger.updated) : '')+'</div>';
+  } else if(danger.updated){
     html += '<div class="dangerUpdated">Danger level: '+escapeHtml(danger.updated)+'</div>';
   }
   html += '</div>';
