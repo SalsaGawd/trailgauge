@@ -1678,9 +1678,13 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
         <div class="sinfo"><span class="sname">Send Feedback</span><span class="sdesc">Found a bug or want to suggest a feature? Tell us.</span></div>
         <button class="modalbtn ghost" id="fbOpenBtn" style="padding:8px 14px;font-size:11px">Open</button>
       </div>
-      <div class="srow" style="border-bottom:none">
+      <div class="srow">
         <div class="sinfo"><span class="sname">Disclaimer</span><span class="sdesc">Legal terms &amp; limitations of use</span></div>
         <button class="modalbtn ghost" id="disclaimerBtn" style="padding:8px 14px;font-size:11px">View</button>
+      </div>
+      <div class="srow" style="border-bottom:none">
+        <div class="sinfo"><span class="sname">Mount Log</span><span class="sdesc">Copy mount-state diagnostics (last 3 trips)</span></div>
+        <button id="copyMountLogBtn" class="modalbtn ghost" style="padding:8px 14px;font-size:11px">Copy Mount Log</button>
       </div>
     </div>
   </div>
@@ -2147,6 +2151,57 @@ function flashCopied(ok){
   btn.textContent = ok ? 'copied ✓' : 'copy failed';
   btn.style.background = ok ? '#3ddc97' : '#ef4444';
   setTimeout(() => { btn.textContent = 'COPY LOG'; btn.style.background = '#3ddc97'; }, 1200);
+}
+
+// MS1.8: in-app mount-log export. The ?debug=1 COPY LOG button isn't reachable
+// from an installed (home-screen) PWA, so Settings → Help & Feedback exposes the
+// same shadow-mode data here. Builds an array from the last 3 saved trips and
+// copies it to the clipboard (clipboard API with a textarea/execCommand fallback
+// for older iOS / non-secure contexts).
+async function exportMountLog(){
+  const btn = document.getElementById('copyMountLogBtn');
+  let arr = [];
+  try {
+    const all = await dbAllReal();
+    all.sort((a,b) => (b.startMs||0) - (a.startMs||0));
+    arr = all.slice(0, 3).map(t => {
+      const pts = Array.isArray(t.pts) ? t.pts : [];
+      const msCounts = { m:0, h:0, u:0 };
+      pts.forEach(p => { const c = p && p.ms; if(c==='h') msCounts.h++; else if(c==='u') msCounts.u++; else msCounts.m++; });
+      return {
+        id: t.id, name: t.name,
+        startMs: t.startMs, endMs: t.endMs,
+        distM: t.distM, gainM: t.gainM,
+        points: pts.length,
+        msCounts,
+        mountLog: t.mountLog || [],
+        tuning: MOUNT_TUNING
+      };
+    });
+  } catch(_){}
+  const text = JSON.stringify(arr, null, 2);
+  let ok = false;
+  try {
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      await navigator.clipboard.writeText(text);
+      ok = true;
+    }
+  } catch(_){}
+  if(!ok){
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+      document.body.appendChild(ta);
+      ta.focus(); ta.select();
+      ok = document.execCommand('copy');
+      ta.remove();
+    } catch(_){}
+  }
+  if(btn){
+    btn.textContent = ok ? 'Copied ✓' : 'Copy failed';
+    setTimeout(() => { btn.textContent = 'Copy Mount Log'; }, 1200);
+  }
 }
 
 requestAnimationFrame(loop);
@@ -8703,6 +8758,10 @@ function showDisclaimer(){
 // so we leave settings open — dismissing the disclaimer returns the user
 // right where they were.
 document.getElementById('disclaimerBtn')?.addEventListener('click', showDisclaimer);
+
+// MS1.8: in-app mount-log export (reachable from an installed PWA, unlike the
+// ?debug=1 COPY LOG button). Copies the last 3 trips' mount diagnostics.
+document.getElementById('copyMountLogBtn')?.addEventListener('click', exportMountLog);
 
 // Show Hints Again — clears all coachmark "seen" flags and replays.
 // Close the settings panel first so the user can actually see the
