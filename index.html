@@ -2199,9 +2199,38 @@ async function exportMountLog(){
     } catch(_){}
   }
   if(btn){
-    btn.textContent = ok ? 'Copied ✓' : 'Copy failed';
-    setTimeout(() => { btn.textContent = 'Copy Mount Log'; }, 1200);
+    btn.textContent = ok ? 'Copied ✓' : 'Copy below ↓';
+    setTimeout(() => { btn.textContent = 'Copy Mount Log'; }, 1400);
   }
+  // MS1.8b: ALWAYS show the textarea modal. The iOS home-screen PWA silently
+  // blocks both navigator.clipboard and execCommand('copy'), so the visible,
+  // read-only, pre-selected textarea is the only guaranteed manual copy path.
+  showMountLogModal(text, ok);
+}
+
+// MS1.8b: render the export JSON into a read-only, pre-selected <textarea> in
+// the disclaimer .dangerSheet modal so the user can long-press → Select All →
+// Copy when the clipboard API is unavailable. `copied` tweaks the hint wording.
+function showMountLogModal(text, copied){
+  const el = document.createElement('div');
+  el.className = 'dangerSheet';
+  el.innerHTML = `<div class="dangerSheetBox">
+    <div class="dangerSheetTitle">Mount Log</div>
+    <div class="dangerSheetBody">${copied ? 'Copied to clipboard. If paste comes up empty, ' : 'To copy: '}long-press the text below → Select All → Copy.</div>
+    <textarea id="_mlBox" readonly wrap="off" style="width:100%;height:42vh;margin-top:4px;font-family:var(--fm);font-size:11px;line-height:1.4;color:var(--txt);background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:8px;box-sizing:border-box;-webkit-user-select:text;user-select:text"></textarea>
+    <div class="dangerSheetBtns">
+      <button class="modalbtn ghost" style="flex:1" id="_mlClose">Close</button>
+    </div></div>`;
+  document.body.appendChild(el);
+  // Set value via property (not innerHTML) so JSON content can't break markup.
+  const ta = el.querySelector('#_mlBox');
+  ta.value = text;
+  const cleanup = () => el.remove();
+  el.querySelector('#_mlClose').onclick = cleanup;
+  el.addEventListener('click', e => { if(e.target === el) cleanup(); });
+  // Pre-select the contents so the user can copy with one fewer step where iOS
+  // allows it. Deferred a tick so the element is laid out before selecting.
+  setTimeout(() => { try { ta.focus(); ta.setSelectionRange(0, ta.value.length); } catch(_){} }, 50);
 }
 
 requestAnimationFrame(loop);
