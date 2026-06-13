@@ -2022,6 +2022,16 @@ function renderDebugHud(){
       'font-size:9px;padding:8px 10px;border-radius:6px;border:1px solid #3ddc97;'+
       'pointer-events:none;line-height:1.35;white-space:pre;min-width:175px';
     document.body.appendChild(_debugHud);
+    // MS1.7: tappable COPY LOG button (the HUD itself is pointer-events:none).
+    const cbtn = document.createElement('div');
+    cbtn.id = 'debugCopyLog';
+    cbtn.textContent = 'COPY LOG';
+    cbtn.style.cssText = 'position:fixed;top:60px;left:8px;z-index:501;'+
+      'background:#3ddc97;color:#000;font-family:monospace;font-size:9px;font-weight:700;'+
+      'padding:5px 9px;border-radius:5px;cursor:pointer;pointer-events:auto;'+
+      '-webkit-tap-highlight-color:transparent;letter-spacing:1px';
+    cbtn.addEventListener('click', copyMountLog);
+    document.body.appendChild(cbtn);
   }
   // Compute accelerometer magnitude — at rest this should be ~9.8 m/s² (1g).
   // Deviation from 1g indicates the vehicle is accelerating/decelerating/turning.
@@ -2077,6 +2087,63 @@ function renderDebugHud(){
     `gMAG  ${_msGyroMag.toFixed(1).padStart(7)}\n`+
     `gANG  ${_msGravAngle.toFixed(1).padStart(7)}°\n`+
     `t-st  ${String(Math.round((Date.now()-_msStateSince)/1000)).padStart(6)}s`;
+}
+
+// MS1.7: export the mount-state shadow data for the active trip, or the most
+// recently saved trip if none is active. Copies JSON to the clipboard.
+async function copyMountLog(){
+  let src = null;
+  if(TRIP.active){
+    src = { startMs: TRIP.startMs, distM: TRIP.distM, pts: TRIP.pts || [], mountLog: TRIP.mountLog || [] };
+  } else {
+    try {
+      const all = await dbAllReal();
+      if(all && all.length){
+        all.sort((a,b) => (b.startMs||0) - (a.startMs||0));
+        const t = all[0];
+        src = { startMs: t.startMs, distM: t.distM, pts: t.pts || [], mountLog: t.mountLog || [] };
+      }
+    } catch(_){}
+  }
+  const pts = (src && src.pts) || [];
+  const msCounts = { m:0, h:0, u:0 };
+  pts.forEach(p => { const c = p && p.ms; if(c==='h') msCounts.h++; else if(c==='u') msCounts.u++; else msCounts.m++; });
+  const payload = {
+    tuning: MOUNT_TUNING,
+    trip: src ? { startMs: src.startMs, distM: src.distM } : null,
+    points: pts.length,
+    msCounts,
+    log: (src && src.mountLog) || []
+  };
+  const text = JSON.stringify(payload, null, 2);
+  let ok = false;
+  try {
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      await navigator.clipboard.writeText(text);
+      ok = true;
+    }
+  } catch(_){}
+  if(!ok){
+    // Fallback: hidden textarea + execCommand (older iOS / non-secure context).
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+      document.body.appendChild(ta);
+      ta.focus(); ta.select();
+      ok = document.execCommand('copy');
+      ta.remove();
+    } catch(_){}
+  }
+  flashCopied(ok);
+}
+
+function flashCopied(ok){
+  const btn = document.getElementById('debugCopyLog');
+  if(!btn) return;
+  btn.textContent = ok ? 'copied ✓' : 'copy failed';
+  btn.style.background = ok ? '#3ddc97' : '#ef4444';
+  setTimeout(() => { btn.textContent = 'COPY LOG'; btn.style.background = '#3ddc97'; }, 1200);
 }
 
 requestAnimationFrame(loop);
