@@ -322,6 +322,16 @@ body.light #permOverlay{background:rgba(240,244,248,0.94)}
   display:flex;align-items:center;justify-content:center;padding:0;
   flex-shrink:0}
 #tripPauseBtn:active{transform:scale(.94)}
+/* Session MS.1: mount-state chip — compact, in the action row, state-colored */
+#mountChip{flex-shrink:0;height:60px;padding:0 10px;border-radius:14px;
+  background:var(--card);border:2px solid var(--border);color:var(--txt);
+  font-family:var(--fd);font-size:10px;font-weight:700;letter-spacing:.5px;
+  cursor:pointer;-webkit-tap-highlight-color:transparent;transition:all var(--tr);
+  display:flex;align-items:center;justify-content:center;white-space:nowrap}
+#mountChip:active{transform:scale(.94)}
+#mountChip.ms-mounted{border-color:var(--accent);color:var(--accent)}
+#mountChip.ms-handheld{border-color:var(--border);color:var(--txt2)}
+#mountChip.ms-uncertain{border-color:var(--warn);color:var(--warn)}
 
 /* Hint row below the action bar — used for the calibrate "hold" instruction.
    Kept as a separate row instead of inside the button so it doesn't crowd
@@ -1435,6 +1445,8 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
         <button id="tripBtn" class="actBtn">▶<br><span class="actBtnSub">START TRIP</span></button>
         <button id="summitBtn" class="actBtn">🏔️<br><span class="actBtnSub">MARK SUMMIT</span></button>
         <button id="tripPauseBtn" style="display:none">⏸</button>
+        <!-- Session MS.1: mount-state chip (shown only while a trip records). -->
+        <button id="mountChip" class="ms-mounted" style="display:none">🔒 MOUNTED</button>
       </div>
       <div id="zhintRow">
         <span id="zhint">Hold ZERO 1.5s to calibrate</span>
@@ -1869,6 +1881,12 @@ const S = {
   // Persisted to localStorage as tg_gref_v1.
   gRefX: 0, gRefY: -1, gRefZ: 0,  // default: gravity straight down in phone frame
   gRefValid: false,                 // becomes true after first calibration
+  // Session MS.1: mount-state machine (shadow mode). declared = the user's
+  // explicit word (mounted/handheld); inferred = the detector's read; state
+  // = the resolved MOUNTED | HANDHELD | UNCERTAIN shown on the chip.
+  mountDeclared: 'mounted',
+  mountInferred: 'mounted',
+  mountState: 'MOUNTED',
   // Session 1.7c: complementary filter state.
   // filtPitch/filtRoll hold the smoothed, turn-rejected output values.
   // lastFiltTs is the timestamp of the previous filter update — used to
@@ -2051,7 +2069,14 @@ function renderDebugHud(){
     `gRefY ${S.gRefY.toFixed(2).padStart(6)}\n`+
     `gRefZ ${S.gRefZ.toFixed(2).padStart(6)}\n`+
     `═ FILTER (1.7c) ═\n`+
-    `ALPHA ${(gyroMag > 15 ? '0.985 HIGH' : '0.920 LOW ').padStart(11)}`;
+    `ALPHA ${(gyroMag > 15 ? '0.985 HIGH' : '0.920 LOW ').padStart(11)}\n`+
+    `═ MOUNT (MS.1) ═\n`+
+    `DECL  ${S.mountDeclared.toUpperCase().padStart(9)}\n`+
+    `INFER ${S.mountInferred.toUpperCase().padStart(9)}\n`+
+    `STATE ${S.mountState.padStart(9)}\n`+
+    `gMAG  ${_msGyroMag.toFixed(1).padStart(7)}\n`+
+    `gANG  ${_msGravAngle.toFixed(1).padStart(7)}°\n`+
+    `t-st  ${String(Math.round((Date.now()-_msStateSince)/1000)).padStart(6)}s`;
 }
 
 requestAnimationFrame(loop);
@@ -3013,6 +3038,24 @@ function computeCalibratedAngles(){
 
    Returns null if calibrated angles aren't ready (motion not granted,
    no calibration vector, etc) — caller falls back to legacy Euler math. */
+
+// Session MS.1: mount-state detector tuning — ALL thresholds in one object
+// so field tuning is single-site. Shadow mode: these drive the chip + logs
+// only; nothing gates data yet.
+const MOUNT_TUNING = {
+  gyroSpikeDeg: 120,      // deg/s instantaneous = handheld signature
+  gyroSustainDeg: 60,     // deg/s sustained...
+  gyroSustainMs: 1200,    // ...for this long = handheld
+  gravAngleDeg: 40,       // deviation from calibrated gravity ref...
+  gravAngleMs: 1000,      // ...sustained = handheld (pick-up)
+  vehicleCalmMs: 20000,   // calm vehicle-like motion to infer re-mount
+  uncertainGraceMs: 4000  // conflict must persist this long before UNCERTAIN
+};
+// Module-level accumulators (timestamps; 0 = inactive).
+let _msGyroSusStart = 0, _msGravDevStart = 0, _msCalmStart = 0, _msConflictStart = 0;
+let _msStateSince = Date.now();   // when S.mountState last changed (HUD)
+let _msGyroMag = 0, _msGravAngle = 0;   // last computed values (HUD)
+
 function complementaryFilterUpdate(){
   const cal = computeCalibratedAngles();
   if(!cal) return null;
@@ -3084,6 +3127,10 @@ function complementaryFilterUpdate(){
   const sustainedAccel = S.accelDevMs > 500;
   const alpha = (turning || sustainedAccel) ? 0.985 : 0.92;
 
+  // Session MS.1: mount-state detector (shadow mode) — reuses values already
+  // computed this tick rather than recomputing.
+  updateMountDetector(gyroMag, accelDeviation, dt);
+
   // Gyro angular velocity for pitch and roll.
   // Mapping from device rotation rate to vehicle pitch/roll requires
   // knowing the mount orientation. For a dash-mounted phone in portrait:
@@ -3104,6 +3151,121 @@ function complementaryFilterUpdate(){
 
   return { pitch: S.filtPitch, roll: S.filtRoll };
 }
+
+/* ─── MOUNT-STATE DETECTOR (Session MS.1, shadow mode) ──────────────────
+   Observes motion to infer whether the phone is on its mount or in hand,
+   and resolves that against the user's declared state. Records transitions
+   but does NOT prompt or gate any data yet. */
+function updateMountDetector(gyroMag, accelDeviation, dt){
+  if(!S.motionLive) return;
+  const now = Date.now();
+  const T = MOUNT_TUNING;
+  _msGyroMag = gyroMag;
+
+  // ── HANDHELD evidence ──
+  let handheld = false, trigger = null;
+  // 1) instantaneous gyro spike
+  if(gyroMag > T.gyroSpikeDeg){ handheld = true; trigger = 'gyroSpike'; }
+  // 2) sustained gyro
+  if(gyroMag > T.gyroSustainDeg){
+    if(!_msGyroSusStart) _msGyroSusStart = now;
+    else if(now - _msGyroSusStart >= T.gyroSustainMs){ handheld = true; trigger = trigger || 'gyroSustain'; }
+  } else { _msGyroSusStart = 0; }
+  // 3) gravity-vector angle vs the calibrated reference (pick-up tilt)
+  const am = Math.sqrt(S.accelGravX*S.accelGravX + S.accelGravY*S.accelGravY + S.accelGravZ*S.accelGravZ);
+  let gravAngle = 0;
+  if(am > 1 && S.gRefValid){
+    // gRef is a unit vector; normalize current gravity, dot, arccos.
+    const dot = (S.accelGravX*S.gRefX + S.accelGravY*S.gRefY + S.accelGravZ*S.gRefZ) / am;
+    gravAngle = Math.acos(Math.max(-1, Math.min(1, dot))) * 180 / Math.PI;
+  }
+  _msGravAngle = gravAngle;
+  if(gravAngle > T.gravAngleDeg){
+    if(!_msGravDevStart) _msGravDevStart = now;
+    else if(now - _msGravDevStart >= T.gravAngleMs){ handheld = true; trigger = trigger || 'gravAngle'; }
+  } else { _msGravDevStart = 0; }
+
+  if(handheld){
+    S.mountInferred = 'handheld';
+    _msCalmStart = 0;
+  } else {
+    // MOUNTED evidence: calm (no handheld signature) sustained for vehicleCalmMs.
+    if(!_msCalmStart) _msCalmStart = now;
+    else if(now - _msCalmStart >= T.vehicleCalmMs){
+      if(S.mountInferred !== 'mounted'){ S.mountInferred = 'mounted'; trigger = 'calm'; }
+    }
+  }
+  resolveMountState(trigger || 'motion');
+}
+
+// Resolve declared + inferred → S.mountState. Declared 'handheld' is law
+// (downward); declared 'mounted' + inferred 'handheld' becomes UNCERTAIN only
+// after the conflict persists past uncertainGraceMs (shadow mode: chip + log,
+// no prompt). Logs every state change.
+function resolveMountState(trigger){
+  const now = Date.now();
+  let next;
+  if(S.mountDeclared === 'handheld'){
+    next = 'HANDHELD'; _msConflictStart = 0;
+  } else if(S.mountInferred === 'mounted'){
+    next = 'MOUNTED'; _msConflictStart = 0;
+  } else {
+    // declared mounted + inferred handheld → conflict
+    if(!_msConflictStart) _msConflictStart = now;
+    next = (now - _msConflictStart >= MOUNT_TUNING.uncertainGraceMs) ? 'UNCERTAIN' : S.mountState;
+  }
+  if(next !== S.mountState){
+    const from = S.mountState;
+    S.mountState = next;
+    _msStateSince = now;
+    logMountTransition(from, next, trigger);
+    updateMountChip();
+  }
+}
+
+// Shadow data: record every transition into the active trip (mirrors how pts
+// is handled — saved into the trip object + draft). Also console-logs so the
+// detector can be tuned without saving a trip.
+function logMountTransition(from, to, trigger){
+  const entry = { t: Date.now(), from, to, trigger };
+  if(TRIP.active){
+    if(!Array.isArray(TRIP.mountLog)) TRIP.mountLog = [];
+    TRIP.mountLog.push(entry);
+  }
+  if(window.tgDebug) console.log('[MOUNT]', from, '→', to, '(' + trigger + ')');
+}
+
+// One char per state for per-point tagging in tripIngestFix.
+function mountStateChar(){
+  return S.mountState === 'HANDHELD' ? 'h' : S.mountState === 'UNCERTAIN' ? 'u' : 'm';
+}
+
+// Mount chip — visible only while a trip is active. Shows the resolved state;
+// tap toggles the declared state (or, from UNCERTAIN, confirms the inferred).
+function updateMountChip(){
+  const chip = document.getElementById('mountChip');
+  if(!chip) return;
+  if(!TRIP.active){ chip.style.display = 'none'; return; }
+  chip.style.display = '';
+  let label, cls;
+  if(S.mountState === 'HANDHELD'){ label = '🤚 HANDHELD'; cls = 'ms-handheld'; }
+  else if(S.mountState === 'UNCERTAIN'){ label = '❓ UNCERTAIN'; cls = 'ms-uncertain'; }
+  else { label = '🔒 MOUNTED'; cls = 'ms-mounted'; }
+  chip.textContent = label;
+  chip.classList.remove('ms-mounted','ms-handheld','ms-uncertain');
+  chip.classList.add(cls);
+}
+
+document.getElementById('mountChip')?.addEventListener('click', () => {
+  if(S.mountState === 'UNCERTAIN'){
+    // Confirm the detector's read — resolves the conflict.
+    S.mountDeclared = S.mountInferred;
+  } else {
+    S.mountDeclared = (S.mountDeclared === 'mounted') ? 'handheld' : 'mounted';
+  }
+  resolveMountState('declared');
+  updateMountChip();
+});
 
 /* ─── PEAK-HOLD UPDATE (Session B.2a) ───────────────────────
    Maintains ghost-marker peak values for the gauge displays. Each axis
@@ -7650,6 +7812,13 @@ const CM_DEFS = {
     target: () => document.getElementById('flCreateBtn'),
     arrow: 'up',
     allowedModals: ['flp']
+  },
+  mountChip: {
+    icon: '🔒',
+    title: 'Mount Status',
+    body: 'Tap before taking the phone off the mount — keeps your trail data honest.',
+    target: () => document.getElementById('mountChip'),
+    arrow: 'down'
   }
 };
 
@@ -8668,6 +8837,7 @@ const TRIP = {
   minElevM:Infinity,
   movingMs:0,        // time spent moving (>0.5 m/s between fixes)
   lastFixMs:0,
+  mountLog:[],       // MS.1: mount-state transitions {t,from,to,trigger}
 };
 
 // Haversine distance in meters between two lat/lon points
@@ -8697,7 +8867,8 @@ function tripIngestFix(pos){
     lat:c.latitude, lon:c.longitude,
     elev: (c.altitude!=null && Number.isFinite(c.altitude)) ? c.altitude : null,
     t:Date.now(),
-    acc: (c.accuracy==null ? null : c.accuracy)
+    acc: (c.accuracy==null ? null : c.accuracy),
+    ms: mountStateChar()   // MS.1: per-point mount state ('m'|'h'|'u')
   };
   let accepted = false;
   if(TRIP.lastPt){
@@ -8815,6 +8986,7 @@ function tripStart(){
   TRIP.distM=0; TRIP.gainM=0; TRIP.lossM=0;
   TRIP.maxElevM=-Infinity; TRIP.minElevM=Infinity;
   TRIP.movingMs=0;
+  TRIP.mountLog=[];   // Session MS.1: mount-state transitions for this trip
   resetElevState();
   // Don't seed with a synthesized point. The first real GPS fix from
   // navigator.geolocation.watchPosition will become the start point in
@@ -8824,6 +8996,9 @@ function tripStart(){
   tripLive.classList.add('show');
   document.getElementById('tripPauseBtn').style.display = '';
   document.getElementById('tripPauseBtn').textContent = '⏸';
+  updateMountChip();   // MS.1: reveal the mount chip while recording
+  // One-time hint the first time the chip appears (no-op once seen).
+  if(typeof showCoachmark === 'function') setTimeout(() => showCoachmark('mountChip'), 600);
   // Body class drives CSS for trip-conditional UI (e.g. trail trip strip
   // only appears when there's actually a trip to display)
   document.body.classList.add('trip-active');
@@ -8888,6 +9063,7 @@ function tripReset(){
   tripBtn.classList.remove('paused');
   tripLive.classList.remove('show');
   document.getElementById('tripPauseBtn').style.display = 'none';
+  { const mc = document.getElementById('mountChip'); if(mc) mc.style.display = 'none'; }
   document.getElementById('liveBanner').classList.remove('show');
   document.getElementById('liveBanner').classList.remove('paused');
   document.body.classList.remove('trip-active');
@@ -9163,6 +9339,7 @@ async function saveDraft(){
     movingMs: TRIP.movingMs,
     pausedTotalMs: pausedTotal,
     pts: TRIP.pts,
+    mountLog: TRIP.mountLog || [],   // MS.1: persist mount transitions in the draft too
     savedAt: Date.now()
   };
   try { await dbPut(draft); } catch(e) { console.warn('Draft autosave failed:', e); }
@@ -9283,7 +9460,8 @@ document.getElementById('snSave').addEventListener('click', async ()=>{
     minElevM: TRIP.minElevM=== Infinity ? null : TRIP.minElevM,
     movingMs: TRIP.movingMs,
     pausedTotalMs: TRIP.pausedTotalMs,
-    pts: TRIP.pts
+    pts: TRIP.pts,
+    mountLog: TRIP.mountLog || []   // MS.1: shadow-mode mount transitions
   };
   try{
     await dbPut(trip);
@@ -9891,6 +10069,7 @@ flp?.addEventListener('click', e => { if(e.target === flp) flp.classList.remove(
     document.getElementById('tripPauseBtn').textContent = '⏸';
     document.body.classList.add('trip-active');
     refreshTripLive();
+    if(typeof updateMountChip === 'function') updateMountChip();   // MS.1
     if(typeof showAnglePinToast === 'function'){
       showAnglePinToast(`Resumed trip · ${distMi} mi so far`, null);
     }
@@ -9927,6 +10106,7 @@ flp?.addEventListener('click', e => { if(e.target === flp) flp.classList.remove(
     TRIP.movingMs = draft.movingMs;
     TRIP.pausedTotalMs = draft.pausedTotalMs || 0;
     TRIP.pts = draft.pts;
+    TRIP.mountLog = Array.isArray(draft.mountLog) ? draft.mountLog : [];   // MS.1
     TRIP.lastPt = draft.pts[draft.pts.length-1];
     ELEV_STATE.lastMilestoneFt = Math.floor(m2ft(draft.gainM) / 1000) * 1000;
     // Rebuild summit peak from saved fixes so post-resume descent
@@ -9955,6 +10135,7 @@ flp?.addEventListener('click', e => { if(e.target === flp) flp.classList.remove(
     document.getElementById('tripPauseBtn').textContent = '⏸';
     document.body.classList.add('trip-active');
     refreshTripLive();
+    if(typeof updateMountChip === 'function') updateMountChip();   // MS.1
     rcp.classList.remove('open');
   }, {once:true});
 
