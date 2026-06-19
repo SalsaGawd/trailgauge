@@ -48,6 +48,20 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 /* DnD/driving mode dims the pulse so it's still detectable in peripheral
    vision but doesn't draw the eye. Pulse stays — vibration mutes. */
 #ambientPulse.dnd{opacity:.45}
+/* BRK2.1: smooth fade-out for a break flash when NO hazard claims the pulse
+   slot. The glow normally comes from the keyframe animation (only while .show);
+   to fade we drop .show (stopping the animation) and apply this static water
+   glow that transitions opacity 1→0 over .8s. SCOPED to .break-fading so the
+   hazard pulse's base transition (.4s) and box-shadow animation are untouched —
+   a hazard taking the slot removes .break-fading (in setAmbient) and snaps in. */
+#ambientPulse.break-fading{
+  animation:none;
+  opacity:0;
+  transition:opacity .8s ease-out;
+  box-shadow:
+    inset 0 0 120px 20px rgba(var(--pulseR),var(--pulseG),var(--pulseB),.45),
+    inset 0 0 0 6px rgba(var(--pulseR),var(--pulseG),var(--pulseB),.75);
+}
 /* The glow itself is achieved with two stacked box-shadows:
    - Inner soft glow inset from the edges (the "atmosphere")
    - Hard inset border at the very edge (the "alarm rim")
@@ -1658,6 +1672,9 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
           <span id="alBreakDistVal">2 mi</span>
         </div>
       </div>
+      <div class="srow" style="border-bottom:none">
+        <div class="sinfo" style="max-width:none"><span class="sdesc" style="line-height:1.5">ℹ️ Reminders fire while the app is open. Pocket &amp; background alerts are coming in the App Store version.</span></div>
+      </div>
     </div>
 
     <!-- Pins section (collapsed by default) -->
@@ -1714,14 +1731,9 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
         <div class="sinfo"><span class="sname">Disclaimer</span><span class="sdesc">Legal terms &amp; limitations of use</span></div>
         <button class="modalbtn ghost" id="disclaimerBtn" style="padding:8px 14px;font-size:11px">View</button>
       </div>
-      <div class="srow">
+      <div class="srow" style="border-bottom:none">
         <div class="sinfo"><span class="sname">Mount Log</span><span class="sdesc">Copy mount-state diagnostics (last 3 trips)</span></div>
         <button id="copyMountLogBtn" class="modalbtn ghost" style="padding:8px 14px;font-size:11px">Copy Mount Log</button>
-      </div>
-      <!-- TEMP TEST BRK-T2: fast break-reminder test toggle (remove when done). -->
-      <div class="srow" style="border-bottom:none">
-        <div class="sinfo"><span class="sname">⚠️ Break Test Mode (20s)</span><span class="sdesc">Temporary — testing only</span></div>
-        <label class="tgl"><input type="checkbox" id="breakTestTgl"><span class="tsl"></span></label>
       </div>
     </div>
   </div>
@@ -8443,6 +8455,10 @@ const _pulseEl = document.getElementById('ambientPulse');
 // animation when an already-active alert is re-evaluated).
 function setAmbient(source, colorName){
   if(!_pulseEl) return;
+  // BRK2.1: cancel any in-progress break fade-out — whatever this call does
+  // (clear, or show a hazard/new pulse) must override the fade instantly so a
+  // hazard arriving mid-fade is never delayed or masked by opacity:0.
+  _pulseEl.classList.remove('break-fading');
   if(!source || !ALERTS.pulseEnabled){
     _pulseEl.classList.remove('show','dnd');
     ALERTS._activeSource = null;
@@ -8493,7 +8509,35 @@ function breakPulseFlash(){
   setAmbient('break', 'water');
   const dur = document.body.classList.contains('prof-offroad') ? 2500 : 4000;
   if(_breakFlashTimer) clearTimeout(_breakFlashTimer);
-  _breakFlashTimer = setTimeout(() => { try { evaluateAlerts(); } catch(_){} }, dur);
+  _breakFlashTimer = setTimeout(() => {
+    try {
+      // BRK2.1: same condition evaluateAlerts uses to pick a hazard source.
+      const hazard = ALERTS.pulseEnabled &&
+        (checkFireHazard() || checkWeatherHazard() || checkSunsetAlert());
+      if(hazard){
+        // Safety takes the slot NOW — restore the hazard pulse immediately, no
+        // fade. (setAmbient clears any .break-fading, so no opacity:0 masking.)
+        evaluateAlerts();
+        return;
+      }
+      // No hazard: fade the break glow out smoothly (~800ms) instead of snapping.
+      if(_pulseEl && ALERTS._activeSource === 'break'){
+        _pulseEl.classList.remove('show');       // stop the keyframe animation
+        _pulseEl.classList.add('break-fading');  // .8s opacity 1→0 transition
+        _breakFlashTimer = setTimeout(() => {
+          // If a hazard claimed the slot during the fade, setAmbient already
+          // removed .break-fading and took over — don't touch its state.
+          if(ALERTS._activeSource === 'break'){
+            _pulseEl.classList.remove('break-fading','dnd');
+            ALERTS._activeSource = null;
+          }
+          try { evaluateAlerts(); } catch(_){}   // confirm cleared / pick up a new hazard
+        }, 800);
+      } else {
+        evaluateAlerts();
+      }
+    } catch(_){}
+  }, dur);
 }
 
 // BRK.4: break-reminder check, run from the 1s trip tick (NOT inside
@@ -8503,18 +8547,12 @@ function breakPulseFlash(){
 // type mid-trip is clean), flash + vibrate (both self-gated) + tappable toast.
 function checkBreakReminder(){
   const isOffroad = document.body.classList.contains('prof-offroad');
-  // TEMP TEST BRK-T2: fast-test mode (localStorage tg_break_test==='1') overrides
-  // the real intervals with 20s time / 0.05mi distance. Remove this block + the
-  // settings toggle when done. All other logic identical.
-  let _brkTest = false; try { _brkTest = localStorage.getItem('tg_break_test')==='1'; } catch(_){}
-  const timeIntervalMs = _brkTest ? 20000 : ALERTS.breakTimeMin * 60000;
-  const distIntervalM  = _brkTest ? 0.05 * 1609.34 : ALERTS.breakDistMi * 1609.34;
-  const timeDue = (tripElapsedMs() - ALERTS._lastBreakMs) >= timeIntervalMs;
+  const timeDue = (tripElapsedMs() - ALERTS._lastBreakMs) >= ALERTS.breakTimeMin * 60000;
   let due;
   if(isOffroad){
     due = timeDue;                                  // Off-Road: time only
   } else if(ALERTS.breakType === 'distance'){
-    due = (TRIP.distM - ALERTS._lastBreakDistM) >= distIntervalM;
+    due = (TRIP.distM - ALERTS._lastBreakDistM) >= ALERTS.breakDistMi * 1609.34;
   } else {
     due = timeDue;                                  // Trail, time mode
   }
@@ -8944,18 +8982,6 @@ document.getElementById('disclaimerBtn')?.addEventListener('click', showDisclaim
 // MS1.8: in-app mount-log export (reachable from an installed PWA, unlike the
 // ?debug=1 COPY LOG button). Copies the last 3 trips' mount diagnostics.
 document.getElementById('copyMountLogBtn')?.addEventListener('click', exportMountLog);
-
-// TEMP TEST BRK-T2: settings toggle for fast break-reminder test mode. Reads/
-// writes localStorage 'tg_break_test' directly. Remove with the markup + the
-// checkBreakReminder override when done.
-(function(){
-  const t = document.getElementById('breakTestTgl');
-  if(!t) return;
-  try { t.checked = localStorage.getItem('tg_break_test') === '1'; } catch(_){}
-  t.addEventListener('change', () => {
-    try { localStorage.setItem('tg_break_test', t.checked ? '1' : '0'); } catch(_){}
-  });
-})();
 
 // Show Hints Again — clears all coachmark "seen" flags and replays.
 // Close the settings panel first so the user can actually see the
