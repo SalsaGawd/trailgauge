@@ -9991,16 +9991,16 @@ document.getElementById('texpHelp').addEventListener('click', showImportHelp);
 function showImportHelp(){
   const el = document.createElement('div');
   el.className = 'dangerSheet';
-  el.innerHTML = `<div class="dangerSheetBox">
+  el.innerHTML = `<div class="dangerSheetBox" style="padding:28px 22px calc(28px + env(safe-area-inset-bottom,0px))">
     <div class="dangerSheetTitle">Importing to onX &amp; Gaia</div>
-    <div class="dangerSheetBody">onX and Gaia don't support direct GPX hand-off from other apps — that's a limit on their side, not a bug here. It still takes 10 seconds:
-      <ol style="margin:10px 0 0;padding-left:20px;line-height:1.7">
-        <li>Tap <b>Export GPX</b>, then <b>Save to Files</b>.</li>
-        <li>Open onX (or Gaia).</li>
-        <li>In onX: <b>Menu → Content → Import</b>. In Gaia: <b>Saved → + → Import file</b>.</li>
+    <div class="dangerSheetBody" style="font-size:15px;color:var(--txt2)">onX and Gaia don't support direct GPX hand-off from other apps — that's a limit on their side, not a bug here. It still takes 10 seconds:
+      <ol style="margin:14px 0 0;padding-left:22px;line-height:1.5;color:var(--txt);font-size:15px">
+        <li style="margin-bottom:8px">Tap <b>Export GPX</b>, then <b>Save to Files</b>.</li>
+        <li style="margin-bottom:8px">Open onX (or Gaia).</li>
+        <li style="margin-bottom:8px">In onX: <b>Menu → Content → Import</b>. In Gaia: <b>Saved → + → Import file</b>.</li>
         <li>Pick the GPX you just saved.</li>
       </ol>
-      <div style="margin-top:12px">Your full route loads with all track points.</div>
+      <div style="margin-top:14px;color:var(--txt)">Your full route loads with all track points.</div>
     </div>
     <div class="dangerSheetBtns">
       <button class="modalbtn ghost" style="flex:1" id="_impOk">Got it</button>
