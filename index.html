@@ -7025,7 +7025,9 @@ function openWxPanel(){
   }
   // If we have data, render it now. Otherwise show a placeholder so the
   // panel doesn't look broken with empty cards and "—" everywhere.
-  if(S.weather){
+  // WX-TAP2: require .hourly too — a partial weather object (no hourly) must
+  // fall through to the placeholder rather than throwing on .hourly.time.
+  if(S.weather && S.weather.hourly){
     // Find the current hour index again (renderWx computes this; we recompute here).
     const now = new Date();
     const times = S.weather.hourly.time;
@@ -7132,13 +7134,19 @@ document.getElementById('wx').addEventListener('touchend', e => {
   }
 }, {passive: true});
 
-// Mouse fallback for desktop testing — simple click since there's no scroll
-// gesture to confuse with a tap.
-document.getElementById('wx').addEventListener('click', e => {
-  // Only fire for non-touch (mouse) — touch events also synthesize click,
-  // but our touchend handler above covered that path. detail===0 indicates
-  // synthetic click; detail>0 is a real mouse click.
-  if(e.detail > 0) openWxPanel();
+// Mouse fallback for desktop — touch taps are fully handled by the touchend
+// logic above. WX-TAP2: iOS synthesizes a `click` (with detail>=1) after touch
+// gestures, which slipped past the old `detail>0` guard and opened the panel on
+// downward drags touchend deliberately ignored. Track the last pointer type
+// instead and only open for a genuine MOUSE click. pointerdown fires before the
+// synthetic click with pointerType 'touch' on iOS, so the flag stays false there;
+// desktop mouse sets it true. Defaults false → can never spuriously open on touch.
+let _wxLastPointerMouse = false;
+document.getElementById('wx').addEventListener('pointerdown', e => {
+  _wxLastPointerMouse = (e.pointerType === 'mouse');
+}, {passive: true});
+document.getElementById('wx').addEventListener('click', () => {
+  if(_wxLastPointerMouse) openWxPanel();
 });
 document.getElementById('wxPanelClose').addEventListener('click', closeWxPanel);
 document.getElementById('wxPanelHandle').addEventListener('click', closeWxPanel);
