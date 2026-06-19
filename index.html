@@ -2093,27 +2093,6 @@ function renderDebugHud(){
       '-webkit-tap-highlight-color:transparent;letter-spacing:1px';
     cbtn.addEventListener('click', copyMountLog);
     document.body.appendChild(cbtn);
-    // TEMP TEST BRK-T: tappable BREAK TEST toggle — flips tg_break_test 0/1 and
-    // shows current state (amber = ON, fast 20s/0.05mi break intervals).
-    const tbtn = document.createElement('div');
-    tbtn.id = 'debugBreakTest';
-    const _bstate = () => { try { return localStorage.getItem('tg_break_test')==='1'; } catch(_){ return false; } };
-    const _brender = () => {
-      const on = _bstate();
-      tbtn.textContent = 'BREAK TEST: ' + (on ? 'ON' : 'OFF');
-      tbtn.style.background = on ? '#f0b429' : '#444';
-      tbtn.style.color = on ? '#000' : '#ccc';
-    };
-    tbtn.style.cssText = 'position:fixed;top:86px;left:8px;z-index:501;'+
-      'font-family:monospace;font-size:9px;font-weight:700;'+
-      'padding:5px 9px;border-radius:5px;cursor:pointer;pointer-events:auto;'+
-      '-webkit-tap-highlight-color:transparent;letter-spacing:1px';
-    tbtn.addEventListener('click', () => {
-      try { localStorage.setItem('tg_break_test', _bstate() ? '0' : '1'); } catch(_){}
-      _brender();
-    });
-    _brender();
-    document.body.appendChild(tbtn);
   }
   // Compute accelerometer magnitude — at rest this should be ~9.8 m/s² (1g).
   // Deviation from 1g indicates the vehicle is accelerating/decelerating/turning.
@@ -8519,18 +8498,12 @@ function breakPulseFlash(){
 // type mid-trip is clean), flash + vibrate (both self-gated) + tappable toast.
 function checkBreakReminder(){
   const isOffroad = document.body.classList.contains('prof-offroad');
-  // TEMP TEST BRK-T: fast-test mode (localStorage tg_break_test==='1') overrides
-  // the real intervals with 20s time / 0.05mi distance so a reminder can be
-  // verified in seconds. Remove this block + the debug toggle when done.
-  let _brkTest = false; try { _brkTest = localStorage.getItem('tg_break_test')==='1'; } catch(_){}
-  const timeIntervalMs = _brkTest ? 20000 : ALERTS.breakTimeMin * 60000;
-  const distIntervalM  = _brkTest ? 0.05 * 1609.34 : ALERTS.breakDistMi * 1609.34;
-  const timeDue = (tripElapsedMs() - ALERTS._lastBreakMs) >= timeIntervalMs;
+  const timeDue = (tripElapsedMs() - ALERTS._lastBreakMs) >= ALERTS.breakTimeMin * 60000;
   let due;
   if(isOffroad){
     due = timeDue;                                  // Off-Road: time only
   } else if(ALERTS.breakType === 'distance'){
-    due = (TRIP.distM - ALERTS._lastBreakDistM) >= distIntervalM;
+    due = (TRIP.distM - ALERTS._lastBreakDistM) >= ALERTS.breakDistMi * 1609.34;
   } else {
     due = timeDue;                                  // Trail, time mode
   }
