@@ -787,6 +787,12 @@ body.prof-trail #actionBar #anglePinBtn { display: none !important; }
 body.prof-trail #actionBar { justify-content: center; gap: 8px; }
 body.prof-trail #actionBar #tripBtn { max-width: 240px; flex: 0 1 240px; }
 body.prof-trail #actionBar #tripPauseBtn { flex: 0 0 48px; }
+/* BRK.6: Trail-only break button — fixed 48px like the pause button so it can't
+   stretch and unbalance the centered Start/Stop layout. Dimmed when reminders
+   are off, full opacity when on. */
+body.prof-trail #actionBar #breakBtn { flex: 0 0 48px; }
+#breakBtn { opacity: .4; transition: opacity .2s ease; }
+#breakBtn.brk-on { opacity: 1; }
 
 /* During active trip in trail mode, the bar holds STOP + MARK SUMMIT + pause.
    The 240px cap on tripBtn squeezes summit to a sliver on narrow phones.
@@ -1449,6 +1455,8 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
         <button id="tripBtn" class="actBtn">▶<br><span class="actBtnSub">START TRIP</span></button>
         <button id="summitBtn" class="actBtn">🏔️<br><span class="actBtnSub">MARK SUMMIT</span></button>
         <button id="tripPauseBtn" style="display:none">⏸</button>
+        <!-- BRK.6: Trail-only break-reminder quick toggle (shown only while a Trail trip records). -->
+        <button id="breakBtn" style="display:none">💧</button>
         <!-- Session MS.1: mount-state chip (shown only while a trip records). -->
         <button id="mountChip" class="ms-mounted" style="display:none">🔒 MOUNTED</button>
       </div>
@@ -1626,6 +1634,29 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
       <div class="srow">
         <div class="sinfo"><span class="sname">Severe Fire Warning</span><span class="sdesc">Alert when a wildfire is nearby or a Red Flag Warning is in effect</span></div>
         <label class="tgl"><input type="checkbox" id="alFireTgl" checked><span class="tsl"></span></label>
+      </div>
+      <div class="sectionDivider">Break Reminders</div>
+      <div class="srow">
+        <div class="sinfo"><span class="sname">Break Reminders</span><span class="sdesc">Nudge to stop for water &amp; a stretch during a trip</span></div>
+        <label class="tgl"><input type="checkbox" id="alBreakTgl"><span class="tsl"></span></label>
+      </div>
+      <div class="srow">
+        <div class="sinfo"><span class="sname">Trigger by Distance</span><span class="sdesc">Off = every X minutes · On = every X miles (Trail only — Off-Road uses time)</span></div>
+        <label class="tgl"><input type="checkbox" id="alBreakType"><span class="tsl"></span></label>
+      </div>
+      <div class="srow">
+        <div class="sinfo"><span class="sname">Time Interval</span><span class="sdesc">Minutes between break reminders</span></div>
+        <div class="thrwrap">
+          <input type="range" id="alBreakTimeSlider" min="20" max="120" value="60" step="5">
+          <span id="alBreakTimeVal">60 min</span>
+        </div>
+      </div>
+      <div class="srow">
+        <div class="sinfo"><span class="sname">Distance Interval</span><span class="sdesc">Miles between break reminders (Trail only)</span></div>
+        <div class="thrwrap">
+          <input type="range" id="alBreakDistSlider" min="0.5" max="5" value="2" step="0.5">
+          <span id="alBreakDistVal">2 mi</span>
+        </div>
       </div>
     </div>
 
@@ -5837,6 +5868,7 @@ function applyProfile(prof){
   // they linger on body from a hot reload during this session).
   document.body.classList.remove('prof-offroad','prof-trail','prof-hiking','prof-camping');
   document.body.classList.add('prof-' + prof);
+  if(typeof updateBreakBtn === 'function') updateBreakBtn();   // BRK.6: Trail-only button
   document.querySelectorAll('.profBtn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.prof === prof);
   });
@@ -8335,7 +8367,8 @@ const ALERT_COLORS = {
   yellow: {r:234, g:179, b:8 },
   green:  {r:61,  g:220, b:151},
   blue:   {r:59,  g:130, b:246},
-  purple: {r:168, g:85,  b:247}
+  purple: {r:168, g:85,  b:247},
+  water:  {r:56,  g:189, b:248}
 };
 
 const ALERTS = {
@@ -8348,9 +8381,15 @@ const ALERTS = {
   sunsetLeadMin:  30,
   sunsetColor:    'yellow',
   weatherColor:   'red',
+  breakRemindersEnabled: false,
+  breakType:      'time',   // 'time' | 'distance' (distance only honored in Trail)
+  breakTimeMin:   60,
+  breakDistMi:    2,
   // Runtime state — not persisted
-  _activeSource:  null,   // 'weather' | 'sunset' | null
-  _lastVibrateAt: 0
+  _activeSource:  null,   // 'weather' | 'sunset' | 'fire' | 'break' | null
+  _lastVibrateAt: 0,
+  _lastBreakMs:   0,
+  _lastBreakDistM:0
 };
 
 // Load any previously-saved settings
@@ -8358,7 +8397,7 @@ try {
   const raw = localStorage.getItem(ALERT_KEY);
   if(raw){
     const s = JSON.parse(raw);
-    for(const k of ['pulseEnabled','vibrateEnabled','dndMode','sunsetEnabled','weatherEnabled','fireEnabled']){
+    for(const k of ['pulseEnabled','vibrateEnabled','dndMode','sunsetEnabled','weatherEnabled','fireEnabled','breakRemindersEnabled']){
       if(typeof s[k] === 'boolean') ALERTS[k] = s[k];
     }
     if(typeof s.sunsetLeadMin === 'number' && s.sunsetLeadMin >= 5 && s.sunsetLeadMin <= 90){
@@ -8366,6 +8405,9 @@ try {
     }
     if(s.sunsetColor  && ALERT_COLORS[s.sunsetColor])  ALERTS.sunsetColor  = s.sunsetColor;
     if(s.weatherColor && ALERT_COLORS[s.weatherColor]) ALERTS.weatherColor = s.weatherColor;
+    if(typeof s.breakTimeMin === 'number') ALERTS.breakTimeMin = Math.min(120, Math.max(20, s.breakTimeMin));
+    if(typeof s.breakDistMi  === 'number') ALERTS.breakDistMi  = Math.min(5, Math.max(0.5, s.breakDistMi));
+    if(s.breakType === 'time' || s.breakType === 'distance') ALERTS.breakType = s.breakType;
   }
 } catch(_){}
 
@@ -8380,7 +8422,11 @@ function saveAlertSettings(){
       fireEnabled: ALERTS.fireEnabled,
       sunsetLeadMin: ALERTS.sunsetLeadMin,
       sunsetColor: ALERTS.sunsetColor,
-      weatherColor: ALERTS.weatherColor
+      weatherColor: ALERTS.weatherColor,
+      breakRemindersEnabled: ALERTS.breakRemindersEnabled,
+      breakType: ALERTS.breakType,
+      breakTimeMin: ALERTS.breakTimeMin,
+      breakDistMi: ALERTS.breakDistMi
     }));
   } catch(_){}
 }
@@ -8429,6 +8475,45 @@ function ambientVibrate(){
     try { navigator.vibrate([200, 80, 200]); } catch(_){}
   }
   ALERTS._lastVibrateAt = Date.now();
+}
+
+// BRK.3: brief water-blue "take a break" flash. Reuses the same single-source
+// pulse as hazards, then after a few seconds calls evaluateAlerts() to restore
+// any active hazard pulse (or clear it). setAmbient already respects
+// ALERTS.pulseEnabled (so the flash silently no-ops when the pulse is off — the
+// toast still shows). Off-Road gets a shorter flash so a driver isn't left with
+// a lingering glow. Profile is read from the body class (no S.profile exists).
+let _breakFlashTimer = null;
+function breakPulseFlash(){
+  setAmbient('break', 'water');
+  const dur = document.body.classList.contains('prof-offroad') ? 2500 : 4000;
+  if(_breakFlashTimer) clearTimeout(_breakFlashTimer);
+  _breakFlashTimer = setTimeout(() => { try { evaluateAlerts(); } catch(_){} }, dur);
+}
+
+// BRK.4: break-reminder check, run from the 1s trip tick (NOT inside
+// evaluateAlerts, whose single-source priority chain would let any active
+// hazard suppress it). Trail honors breakType (time or distance); Off-Road is
+// time-only regardless of breakType. On fire: reset BOTH markers (so switching
+// type mid-trip is clean), flash + vibrate (both self-gated) + tappable toast.
+function checkBreakReminder(){
+  const isOffroad = document.body.classList.contains('prof-offroad');
+  const timeDue = (tripElapsedMs() - ALERTS._lastBreakMs) >= ALERTS.breakTimeMin * 60000;
+  let due;
+  if(isOffroad){
+    due = timeDue;                                  // Off-Road: time only
+  } else if(ALERTS.breakType === 'distance'){
+    due = (TRIP.distM - ALERTS._lastBreakDistM) >= ALERTS.breakDistMi * 1609.34;
+  } else {
+    due = timeDue;                                  // Trail, time mode
+  }
+  if(!due) return;
+  // Reset both markers regardless of mode so a mid-trip type switch is clean.
+  ALERTS._lastBreakMs = tripElapsedMs();
+  ALERTS._lastBreakDistM = TRIP.distM;
+  breakPulseFlash();                                // respects pulseEnabled
+  ambientVibrate();                                 // respects vibrateEnabled + DnD
+  showAlertToast('💧 Time for a break — water & stretch', ()=>{});
 }
 
 // Check if hazardous weather is in the next 3 hours
@@ -8708,7 +8793,8 @@ function maybeInfoToast(source){
     alDndTgl:   'dndMode',
     alSunTgl:   'sunsetEnabled',
     alWxTgl:    'weatherEnabled',
-    alFireTgl:  'fireEnabled'
+    alFireTgl:  'fireEnabled',
+    alBreakTgl: 'breakRemindersEnabled'
   };
   for(const [id, key] of Object.entries(tgls)){
     const el = document.getElementById(id);
@@ -8730,6 +8816,39 @@ function maybeInfoToast(source){
       sliderVal.textContent = ALERTS.sunsetLeadMin + 'm';
       saveAlertSettings();
       evaluateAlerts();
+    });
+  }
+  // BRK.5: break-reminder type toggle (off = time, on = distance) + interval
+  // sliders. Type/sliders persist only (no evaluateAlerts — break logic runs on
+  // the trip tick, not the alert evaluator).
+  const alBreakType = document.getElementById('alBreakType');
+  if(alBreakType){
+    alBreakType.checked = (ALERTS.breakType === 'distance');
+    alBreakType.addEventListener('change', () => {
+      ALERTS.breakType = alBreakType.checked ? 'distance' : 'time';
+      saveAlertSettings();
+    });
+  }
+  const brkTime = document.getElementById('alBreakTimeSlider');
+  const brkTimeVal = document.getElementById('alBreakTimeVal');
+  if(brkTime && brkTimeVal){
+    brkTime.value = ALERTS.breakTimeMin;
+    brkTimeVal.textContent = ALERTS.breakTimeMin + ' min';
+    brkTime.addEventListener('input', () => {
+      ALERTS.breakTimeMin = parseInt(brkTime.value, 10);
+      brkTimeVal.textContent = ALERTS.breakTimeMin + ' min';
+      saveAlertSettings();
+    });
+  }
+  const brkDist = document.getElementById('alBreakDistSlider');
+  const brkDistVal = document.getElementById('alBreakDistVal');
+  if(brkDist && brkDistVal){
+    brkDist.value = ALERTS.breakDistMi;
+    brkDistVal.textContent = ALERTS.breakDistMi + ' mi';
+    brkDist.addEventListener('input', () => {
+      ALERTS.breakDistMi = parseFloat(brkDist.value);
+      brkDistVal.textContent = ALERTS.breakDistMi + ' mi';
+      saveAlertSettings();
     });
   }
   // Color pickers — sync initial active state then wire taps
@@ -9167,6 +9286,10 @@ function tripStart(){
   TRIP.distM=0; TRIP.gainM=0; TRIP.lossM=0;
   TRIP.maxElevM=-Infinity; TRIP.minElevM=Infinity;
   TRIP.movingMs=0;
+  // BRK.4: anchor break markers at 0 so the first reminder lands one full
+  // interval in, not at t=0 (elapsed + distM both start at 0 here).
+  ALERTS._lastBreakMs = 0;
+  ALERTS._lastBreakDistM = 0;
   TRIP.mountLog=[];   // Session MS.1: mount-state transitions for this trip
   resetElevState();
   // Don't seed with a synthesized point. The first real GPS fix from
@@ -9178,6 +9301,7 @@ function tripStart(){
   document.getElementById('tripPauseBtn').style.display = '';
   document.getElementById('tripPauseBtn').textContent = '⏸';
   updateMountChip();   // MS.1: reveal the mount chip while recording
+  updateBreakBtn();    // BRK.6: reveal the break button (Trail mode only)
   // One-time hint the first time the chip appears (no-op once seen).
   if(typeof showCoachmark === 'function') setTimeout(() => showCoachmark('mountChip'), 600);
   // Body class drives CSS for trip-conditional UI (e.g. trail trip strip
@@ -9245,6 +9369,7 @@ function tripReset(){
   tripLive.classList.remove('show');
   document.getElementById('tripPauseBtn').style.display = 'none';
   { const mc = document.getElementById('mountChip'); if(mc) mc.style.display = 'none'; }
+  { const bb = document.getElementById('breakBtn'); if(bb) bb.style.display = 'none'; }
   document.getElementById('liveBanner').classList.remove('show');
   document.getElementById('liveBanner').classList.remove('paused');
   document.body.classList.remove('trip-active');
@@ -9267,8 +9392,31 @@ tripBtn.addEventListener('click',()=>{
 });
 document.getElementById('tripPauseBtn').addEventListener('click', tripPause);
 
+// BRK.6: the 💧 break button is Trail-only and only while recording. One helper
+// keeps its visibility + on/off appearance correct across start/stop/profile
+// toggle. Off-Road never shows it (break reminders are settings-only there).
+function updateBreakBtn(){
+  const btn = document.getElementById('breakBtn');
+  if(!btn) return;
+  const show = TRIP.active && document.body.classList.contains('prof-trail');
+  btn.style.display = show ? '' : 'none';
+  btn.classList.toggle('brk-on', !!ALERTS.breakRemindersEnabled);
+}
+document.getElementById('breakBtn').addEventListener('click', () => {
+  ALERTS.breakRemindersEnabled = !ALERTS.breakRemindersEnabled;
+  saveAlertSettings();
+  const tgl = document.getElementById('alBreakTgl');   // keep settings in sync
+  if(tgl) tgl.checked = ALERTS.breakRemindersEnabled;
+  updateBreakBtn();
+});
+
 // Live tick for time display (since GPS may not fire every second)
-setInterval(()=>{ if(TRIP.active) refreshTripLive(); }, 1000);
+setInterval(()=>{
+  if(!TRIP.active) return;
+  refreshTripLive();
+  // BRK.4: independent break-reminder check — gated, never suppressed by hazards.
+  if(ALERTS.breakRemindersEnabled && !TRIP.paused) checkBreakReminder();
+}, 1000);
 // Autosave draft every 30s while recording — survives tab close / crash.
 // We ALSO save on every accepted GPS fix (in tripIngestFix) and on
 // visibilitychange/pagehide, so this 30s timer is a backup for the case
@@ -10325,6 +10473,9 @@ flp?.addEventListener('click', e => { if(e.target === flp) flp.classList.remove(
     document.body.classList.add('trip-active');
     refreshTripLive();
     if(typeof updateMountChip === 'function') updateMountChip();   // MS.1
+    if(typeof updateBreakBtn === 'function') updateBreakBtn();     // BRK.6
+    // BRK.4: anchor break markers to the resumed position so we don't nag instantly.
+    ALERTS._lastBreakMs = tripElapsedMs(); ALERTS._lastBreakDistM = TRIP.distM;
     if(typeof showAnglePinToast === 'function'){
       showAnglePinToast(`Resumed trip · ${distMi} mi so far`, null);
     }
@@ -10391,6 +10542,9 @@ flp?.addEventListener('click', e => { if(e.target === flp) flp.classList.remove(
     document.body.classList.add('trip-active');
     refreshTripLive();
     if(typeof updateMountChip === 'function') updateMountChip();   // MS.1
+    if(typeof updateBreakBtn === 'function') updateBreakBtn();     // BRK.6
+    // BRK.4: anchor break markers to the resumed position so we don't nag instantly.
+    ALERTS._lastBreakMs = tripElapsedMs(); ALERTS._lastBreakDistM = TRIP.distM;
     rcp.classList.remove('open');
   }, {once:true});
 
