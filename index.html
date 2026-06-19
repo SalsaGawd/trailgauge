@@ -1673,7 +1673,7 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
         </div>
       </div>
       <div class="srow" style="border-bottom:none">
-        <div class="sinfo" style="max-width:none"><span class="sdesc" style="line-height:1.5">ℹ️ Reminders fire while the app is open. Pocket &amp; background alerts are coming in the App Store version.</span></div>
+        <div class="sinfo" style="max-width:none"><span class="sdesc" style="line-height:1.5">ℹ️ Reminders fire while the app is open. Pocket &amp; background alerts coming in the App Store version.</span></div>
       </div>
     </div>
 
@@ -8507,7 +8507,7 @@ function ambientVibrate(){
 let _breakFlashTimer = null;
 function breakPulseFlash(){
   setAmbient('break', 'water');
-  const dur = document.body.classList.contains('prof-offroad') ? 2500 : 4000;
+  const dur = document.body.classList.contains('prof-offroad') ? 5000 : 7500;
   if(_breakFlashTimer) clearTimeout(_breakFlashTimer);
   _breakFlashTimer = setTimeout(() => {
     try {
