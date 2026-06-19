@@ -1790,6 +1790,7 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
         <span>📤 Export GPX</span>
         <span style="font-size:9px;color:var(--txt3);font-weight:400">Opens in onX, Gaia, Caltopo &amp; more</span>
       </button>
+      <button id="texpHelp" style="background:none;border:none;color:var(--txt3);font-family:var(--fm);font-size:10px;text-decoration:underline;padding:4px 2px;cursor:pointer;align-self:flex-start;text-align:left">How to import to onX / Gaia →</button>
     </div>
   </div>
 </div>
@@ -9982,6 +9983,33 @@ document.getElementById('texpWaze').addEventListener('click', () => {
   if(setShareToTripStart()) document.getElementById('shWaze').click();
   texp.classList.remove('open');
 });
+
+// EXP.4: onX/Gaia import help. Clones showDisclaimer's .dangerSheet modal
+// (z-index 310 overlays the #texp sheet). onX and Gaia can't accept a GPX via
+// the iOS share sheet, so this explains the quick Files → Import workaround.
+document.getElementById('texpHelp').addEventListener('click', showImportHelp);
+function showImportHelp(){
+  const el = document.createElement('div');
+  el.className = 'dangerSheet';
+  el.innerHTML = `<div class="dangerSheetBox">
+    <div class="dangerSheetTitle">Importing to onX &amp; Gaia</div>
+    <div class="dangerSheetBody">onX and Gaia don't support direct GPX hand-off from other apps — that's a limit on their side, not a bug here. It still takes 10 seconds:
+      <ol style="margin:10px 0 0;padding-left:20px;line-height:1.7">
+        <li>Tap <b>Export GPX</b>, then <b>Save to Files</b>.</li>
+        <li>Open onX (or Gaia).</li>
+        <li>In onX: <b>Menu → Content → Import</b>. In Gaia: <b>Saved → + → Import file</b>.</li>
+        <li>Pick the GPX you just saved.</li>
+      </ol>
+      <div style="margin-top:12px">Your full route loads with all track points.</div>
+    </div>
+    <div class="dangerSheetBtns">
+      <button class="modalbtn ghost" style="flex:1" id="_impOk">Got it</button>
+    </div></div>`;
+  document.body.appendChild(el);
+  const cleanup = () => el.remove();
+  el.querySelector('#_impOk').onclick = cleanup;
+  el.addEventListener('click', e => { if(e.target === el) cleanup(); });
+}
 
 // Save a point from the saved trip as a new pin. Default behavior: uses
 // the trip's starting GPS point. Power users can also tap any spot on the
