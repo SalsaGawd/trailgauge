@@ -1714,9 +1714,14 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
         <div class="sinfo"><span class="sname">Disclaimer</span><span class="sdesc">Legal terms &amp; limitations of use</span></div>
         <button class="modalbtn ghost" id="disclaimerBtn" style="padding:8px 14px;font-size:11px">View</button>
       </div>
-      <div class="srow" style="border-bottom:none">
+      <div class="srow">
         <div class="sinfo"><span class="sname">Mount Log</span><span class="sdesc">Copy mount-state diagnostics (last 3 trips)</span></div>
         <button id="copyMountLogBtn" class="modalbtn ghost" style="padding:8px 14px;font-size:11px">Copy Mount Log</button>
+      </div>
+      <!-- TEMP TEST BRK-T2: fast break-reminder test toggle (remove when done). -->
+      <div class="srow" style="border-bottom:none">
+        <div class="sinfo"><span class="sname">⚠️ Break Test Mode (20s)</span><span class="sdesc">Temporary — testing only</span></div>
+        <label class="tgl"><input type="checkbox" id="breakTestTgl"><span class="tsl"></span></label>
       </div>
     </div>
   </div>
@@ -8498,12 +8503,18 @@ function breakPulseFlash(){
 // type mid-trip is clean), flash + vibrate (both self-gated) + tappable toast.
 function checkBreakReminder(){
   const isOffroad = document.body.classList.contains('prof-offroad');
-  const timeDue = (tripElapsedMs() - ALERTS._lastBreakMs) >= ALERTS.breakTimeMin * 60000;
+  // TEMP TEST BRK-T2: fast-test mode (localStorage tg_break_test==='1') overrides
+  // the real intervals with 20s time / 0.05mi distance. Remove this block + the
+  // settings toggle when done. All other logic identical.
+  let _brkTest = false; try { _brkTest = localStorage.getItem('tg_break_test')==='1'; } catch(_){}
+  const timeIntervalMs = _brkTest ? 20000 : ALERTS.breakTimeMin * 60000;
+  const distIntervalM  = _brkTest ? 0.05 * 1609.34 : ALERTS.breakDistMi * 1609.34;
+  const timeDue = (tripElapsedMs() - ALERTS._lastBreakMs) >= timeIntervalMs;
   let due;
   if(isOffroad){
     due = timeDue;                                  // Off-Road: time only
   } else if(ALERTS.breakType === 'distance'){
-    due = (TRIP.distM - ALERTS._lastBreakDistM) >= ALERTS.breakDistMi * 1609.34;
+    due = (TRIP.distM - ALERTS._lastBreakDistM) >= distIntervalM;
   } else {
     due = timeDue;                                  // Trail, time mode
   }
@@ -8933,6 +8944,18 @@ document.getElementById('disclaimerBtn')?.addEventListener('click', showDisclaim
 // MS1.8: in-app mount-log export (reachable from an installed PWA, unlike the
 // ?debug=1 COPY LOG button). Copies the last 3 trips' mount diagnostics.
 document.getElementById('copyMountLogBtn')?.addEventListener('click', exportMountLog);
+
+// TEMP TEST BRK-T2: settings toggle for fast break-reminder test mode. Reads/
+// writes localStorage 'tg_break_test' directly. Remove with the markup + the
+// checkBreakReminder override when done.
+(function(){
+  const t = document.getElementById('breakTestTgl');
+  if(!t) return;
+  try { t.checked = localStorage.getItem('tg_break_test') === '1'; } catch(_){}
+  t.addEventListener('change', () => {
+    try { localStorage.setItem('tg_break_test', t.checked ? '1' : '0'); } catch(_){}
+  });
+})();
 
 // Show Hints Again — clears all coachmark "seen" flags and replays.
 // Close the settings panel first so the user can actually see the
