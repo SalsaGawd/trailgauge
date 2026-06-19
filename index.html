@@ -28,9 +28,20 @@ body.light{
   --border:#cbd5e0; --txt:#1a202c; --txt2:#4a5568; --txt3:#a0aec0;
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--txt);
+html,body{width:100%;height:100%;overflow:hidden;overscroll-behavior:none;background:var(--bg);color:var(--txt);
   font-family:var(--fb);-webkit-font-smoothing:antialiased;touch-action:none;
   user-select:none;-webkit-user-select:none}
+/* FX-OVERSCROLL: the shell (html/body/#app/#main) is fixed-height + overflow
+   hidden, so the document itself never scrolls — only these inner areas do.
+   `overscroll-behavior:contain` stops a scroll that hits its end from chaining
+   up to the document and firing the iOS rubber-band bounce. Each scroller keeps
+   its own -webkit-overflow-scrolling:touch (declared in its own rule), so
+   momentum scrolling is unchanged. #main is included for Trail mode (where it
+   becomes the scroller); it's a harmless no-op while overflow:hidden. */
+#main, #gsec, #firePanelBody, #wxPanelHourly, #hscroll, #stsh,
+#tlsh, #snsh, #tdsh, #rcsh, #shsh, #pnssh, #plsh, #pdsh, #flsh, #texpsh{
+  overscroll-behavior: contain;
+}
 
 /* ─── AMBIENT ALERT PULSE OVERLAY ────────────────────────────
    Full-viewport overlay that pulses a colored glow inward from the edges.
