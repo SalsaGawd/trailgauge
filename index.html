@@ -10386,6 +10386,32 @@ window.addEventListener('orientationchange',()=>{setTimeout(resize,250);});
 
 // resize() and initOri() already ran higher up — no need to call them again here.
 startGPS();
+
+// FX-OVERSCROLL2: JS rubber-band fallback for iOS < 16, where CSS
+// overscroll-behavior is unsupported. Only install when the CSS property is
+// absent — on iOS 16+ the FX-OVERSCROLL CSS rule already handles it, so we must
+// NOT double-handle (that would needlessly block scroll there). A non-passive
+// document touchmove preventDefaults the gesture UNLESS it started inside a known
+// inner scroller. "Inside a scroller" is identified with closest() against a
+// selector list (cleanest + reliable: it walks ancestors and matches the FIRST
+// scroller container, so nested targets like the Leaflet map inside
+// #firePanelBody resolve correctly). The list mirrors the CSS contain set plus
+// the other native scrollers (#fbsheet feedback modal, .onbCard, #plList);
+// #plFolderFilter sits inside #plsh so it's covered by the parent.
+(function(){
+  try { if(window.CSS && CSS.supports && CSS.supports('overscroll-behavior','none')) return; } catch(_){ /* no CSS.supports → install the guard */ }
+  const SCROLLERS = '#gsec, #firePanelBody, #wxPanelHourly, #hscroll, #stsh, #fbsheet,' +
+    ' .onbCard, #plList, #tlsh, #snsh, #tdsh, #rcsh, #shsh, #pnssh, #plsh, #pdsh, #flsh, #texpsh';
+  document.addEventListener('touchmove', e => {
+    const t = e.target;
+    if(t && t.closest){
+      if(t.closest(SCROLLERS)) return;   // inside a real scroller — let it scroll
+      // Trail mode makes #main itself the scroller (CSS body.prof-trail #main).
+      if(document.body.classList.contains('prof-trail') && t.closest('#main')) return;
+    }
+    if(e.cancelable) e.preventDefault();   // else this gesture would bounce the document
+  }, {passive:false});
+})();
 setTimeout(()=>{if(!S.weather)loadCachedWx();},3000);
 setInterval(()=>{if(S.lat&&S.lon)fetchWx(S.lat,S.lon);},15*60*1000);
 setInterval(()=>{if(S.wxTs)setWDot((Date.now()-S.wxTs)>S.wxStale?'stale':'cached');},60000);
