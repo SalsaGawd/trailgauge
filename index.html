@@ -1778,11 +1778,18 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
   <div id="texpsh">
     <div class="mhdl"></div>
     <div class="mtl"><span>Export / Share Trip</span></div>
-    <div style="display:flex;flex-direction:column;gap:8px">
-      <button class="modalbtn ghost" id="texpGPX">📄 GPX (.gpx) — Gaia, onX, most apps</button>
-      <button class="modalbtn ghost" id="texpKML">🌎 KML (.kml) — Google Earth</button>
-      <button class="modalbtn ghost" id="texpJSON">🗂 JSON (.json) — full backup</button>
-      <button class="modalbtn ghost" id="texpMaps">🗺 Open in Maps…</button>
+    <div class="sectionDivider">Navigate to start point</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+      <button class="modalbtn ghost" id="texpApple">🗺 Apple Maps</button>
+      <button class="modalbtn ghost" id="texpGoogle">🗺 Google Maps</button>
+      <button class="modalbtn ghost" id="texpWaze">🗺 Waze</button>
+    </div>
+    <div class="sectionDivider">Export full trip</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+      <button class="modalbtn ghost" id="texpGPX" style="display:flex;flex-direction:column;align-items:flex-start;gap:2px">
+        <span>📤 Export GPX</span>
+        <span style="font-size:9px;color:var(--txt3);font-weight:400">Opens in onX, Gaia, Caltopo &amp; more</span>
+      </button>
     </div>
   </div>
 </div>
@@ -9953,28 +9960,27 @@ document.getElementById('texpGPX').addEventListener('click', () => {
   if(_currentTrip) exportGPX(_currentTrip);
   texp.classList.remove('open');
 });
-document.getElementById('texpKML').addEventListener('click', () => {
-  if(_currentTrip) exportKML(_currentTrip);
+// EXP.3: nav rows reuse the existing #shp Apple/Google/Waze handlers verbatim.
+// Point the shared _shareLat/_shareLon at the trip's START point, then dispatch
+// the same button's click so the identical url-scheme + web-fallback logic runs
+// (no #shp markup/handlers touched, no deeplink logic duplicated).
+function setShareToTripStart(){
+  if(!_currentTrip || !_currentTrip.pts || !_currentTrip.pts.length) return false;
+  const s = _currentTrip.pts[0];
+  _shareLat = s.lat; _shareLon = s.lon;
+  return true;
+}
+document.getElementById('texpApple').addEventListener('click', () => {
+  if(setShareToTripStart()) document.getElementById('shAppleMaps').click();
   texp.classList.remove('open');
 });
-document.getElementById('texpJSON').addEventListener('click', () => {
-  if(_currentTrip) exportJSON(_currentTrip);
+document.getElementById('texpGoogle').addEventListener('click', () => {
+  if(setShareToTripStart()) document.getElementById('shGoogleMaps').click();
   texp.classList.remove('open');
 });
-// Open in Maps… — route the trip's START point through the existing #shp maps
-// menu (mirrors the pin detail's pdOpenMaps behavior).
-document.getElementById('texpMaps').addEventListener('click', () => {
-  if(!_currentTrip || !_currentTrip.pts || !_currentTrip.pts.length){ texp.classList.remove('open'); return; }
-  const start = _currentTrip.pts[0];
-  _shareLat = start.lat;
-  _shareLon = start.lon;
+document.getElementById('texpWaze').addEventListener('click', () => {
+  if(setShareToTripStart()) document.getElementById('shWaze').click();
   texp.classList.remove('open');
-  setTimeout(() => {
-    shCoords.innerHTML = `<b>${start.lat.toFixed(6)}, ${start.lon.toFixed(6)}</b>`;
-    document.getElementById('shHint').textContent = '';
-    document.getElementById('shDropPin').style.display = 'none';
-    shp.classList.add('open');
-  }, 200);
 });
 
 // Save a point from the saved trip as a new pin. Default behavior: uses
@@ -10121,46 +10127,6 @@ async function shareTripFile(content, filename, mime, title){
   setTimeout(()=>URL.revokeObjectURL(url), 1000);
 }
 
-// EXP.1: KML 2.2 export — a single LineString Placemark. NOTE coordinate order
-// is lon,lat,elev (the flip from GPX's lat,lon).
-function exportKML(trip){
-  const safeName = escapeXml(trip.name);
-  const coords = (trip.pts||[]).map(p=>{
-    const e = (p.elev!=null) ? p.elev.toFixed(1) : '0';
-    return `${p.lon.toFixed(7)},${p.lat.toFixed(7)},${e}`;
-  }).join('\n          ');
-  const kml = `<?xml version="1.0" encoding="UTF-8"?>
-<kml xmlns="http://www.opengis.net/kml/2.2">
-  <Document>
-    <name>${safeName}</name>
-    <Placemark>
-      <name>${safeName}</name>
-      <LineString>
-        <tessellate>1</tessellate>
-        <coordinates>
-          ${coords}
-        </coordinates>
-      </LineString>
-    </Placemark>
-  </Document>
-</kml>`;
-  shareTripFile(kml, tripFileBase(trip)+'.kml', 'application/vnd.google-earth.kml+xml', trip.name || 'Trip');
-}
-
-// EXP.1: full-fidelity JSON backup — the complete trip record (incl. pts[] and
-// mountLog when present) for archival / re-import.
-function exportJSON(trip){
-  const rec = {
-    id: trip.id, name: trip.name,
-    startMs: trip.startMs, endMs: trip.endMs,
-    distM: trip.distM, gainM: trip.gainM, lossM: trip.lossM,
-    maxElevM: trip.maxElevM, minElevM: trip.minElevM,
-    movingMs: trip.movingMs, pausedTotalMs: trip.pausedTotalMs,
-    pts: trip.pts || []
-  };
-  if(trip.mountLog) rec.mountLog = trip.mountLog;
-  shareTripFile(JSON.stringify(rec, null, 2), tripFileBase(trip)+'.json', 'application/json', trip.name || 'Trip');
-}
 function escapeXml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));}
 
 let rt;
