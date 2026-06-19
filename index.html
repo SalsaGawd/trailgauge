@@ -9396,6 +9396,13 @@ document.getElementById('tripPauseBtn').addEventListener('click', tripPause);
 // keeps its visibility + on/off appearance correct across start/stop/profile
 // toggle. Off-Road never shows it (break reminders are settings-only there).
 function updateBreakBtn(){
+  // applyProfile() runs at init (before `const TRIP` is declared), so this can
+  // be called inside TRIP's temporal dead zone. NOTE: `typeof TRIP` does NOT
+  // help — typeof still throws a ReferenceError for a lexically-declared (const)
+  // binding in its TDZ. Probe with try/catch and bail out cleanly. The button's
+  // correct state is set on the next call (trip start/stop/profile toggle), so
+  // nothing is lost.
+  try { void TRIP; } catch(_){ return; }
   const btn = document.getElementById('breakBtn');
   if(!btn) return;
   const show = TRIP.active && document.body.classList.contains('prof-trail');

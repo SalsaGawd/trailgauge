@@ -28,7 +28,7 @@
 
 // ↑ BUMP THIS when shipping a new version of the app. Clears old caches
 //   and forces clients to fetch fresh shell on next launch.
-const CACHE_VERSION = 'tg-v20-58';
+const CACHE_VERSION = 'tg-v20-59';
 
 const CACHE_SHELL  = `${CACHE_VERSION}-shell`;
 const CACHE_VENDOR = `${CACHE_VERSION}-vendor`;
