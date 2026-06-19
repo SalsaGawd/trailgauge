@@ -1077,7 +1077,7 @@ body.prof-trail.trip-active #trailTripStrip{display:flex}
 .calib{animation:cflash .6s ease!important}
 
 /* Shared modal styling for trip panels */
-#tlp,#snp,#tdp,#rcp,#shp,#pnsp,#plp,#pdp,#flp{position:fixed;inset:0;z-index:101;display:flex;align-items:flex-end;
+#tlp,#snp,#tdp,#rcp,#shp,#pnsp,#plp,#pdp,#flp,#texp{position:fixed;inset:0;z-index:101;display:flex;align-items:flex-end;
   background:rgba(0,0,0,.65);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);opacity:0;pointer-events:none;transition:opacity .3s ease}
 #tdp{z-index:102} /* trip detail sits above the trips list when both are open */
 #snp{z-index:103} /* save modal sits above all — it owns unsaved data */
@@ -1086,12 +1086,13 @@ body.prof-trail.trip-active #trailTripStrip{display:flex}
 #pnsp{z-index:104} /* pin save modal beats pin detail — defensive in case parent isn't closed */
 #plp{z-index:102}
 #pdp{z-index:103} /* pin detail sits above pin list */
-#tlp.open,#snp.open,#tdp.open,#rcp.open,#shp.open,#pnsp.open,#plp.open,#pdp.open,#flp.open{opacity:1;pointer-events:all}
-#tlsh,#snsh,#tdsh,#rcsh,#shsh,#pnssh,#plsh,#pdsh,#flsh{width:100%;background:var(--card);border-radius:20px 20px 0 0;border-top:1px solid var(--border);
+#texp{z-index:104} /* trip export menu — above trip detail */
+#tlp.open,#snp.open,#tdp.open,#rcp.open,#shp.open,#pnsp.open,#plp.open,#pdp.open,#flp.open,#texp.open{opacity:1;pointer-events:all}
+#tlsh,#snsh,#tdsh,#rcsh,#shsh,#pnssh,#plsh,#pdsh,#flsh,#texpsh{width:100%;background:var(--card);border-radius:20px 20px 0 0;border-top:1px solid var(--border);
   padding:16px 20px calc(20px + var(--sb));transform:translateY(100%);
   transition:transform .35s cubic-bezier(.34,1.56,.64,1);
   max-height:80vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
-#tlp.open #tlsh,#snp.open #snsh,#tdp.open #tdsh,#rcp.open #rcsh,#shp.open #shsh,#pnsp.open #pnssh,#plp.open #plsh,#pdp.open #pdsh,#flp.open #flsh{transform:translateY(0)}
+#tlp.open #tlsh,#snp.open #snsh,#tdp.open #tdsh,#rcp.open #rcsh,#shp.open #shsh,#pnsp.open #pnssh,#plp.open #plsh,#pdp.open #pdsh,#flp.open #flsh,#texp.open #texpsh{transform:translateY(0)}
 
 /* Pin save modal field styling */
 .pinFieldLbl{font-family:var(--fd);font-size:9px;letter-spacing:1.5px;
@@ -1732,7 +1733,7 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
       <button class="modalbtn ghost"   id="tdSavePin">Save Spot as Pin</button>
       <button class="modalbtn primary" id="tdShareCard">Share as Image Card</button>
       <button class="modalbtn ghost" id="tdRename">Rename</button>
-      <button class="modalbtn ghost" id="tdExport">Export GPX</button>
+      <button class="modalbtn ghost" id="tdExport">Export / Share</button>
       <button class="modalbtn danger" id="tdDelete">Delete</button>
     </div>
   </div>
@@ -1769,6 +1770,20 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
       <button class="modalbtn ghost"   id="shShare">Share via…</button>
     </div>
     <div id="shHint" style="margin-top:10px;font-family:var(--fm);font-size:9px;color:var(--txt3);text-align:center;line-height:1.5"></div>
+  </div>
+</div>
+
+<!-- Trip export / share menu (EXP.1) — clones the #shp sheet pattern -->
+<div id="texp">
+  <div id="texpsh">
+    <div class="mhdl"></div>
+    <div class="mtl"><span>Export / Share Trip</span></div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button class="modalbtn ghost" id="texpGPX">📄 GPX (.gpx) — Gaia, onX, most apps</button>
+      <button class="modalbtn ghost" id="texpKML">🌎 KML (.kml) — Google Earth</button>
+      <button class="modalbtn ghost" id="texpJSON">🗂 JSON (.json) — full backup</button>
+      <button class="modalbtn ghost" id="texpMaps">🗺 Open in Maps…</button>
+    </div>
   </div>
 </div>
 
@@ -9927,9 +9942,39 @@ document.getElementById('tdDelete').addEventListener('click', async ()=>{
   await renderTripsList();
 });
 
+// EXP.3: the trip "Export / Share" button opens the unified format menu.
+const texp = document.getElementById('texp');
 document.getElementById('tdExport').addEventListener('click',()=>{
   if(!_currentTrip) return;
-  exportGPX(_currentTrip);
+  texp.classList.add('open');
+});
+texp.addEventListener('click', e => { if(e.target === texp) texp.classList.remove('open'); });
+document.getElementById('texpGPX').addEventListener('click', () => {
+  if(_currentTrip) exportGPX(_currentTrip);
+  texp.classList.remove('open');
+});
+document.getElementById('texpKML').addEventListener('click', () => {
+  if(_currentTrip) exportKML(_currentTrip);
+  texp.classList.remove('open');
+});
+document.getElementById('texpJSON').addEventListener('click', () => {
+  if(_currentTrip) exportJSON(_currentTrip);
+  texp.classList.remove('open');
+});
+// Open in Maps… — route the trip's START point through the existing #shp maps
+// menu (mirrors the pin detail's pdOpenMaps behavior).
+document.getElementById('texpMaps').addEventListener('click', () => {
+  if(!_currentTrip || !_currentTrip.pts || !_currentTrip.pts.length){ texp.classList.remove('open'); return; }
+  const start = _currentTrip.pts[0];
+  _shareLat = start.lat;
+  _shareLon = start.lon;
+  texp.classList.remove('open');
+  setTimeout(() => {
+    shCoords.innerHTML = `<b>${start.lat.toFixed(6)}, ${start.lon.toFixed(6)}</b>`;
+    document.getElementById('shHint').textContent = '';
+    document.getElementById('shDropPin').style.display = 'none';
+    shp.classList.add('open');
+  }, 200);
 });
 
 // Save a point from the saved trip as a new pin. Default behavior: uses
@@ -10046,17 +10091,75 @@ function exportGPX(trip){
 ${segXml}
   </trk>
 </gpx>`;
-  const blob=new Blob([gpx],{type:'application/gpx+xml'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
-  // Strip to filesystem-safe characters; fall back to a date-based name if
-  // the trip name was entirely emoji or special characters.
-  let stripped = trip.name.replace(/[^a-z0-9_\-]+/gi,'_').replace(/^_+|_+$/g,'').slice(0,40);
-  if(!stripped) stripped = 'trip_'+new Date(trip.startMs).toISOString().slice(0,10);
-  const fname = stripped + '.gpx';
-  a.href=url; a.download=fname;
-  document.body.appendChild(a); a.click();
-  setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 100);
+  shareTripFile(gpx, tripFileBase(trip)+'.gpx', 'application/gpx+xml', trip.name || 'Trip');
+}
+
+// Filesystem-safe base name shared by all trip exporters: alnum/underscore,
+// capped at 40 chars, with a date-based fallback for emoji-only trip names.
+function tripFileBase(trip){
+  let s = String(trip.name||'').replace(/[^a-z0-9_\-]+/gi,'_').replace(/^_+|_+$/g,'').slice(0,40);
+  if(!s) s = 'trip_'+new Date(trip.startMs).toISOString().slice(0,10);
+  return s;
+}
+
+// EXP.2: route every trip file export through the native share sheet so an iOS
+// home-screen PWA gets a real "Save to Files / send to app" sheet instead of a
+// blob the OS opens as a bare document. Falls back to an <a download> blob on
+// desktop / browsers without file-share support.
+async function shareTripFile(content, filename, mime, title){
+  const file = new File([content], filename, {type:mime});
+  try {
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({files:[file], title});
+      return;
+    }
+  } catch(e){ if(e && e.name==='AbortError') return; /* user cancelled */ }
+  // desktop / unsupported fallback: <a download> blob
+  const url = URL.createObjectURL(file);
+  const a=document.createElement('a'); a.href=url; a.download=filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+}
+
+// EXP.1: KML 2.2 export — a single LineString Placemark. NOTE coordinate order
+// is lon,lat,elev (the flip from GPX's lat,lon).
+function exportKML(trip){
+  const safeName = escapeXml(trip.name);
+  const coords = (trip.pts||[]).map(p=>{
+    const e = (p.elev!=null) ? p.elev.toFixed(1) : '0';
+    return `${p.lon.toFixed(7)},${p.lat.toFixed(7)},${e}`;
+  }).join('\n          ');
+  const kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>${safeName}</name>
+    <Placemark>
+      <name>${safeName}</name>
+      <LineString>
+        <tessellate>1</tessellate>
+        <coordinates>
+          ${coords}
+        </coordinates>
+      </LineString>
+    </Placemark>
+  </Document>
+</kml>`;
+  shareTripFile(kml, tripFileBase(trip)+'.kml', 'application/vnd.google-earth.kml+xml', trip.name || 'Trip');
+}
+
+// EXP.1: full-fidelity JSON backup — the complete trip record (incl. pts[] and
+// mountLog when present) for archival / re-import.
+function exportJSON(trip){
+  const rec = {
+    id: trip.id, name: trip.name,
+    startMs: trip.startMs, endMs: trip.endMs,
+    distM: trip.distM, gainM: trip.gainM, lossM: trip.lossM,
+    maxElevM: trip.maxElevM, minElevM: trip.minElevM,
+    movingMs: trip.movingMs, pausedTotalMs: trip.pausedTotalMs,
+    pts: trip.pts || []
+  };
+  if(trip.mountLog) rec.mountLog = trip.mountLog;
+  shareTripFile(JSON.stringify(rec, null, 2), tripFileBase(trip)+'.json', 'application/json', trip.name || 'Trip');
 }
 function escapeXml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));}
 
