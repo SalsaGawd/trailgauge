@@ -540,6 +540,16 @@ body.light #permOverlay{background:rgba(240,244,248,0.94)}
 /* FD.2b: county line — readable (txt2, same as meta), not the invisible-secondary trap. */
 .fpFireCounty{font-family:var(--fm);font-size:11px;color:var(--txt2);margin-top:2px}
 .fpFireDate{font-family:var(--fm);font-size:10px;color:var(--txt3);margin-top:2px}
+/* FIRE-FILTER.1: minor-incidents collapsible — secondary but findable (dashed
+   separator + readable txt2 label), not the invisible-secondary trap. */
+.fpMinorToggle{display:block;width:100%;text-align:left;background:none;
+  border:none;border-top:1px dashed var(--border);margin-top:8px;padding:10px 2px;
+  cursor:pointer;font-family:var(--fm);font-size:11px;color:var(--txt2);letter-spacing:.3px;
+  -webkit-tap-highlight-color:transparent}
+.fpMinorToggle:active{opacity:.6}
+.fpMinorBody{margin-top:6px}
+.fpMinorNote{font-family:var(--fm);font-size:10px;color:var(--txt3);line-height:1.5;
+  margin:0 0 8px;padding:6px 8px;border-left:2px solid var(--border);background:var(--bg2);border-radius:4px}
 .fpRx{font-family:var(--fm);font-size:12px;color:var(--txt3);padding:6px 0;border-bottom:1px solid var(--border)}
 .fpForest{border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:16px;background:var(--card)}
 .fpForestName{font-family:var(--fd);font-size:14px;font-weight:700;color:var(--accent)}
@@ -7416,7 +7426,9 @@ function renderFireChip(){
   } else {
     const wf = (d.fires || []).filter(f => f.type === 'WF');
     if(wf.length){
-      const n = wf[0];   // API returns WF distance-sorted
+      // FIRE-FILTER.1 B2: nearest by EXPLICIT min distance, not wf[0] — chip
+      // border + "Nearest fire" are now immune to list order (tier re-sorts etc).
+      const n = wf.reduce((min,f)=> (!min || f.distance_mi < min.distance_mi) ? f : min, null);
       if(n.distance_mi < 10) border = 'var(--danger)';
       else if(n.distance_mi < 25) border = 'var(--warn)';
       val = 'Nearest fire: ' + n.name + ' · ' + n.distance_mi + 'mi · ' + age;
@@ -7749,6 +7761,39 @@ document.getElementById('firePanelSections')?.addEventListener('click', e => {
   });
 });
 
+// FIRE-FILTER.1 A2: delegated toggle for the "minor incidents" collapsible.
+// (Separate from the .fpFire handler above; a toggle tap is not inside a row.)
+document.getElementById('firePanelSections')?.addEventListener('click', e => {
+  const tog = e.target.closest('.fpMinorToggle');
+  if(!tog) return;
+  const body = tog.nextElementSibling;
+  if(!body || !body.classList.contains('fpMinorBody')) return;
+  const label = tog.dataset.label || 'minor incidents';
+  const nowOpen = body.hasAttribute('hidden');   // currently hidden → about to open
+  if(nowOpen){ body.removeAttribute('hidden'); tog.setAttribute('aria-expanded','true');  tog.textContent = '▴ Hide ' + label; }
+  else       { body.setAttribute('hidden','');  tog.setAttribute('aria-expanded','false'); tog.textContent = '▾ Show ' + label; }
+});
+
+// FIRE-FILTER.1 A2: one WF row's markup (shared by the shown list + minor block).
+// Identical to the FD.1 tappable row — extracted so both render the same.
+function fpFireRow(f){
+  const accent = f.distance_mi < 10 ? 'red' : (f.distance_mi < 25 ? 'amber' : '');
+  return '<div class="fpFire ' + accent + '" role="button" tabindex="0"' +
+    ' data-firename="' + escapeHtml(f.name) + '"' +
+    ' data-lat="' + f.lat + '" data-lon="' + f.lon + '"' +
+    ' data-acres="' + (f.acres != null ? f.acres : '') + '">' +
+    '<div class="fpFireName">' + escapeHtml(f.name) + '</div>' +
+    '<div class="fpFireMeta">' + f.distance_mi + ' mi · ' +
+    (f.acres != null ? f.acres.toLocaleString() + ' ac' : 'size n/a') +
+    (f.containment != null ? ' · ' + f.containment + '% contained' : '') +
+    ((f.acres === 0 && f.containment == null) ? ' <span style="opacity:.55">· initial report — size unverified</span>' : '') +
+    '</div>' +
+    (f.county ? '<div class="fpFireCounty">📍 ' + escapeHtml(_countyLabel(f.county)) + '</div>' : '') +
+    (f.discovered ? '<div class="fpFireDate">Discovered ' + escapeHtml(_fpDate(f.discovered)) + '</div>' : '') +
+    '<div class="fpFireMap">🗺 View on map ›</div>' +
+    '</div>';
+}
+
 // FD.2a: HARDENED name match against the cached perimeters. A wrong perimeter on
 // a fire is a trust-killing error, so we bias hard toward "no perimeter":
 //   1. Normalize both sides (trim + case-fold + collapse whitespace).
@@ -7924,30 +7969,28 @@ function renderFirePanel(){
     }
     html += '</div>';
   }
-  // 3. Wildfires (WF)
+  // 3. Wildfires (WF) — FIRE-FILTER.1 A2: split sized/close (shown) from distant
+  // 0-acre dispatch noise (minor, gated behind a toggle). Operates on the LOCAL
+  // filtered copy only — never mutates S.fire.fires, so the map (buildFireMap)
+  // and pulse (computeFireThreat) keep reading the FULL list. Untagged fires
+  // (pre-server-redeploy) have no tier → treated as shown, preserving old behavior.
   const wf = (d.fires || []).filter(f => f.type === 'WF');
+  const wfShown = wf.filter(f => f.tier !== 'minor');
+  const wfMinor = wf.filter(f => f.tier === 'minor');
   html += '<div class="fpSection"><div class="fpHdr">Wildfires within 100mi</div>';
-  if(wf.length){
-    for(const f of wf){
-      const accent = f.distance_mi < 10 ? 'red' : (f.distance_mi < 25 ? 'amber' : '');
-      // FD.1a: each WF row is tappable → focus the map on this fire.
-      html += '<div class="fpFire ' + accent + '" role="button" tabindex="0"' +
-        ' data-firename="' + escapeHtml(f.name) + '"' +
-        ' data-lat="' + f.lat + '" data-lon="' + f.lon + '"' +
-        ' data-acres="' + (f.acres != null ? f.acres : '') + '">' +
-        '<div class="fpFireName">' + escapeHtml(f.name) + '</div>' +
-        '<div class="fpFireMeta">' + f.distance_mi + ' mi · ' +
-        (f.acres != null ? f.acres.toLocaleString() + ' ac' : 'size n/a') +
-        (f.containment != null ? ' · ' + f.containment + '% contained' : '') +
-        ((f.acres === 0 && f.containment == null) ? ' <span style="opacity:.55">· initial report — size unverified</span>' : '') +
-        '</div>' +
-        (f.county ? '<div class="fpFireCounty">📍 ' + escapeHtml(_countyLabel(f.county)) + '</div>' : '') +
-        (f.discovered ? '<div class="fpFireDate">Discovered ' + escapeHtml(_fpDate(f.discovered)) + '</div>' : '') +
-        '<div class="fpFireMap">🗺 View on map ›</div>' +
-        '</div>';
-    }
-  } else {
+  if(wfShown.length){
+    for(const f of wfShown) html += fpFireRow(f);
+  } else if(!wfMinor.length){
     html += '<div class="fpEmpty">No wildfires reported within 100mi.</div>';
+  }
+  // A2/A3: distant 0-acre dispatches behind a collapsible, honest toggle.
+  if(wfMinor.length){
+    const minorLabel = wfMinor.length + ' minor incident' + (wfMinor.length === 1 ? '' : 's') + ' (0-acre dispatches)';
+    html += '<button class="fpMinorToggle" type="button" aria-expanded="false" data-label="' + escapeHtml(minorLabel) + '">▾ Show ' + escapeHtml(minorLabel) + '</button>' +
+      '<div class="fpMinorBody" hidden>' +
+      '<div class="fpMinorNote">Small unsized dispatch reports (often urban/structure). Shown for awareness; may not be wildfires.</div>';
+    for(const f of wfMinor) html += fpFireRow(f);
+    html += '</div>';
   }
   html += '</div>';
   // 4. Prescribed burns (RX) — only if present
@@ -8859,7 +8902,10 @@ function computeFireThreat(){
   if(!ALERTS.fireEnabled) return null;
   if(!S.fire || !Array.isArray(S.fire.fires)) return null;
   const wf = S.fire.fires.filter(f=>f.type==='WF');
-  const nearest = wf.length ? wf[0] : null;  // API pre-sorts by distance
+  // FIRE-FILTER.1 B1: nearest by EXPLICIT min distance, NOT wf[0]. Safety must
+  // never depend on array order — a close fire pulses even if the list is later
+  // re-sorted by tier/size. No acreage check: a close 0-acre fire still pulses.
+  const nearest = wf.reduce((min,f)=> (!min || f.distance_mi < min.distance_mi) ? f : min, null);
   if(nearest && nearest.distance_mi < 10)
     return {tier:'red', key:'wf:'+nearest.name, name:nearest.name, dist:nearest.distance_mi};
   const rf = Array.isArray(S.fire.alerts) &&
