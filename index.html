@@ -622,9 +622,13 @@ body.light #permOverlay{background:rgba(240,244,248,0.94)}
   line-height:1;padding:2px 8px;cursor:pointer;opacity:.65;pointer-events:auto;position:relative;z-index:1;
   -webkit-tap-highlight-color:transparent}
 .fbDismiss:active{opacity:1}
-/* TEMP instrument: tiny version marker (reflects the LOADED index.html shell). */
-#verMarker{position:fixed;left:6px;bottom:6px;z-index:500;font-family:var(--fm);
-  font-size:9px;opacity:.4;color:var(--txt3);letter-spacing:.5px;pointer-events:none}
+/* TEMP instrument: LOUD full-width version bar across the very top — unmissable,
+   so the loaded shell version is readable on-device at a glance. pointer-events:
+   none so it can't block taps on the UI underneath. */
+#verMarker{position:fixed;top:0;left:0;right:0;z-index:99999;
+  font-family:var(--fm);font-size:16px;font-weight:700;opacity:1;letter-spacing:1px;
+  color:#000;background:#39ff14;text-align:center;padding:6px 8px;
+  border-bottom:2px solid #000;pointer-events:none}
 /* Session C2b: amber fire toast (clone of #anglePinToast, warn-colored) */
 #fireToast{position:fixed;top:calc(60px + env(safe-area-inset-top,0px));
   left:50%;transform:translate(-50%,-20px);z-index:251;
@@ -10860,8 +10864,9 @@ startGPS();
 // const lives in index.html so it reflects the ACTUAL loaded shell — it MUST be
 // bumped in lockstep with sw.js CACHE_VERSION. If the on-device marker shows
 // anything other than the latest, the device is running a stale app shell.
-const APP_SHELL_VERSION = 'tg-v20-75';
-{ const _vm = document.getElementById('verMarker'); if(_vm) _vm.textContent = APP_SHELL_VERSION; }
+const APP_SHELL_VERSION = 'tg-v20-76';
+{ const _vm = document.getElementById('verMarker'); if(_vm) _vm.textContent = 'SHELL ' + APP_SHELL_VERSION; }
+try { document.title = document.title + ' [' + APP_SHELL_VERSION + ']'; } catch(_){}
 
 // FX-OVERSCROLL2: JS rubber-band fallback for iOS < 16, where CSS
 // overscroll-behavior is unsupported. Only install when the CSS property is
