@@ -622,6 +622,9 @@ body.light #permOverlay{background:rgba(240,244,248,0.94)}
   line-height:1;padding:2px 8px;cursor:pointer;opacity:.65;pointer-events:auto;position:relative;z-index:1;
   -webkit-tap-highlight-color:transparent}
 .fbDismiss:active{opacity:1}
+/* TEMP instrument: tiny version marker (reflects the LOADED index.html shell). */
+#verMarker{position:fixed;left:6px;bottom:6px;z-index:500;font-family:var(--fm);
+  font-size:9px;opacity:.4;color:var(--txt3);letter-spacing:.5px;pointer-events:none}
 /* Session C2b: amber fire toast (clone of #anglePinToast, warn-colored) */
 #fireToast{position:fixed;top:calc(60px + env(safe-area-inset-top,0px));
   left:50%;transform:translate(-50%,-20px);z-index:251;
@@ -1413,6 +1416,9 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
 
   <!-- Session C2b: persistent severe-fire banner. Tap → confirm-to-hide. -->
   <div id="fireBanner" role="button"></div>
+
+  <!-- TEMP instrument: loaded-shell version marker (set from APP_SHELL_VERSION). -->
+  <div id="verMarker"></div>
 
   <!-- Persistent live trip overlay — visible whenever a trip is active.
        Glanceable status bar; tapping opens the trip controls. -->
@@ -10849,6 +10855,13 @@ window.addEventListener('orientationchange',()=>{setTimeout(resize,250);});
 
 // resize() and initOri() already ran higher up — no need to call them again here.
 startGPS();
+
+// TEMP instrument: stamp the loaded-shell version into the corner marker. This
+// const lives in index.html so it reflects the ACTUAL loaded shell — it MUST be
+// bumped in lockstep with sw.js CACHE_VERSION. If the on-device marker shows
+// anything other than the latest, the device is running a stale app shell.
+const APP_SHELL_VERSION = 'tg-v20-75';
+{ const _vm = document.getElementById('verMarker'); if(_vm) _vm.textContent = APP_SHELL_VERSION; }
 
 // FX-OVERSCROLL2: JS rubber-band fallback for iOS < 16, where CSS
 // overscroll-behavior is unsupported. Only install when the CSS property is
