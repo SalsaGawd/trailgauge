@@ -612,12 +612,14 @@ body.light #permOverlay{background:rgba(240,244,248,0.94)}
   color:#ff8a80;cursor:pointer;-webkit-tap-highlight-color:transparent;text-align:center}
 #fireBanner.show{display:flex;align-items:center;gap:8px}
 /* FIRE-BANNER-TAP: body text (tap → view on map) + secondary × dismiss. */
-/* POLISH.1 A: cursor:pointer so iOS Safari synthesizes a click on taps that land
-   on the text span (the parent #fireBanner's cursor:pointer doesn't propagate
-   click-synthesis to a non-interactive child on iOS). */
-.fbText{flex:1;text-align:center;min-width:0;cursor:pointer}
+/* POLISH.1b A: pointer-events:none so taps on the text pass THROUGH to
+   #fireBanner itself (which carries cursor:pointer + the listener) — iOS won't
+   reliably synthesize a click on the inline child, so we don't depend on it. */
+.fbText{flex:1;text-align:center;min-width:0;pointer-events:none}
+/* The × is a sibling button (renderFireBanner builds span + button), kept
+   pointer-events:auto + above so it still receives its own taps. */
 .fbDismiss{flex:0 0 auto;background:none;border:none;color:#ff8a80;font-size:20px;
-  line-height:1;padding:2px 8px;cursor:pointer;opacity:.65;
+  line-height:1;padding:2px 8px;cursor:pointer;opacity:.65;pointer-events:auto;position:relative;z-index:1;
   -webkit-tap-highlight-color:transparent}
 .fbDismiss:active{opacity:1}
 /* Session C2b: amber fire toast (clone of #anglePinToast, warn-colored) */
@@ -9025,6 +9027,34 @@ function renderFireBanner(){
 // FIRE-BANNER-TAP: one delegated listener (survives renderFireBanner's innerHTML
 // rebuilds; no per-render rebinding). The × branch early-returns with
 // stopPropagation, so it never also fires the body→map action.
+// POLISH.1b: the banner body action — open the fire section, then focus the map
+// on the nearest fire. Pulls the FULL nearest fire (the banner/threat object
+// lacks lat/lon/acres) via the same explicit-min-distance logic computeFireThreat
+// uses.
+function fireBannerViewOnMap(){
+  openFirePanel();
+  const wf = (S.fire && Array.isArray(S.fire.fires) ? S.fire.fires : []).filter(f => f.type === 'WF');
+  const nearest = wf.reduce((min,f)=> (!min || f.distance_mi < min.distance_mi) ? f : min, null);
+  if(nearest && Number.isFinite(nearest.lat) && Number.isFinite(nearest.lon)){
+    focusFireOnMap({ name: nearest.name, lat: nearest.lat, lon: nearest.lon, acres: nearest.acres });
+  }
+}
+
+// POLISH.1b: robust iOS tap. iOS often does NOT synthesize a click on the banner
+// body, so we ALSO bind touchend (fires reliably). Double-fire guard: a body
+// touchend calls preventDefault (suppresses the synthesized click) AND stamps
+// _fbTouchTs, which the click handler checks. The dismiss button bails on touchend
+// (no preventDefault) so its own synthesized click still reaches the dismiss branch.
+let _fbTouchTs = 0;
+document.getElementById('fireBanner')?.addEventListener('touchend', (e) => {
+  const el = document.getElementById('fireBanner');
+  if(!el || !el.dataset.key) return;
+  if(e.target.closest('.fbDismiss')) return;   // let the dismiss button's click branch handle it
+  e.preventDefault();                          // suppress the synthesized click (no double-fire)
+  _fbTouchTs = Date.now();
+  fireBannerViewOnMap();
+}, {passive:false});
+
 document.getElementById('fireBanner')?.addEventListener('click', (e) => {
   const el = document.getElementById('fireBanner');
   if(!el || !el.dataset.key) return;   // banner not in an active red-threat state
@@ -9034,16 +9064,9 @@ document.getElementById('fireBanner')?.addEventListener('click', (e) => {
     showFireHideSheet(el.dataset.key, parseFloat(el.dataset.dist));
     return;
   }
-  // Body tap → open the fire section, then focus the map on the nearest fire.
-  openFirePanel();
-  // Pull the FULL nearest fire (banner/threat object lacks lat/lon/acres) using
-  // the SAME explicit-min-distance logic computeFireThreat uses (Layer B).
-  const wf = (S.fire && Array.isArray(S.fire.fires) ? S.fire.fires : []).filter(f => f.type === 'WF');
-  const nearest = wf.reduce((min,f)=> (!min || f.distance_mi < min.distance_mi) ? f : min, null);
-  if(nearest && Number.isFinite(nearest.lat) && Number.isFinite(nearest.lon)){
-    focusFireOnMap({ name: nearest.name, lat: nearest.lat, lon: nearest.lon, acres: nearest.acres });
-  }
-  // else: no resolvable fire — the panel is open; don't throw (focus is skipped).
+  // Body tap. Skip if a touchend just handled this tap (iOS); else run it (mouse).
+  if(Date.now() - _fbTouchTs < 700) return;
+  fireBannerViewOnMap();
 });
 
 // FIRE-BANNER-TAP: the original confirm-to-hide sheet, extracted verbatim so the
