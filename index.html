@@ -610,7 +610,13 @@ body.light #permOverlay{background:rgba(240,244,248,0.94)}
 #fireBanner{display:none;padding:8px 14px;font-size:13px;font-weight:600;
   background:rgba(220,60,50,.16);border-bottom:1px solid var(--danger, #e25);
   color:#ff8a80;cursor:pointer;-webkit-tap-highlight-color:transparent;text-align:center}
-#fireBanner.show{display:block}
+#fireBanner.show{display:flex;align-items:center;gap:8px}
+/* FIRE-BANNER-TAP: body text (tap → view on map) + secondary × dismiss. */
+.fbText{flex:1;text-align:center;min-width:0}
+.fbDismiss{flex:0 0 auto;background:none;border:none;color:#ff8a80;font-size:20px;
+  line-height:1;padding:2px 8px;cursor:pointer;opacity:.65;
+  -webkit-tap-highlight-color:transparent}
+.fbDismiss:active{opacity:1}
 /* Session C2b: amber fire toast (clone of #anglePinToast, warn-colored) */
 #fireToast{position:fixed;top:calc(60px + env(safe-area-inset-top,0px));
   left:50%;transform:translate(-50%,-20px);z-index:251;
@@ -8982,22 +8988,47 @@ function renderFireBanner(){
   if(!el) return;
   const t = computeFireThreat();
   const show = !!(t && t.tier==='red' && !isFireAcked(t.key, t.dist));
-  if(show) el.textContent = '🔥 SEVERE — '+t.name+' · '+
-    t.dist.toFixed(1)+' mi away · tap for options';
+  // FIRE-BANNER-TAP: body span (tap → view fire on map) + secondary × dismiss.
+  // innerHTML now (was textContent), so the fire name MUST be escaped.
+  if(show) el.innerHTML = '<span class="fbText">🔥 SEVERE — '+escapeHtml(t.name)+' · '+
+    t.dist.toFixed(1)+' mi away · tap to view on map</span>'+
+    '<button class="fbDismiss" type="button" aria-label="Dismiss alert">×</button>';
   el.classList.toggle('show', show);
   el.dataset.key = show ? t.key : '';
   el.dataset.dist = show ? t.dist : '';
 }
 
-document.getElementById('fireBanner')?.addEventListener('click', () => {
+// FIRE-BANNER-TAP: one delegated listener (survives renderFireBanner's innerHTML
+// rebuilds; no per-render rebinding). The × branch early-returns with
+// stopPropagation, so it never also fires the body→map action.
+document.getElementById('fireBanner')?.addEventListener('click', (e) => {
   const el = document.getElementById('fireBanner');
-  const key = el && el.dataset.key;
+  if(!el || !el.dataset.key) return;   // banner not in an active red-threat state
+  // × dismiss → the ORIGINAL confirm-to-hide flow (1hr hide, voids on 2mi approach).
+  if(e.target.closest('.fbDismiss')){
+    e.stopPropagation();
+    showFireHideSheet(el.dataset.key, parseFloat(el.dataset.dist));
+    return;
+  }
+  // Body tap → open the fire section, then focus the map on the nearest fire.
+  openFirePanel();
+  // Pull the FULL nearest fire (banner/threat object lacks lat/lon/acres) using
+  // the SAME explicit-min-distance logic computeFireThreat uses (Layer B).
+  const wf = (S.fire && Array.isArray(S.fire.fires) ? S.fire.fires : []).filter(f => f.type === 'WF');
+  const nearest = wf.reduce((min,f)=> (!min || f.distance_mi < min.distance_mi) ? f : min, null);
+  if(nearest && Number.isFinite(nearest.lat) && Number.isFinite(nearest.lon)){
+    focusFireOnMap({ name: nearest.name, lat: nearest.lat, lon: nearest.lon, acres: nearest.acres });
+  }
+  // else: no resolvable fire — the panel is open; don't throw (focus is skipped).
+});
+
+// FIRE-BANNER-TAP: the original confirm-to-hide sheet, extracted verbatim so the
+// × runs the EXACT prior behavior (1hr ack via ackFire that voids if the fire
+// moves ≥2mi closer; backdrop-tap closes). Mirrors showDisclaimer's .dangerSheet.
+function showFireHideSheet(key, dist){
   if(!key) return;
-  const dist = parseFloat(el.dataset.dist);
   const t = computeFireThreat();
   const name = (t && t.name) || 'A wildfire';
-  // MIRROR of showDisclaimer's .dangerSheet modal (self-contained builder,
-  // backdrop-tap closes) but with two action buttons.
   const sheet = document.createElement('div');
   sheet.className = 'dangerSheet';
   sheet.innerHTML = `<div class="dangerSheetBox">
@@ -9016,7 +9047,7 @@ document.getElementById('fireBanner')?.addEventListener('click', () => {
     evaluateAlerts();
   };
   sheet.addEventListener('click', e => { if(e.target === sheet) cleanup(); });
-});
+}
 
 // Amber / red-flag dismissable toast (clone of showAnglePinToast).
 let _fireToastTimer = null;
