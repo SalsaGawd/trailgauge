@@ -612,7 +612,10 @@ body.light #permOverlay{background:rgba(240,244,248,0.94)}
   color:#ff8a80;cursor:pointer;-webkit-tap-highlight-color:transparent;text-align:center}
 #fireBanner.show{display:flex;align-items:center;gap:8px}
 /* FIRE-BANNER-TAP: body text (tap → view on map) + secondary × dismiss. */
-.fbText{flex:1;text-align:center;min-width:0}
+/* POLISH.1 A: cursor:pointer so iOS Safari synthesizes a click on taps that land
+   on the text span (the parent #fireBanner's cursor:pointer doesn't propagate
+   click-synthesis to a non-interactive child on iOS). */
+.fbText{flex:1;text-align:center;min-width:0;cursor:pointer}
 .fbDismiss{flex:0 0 auto;background:none;border:none;color:#ff8a80;font-size:20px;
   line-height:1;padding:2px 8px;cursor:pointer;opacity:.65;
   -webkit-tap-highlight-color:transparent}
@@ -5895,29 +5898,46 @@ function wrapText(ctx, text, maxWidth){
 }
 
 /* ─── SETTINGS COLLAPSE ENGINE ───────────────────────────────── */
-const SETTINGS_COLLAPSE_KEY = 'tg_settings_collapse_v1';
+// POLISH.1 B/C: persistence (tg_settings_collapse_v1) retired. Clean-slate-on-open
+// (collapseAllSettingsSections, called from the settings-open transition) is now
+// the single source of truth, so saved open/collapsed state is neither read nor
+// written. Any stale key left in localStorage is simply ignored.
+
+// Shared collapse/open helpers (used by the accordion toggle + clean-slate).
+function collapseSection(header, body){
+  header.classList.add('collapsed');
+  body.classList.add('collapsed');
+  body.style.maxHeight = '0';
+}
+function openSection(header, body){
+  header.classList.remove('collapsed');
+  body.classList.remove('collapsed');
+  body.style.maxHeight = body.scrollHeight + 'px';
+}
+// POLISH.1 C: force every settings section collapsed (clean slate on open).
+function collapseAllSettingsSections(){
+  document.querySelectorAll('.collapseHeader').forEach(header => {
+    const body = document.getElementById('sc-' + header.dataset.section);
+    if(body) collapseSection(header, body);
+  });
+}
 
 function initSettingsCollapse(){
   document.querySelectorAll('.collapseHeader').forEach(header => {
-    const sectionId = header.dataset.section;
-    const body = document.getElementById('sc-' + sectionId);
+    const body = document.getElementById('sc-' + header.dataset.section);
     if(!body) return;
-
-    let saved = {};
-    try { saved = JSON.parse(localStorage.getItem(SETTINGS_COLLAPSE_KEY) || '{}'); } catch(_){}
-    const isCollapsed = saved[sectionId] !== false && (saved[sectionId] === true || header.dataset.defaultCollapsed === '1');
-
-    body.style.maxHeight = isCollapsed ? '0' : body.scrollHeight + 'px';
-    if(isCollapsed){ header.classList.add('collapsed'); body.classList.add('collapsed'); }
+    // Start collapsed — no saved-state seeding; clean-slate-on-open owns state.
+    collapseSection(header, body);
 
     header.addEventListener('click', () => {
-      const nowCollapsed = header.classList.toggle('collapsed');
-      body.classList.toggle('collapsed', nowCollapsed);
-      body.style.maxHeight = nowCollapsed ? '0' : body.scrollHeight + 'px';
-      let st = {};
-      try { st = JSON.parse(localStorage.getItem(SETTINGS_COLLAPSE_KEY) || '{}'); } catch(_){}
-      st[sectionId] = nowCollapsed;
-      try { localStorage.setItem(SETTINGS_COLLAPSE_KEY, JSON.stringify(st)); } catch(_){}
+      // POLISH.1 B: accordion. Opening a collapsed section first collapses ALL
+      // others, then opens this one; tapping an open section just closes it.
+      if(header.classList.contains('collapsed')){
+        collapseAllSettingsSections();
+        openSection(header, body);
+      } else {
+        collapseSection(header, body);
+      }
     });
   });
 }
@@ -8516,7 +8536,11 @@ function _toggleUnits(){
 const stp=document.getElementById('stp'),stb=document.getElementById('stBtn');
 stb.addEventListener('click',()=>{
   stp.classList.toggle('open');
-  stb.classList.toggle('on', stp.classList.contains('open'));
+  const _stOpen = stp.classList.contains('open');
+  stb.classList.toggle('on', _stOpen);
+  // POLISH.1 C: on the OPEN transition, force every section collapsed so Settings
+  // always opens to a clean all-collapsed slate (overrides any stale state).
+  if(_stOpen) collapseAllSettingsSections();
   // Session B.2a-FU-V2: sync the moved theme + units buttons each time
   // the Settings panel opens so their labels always reflect current state.
   const _t = document.getElementById('themeRowBtn');
