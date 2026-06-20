@@ -3300,15 +3300,18 @@ function computeCalibratedAngles(){
 // only; nothing gates data yet.
 const MOUNT_TUNING = {
   gyroSpikeDeg: 120,      // deg/s instantaneous = handheld signature
-  gyroSustainDeg: 60,     // deg/s sustained...
-  gyroSustainMs: 1200,    // ...for this long = handheld
+  // DEPRECATED (MS1.9): the sustained-gyro arm was removed — it caused rough-trail
+  // false positives. Kept at their original values for possible revival if the
+  // gentle-pickup case ever needs a sustained signal again.
+  gyroSustainDeg: 60,     // deg/s sustained... (UNUSED as of MS1.9)
+  gyroSustainMs: 1200,    // ...for this long = handheld (UNUSED as of MS1.9)
   gravAngleDeg: 40,       // deviation from calibrated gravity ref...
-  gravAngleMs: 1000,      // ...sustained = handheld (pick-up)
+  gravAngleMs: 700,       // ...sustained = handheld (pick-up). MS1.9: 1000→700 for faster gentle-pickup catch
   vehicleCalmMs: 20000,   // calm vehicle-like motion to infer re-mount
   uncertainGraceMs: 4000  // conflict must persist this long before UNCERTAIN
 };
 // Module-level accumulators (timestamps; 0 = inactive).
-let _msGyroSusStart = 0, _msGravDevStart = 0, _msCalmStart = 0, _msConflictStart = 0;
+let _msGravDevStart = 0, _msCalmStart = 0, _msConflictStart = 0;   // MS1.9: sustained-gyro accumulator removed with that arm
 let _msStateSince = Date.now();   // when S.mountState last changed (HUD)
 let _msGyroMag = 0, _msGravAngle = 0;   // last computed values (HUD)
 
@@ -3422,11 +3425,10 @@ function updateMountDetector(gyroMag, accelDeviation, dt){
   let handheld = false, trigger = null;
   // 1) instantaneous gyro spike
   if(gyroMag > T.gyroSpikeDeg){ handheld = true; trigger = 'gyroSpike'; }
-  // 2) sustained gyro
-  if(gyroMag > T.gyroSustainDeg){
-    if(!_msGyroSusStart) _msGyroSusStart = now;
-    else if(now - _msGyroSusStart >= T.gyroSustainMs){ handheld = true; trigger = trigger || 'gyroSustain'; }
-  } else { _msGyroSusStart = 0; }
+  // 2) sustained-gyro arm REMOVED in MS1.9 — on a rough trail (Santiago, 3.5hr)
+  //    continuous jostling held gyro >60°/s and produced 75/78 false UNCERTAIN
+  //    trips. gyroSpike (instant) + gravAngle (pick-up tilt) remain the handheld
+  //    signals. gyroSustainDeg/gyroSustainMs are kept (deprecated) in MOUNT_TUNING.
   // 3) gravity-vector angle vs the calibrated reference (pick-up tilt)
   const am = Math.sqrt(S.accelGravX*S.accelGravX + S.accelGravY*S.accelGravY + S.accelGravZ*S.accelGravZ);
   let gravAngle = 0;
@@ -3451,7 +3453,7 @@ function updateMountDetector(gyroMag, accelDeviation, dt){
       if(S.mountInferred !== 'mounted'){ S.mountInferred = 'mounted'; trigger = 'calm'; }
     }
   }
-  resolveMountState(trigger || 'motion');
+  resolveMountState(trigger || 'persist');   // MS1.9: was 'motion' (a transition with no fresh arm this tick — e.g. carried-over UNCERTAIN)
 }
 
 // Resolve declared + inferred → S.mountState. Declared 'handheld' is law
