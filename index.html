@@ -73,6 +73,24 @@ html,body{width:100%;height:100%;overflow:hidden;overscroll-behavior:none;backgr
     inset 0 0 120px 20px rgba(var(--pulseR),var(--pulseG),var(--pulseB),.45),
     inset 0 0 0 6px rgba(var(--pulseR),var(--pulseG),var(--pulseB),.75);
 }
+/* SUNSET-TAP: a separate, fully-transparent hit layer for tap-to-dismiss. It
+   never paints (no background) and is pointer-events:none by default, so the
+   glow (#ambientPulse, below it) and all input are unaffected. When a pulse is
+   active, .pulse-tappable turns it on with a clip-path FRAME: only the ~36px
+   screen-edge ring hit-tests; the clipped-out center is transparent to pointer
+   events, so taps there fall straight through to #ambientPulse (pointer-events:
+   none) and onward to the gauge / buttons / scroll. #ambientPulse itself stays
+   pointer-events:none and unclipped (full glow). z-index 91 keeps the frame just
+   above the glow but below all modals/sheets (z-index>=100). */
+#pulseHit{position:fixed;inset:0;z-index:91;pointer-events:none;background:transparent}
+#pulseHit.pulse-tappable{
+  pointer-events:auto;
+  cursor:pointer;
+  clip-path:polygon(
+    0 0, 100% 0, 100% 100%, 0 100%, 0 0,
+    36px 36px, 36px calc(100% - 36px), calc(100% - 36px) calc(100% - 36px),
+    calc(100% - 36px) 36px, 36px 36px);
+}
 /* The glow itself is achieved with two stacked box-shadows:
    - Inner soft glow inset from the edges (the "atmosphere")
    - Hard inset border at the very edge (the "alarm rim")
@@ -1315,6 +1333,8 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
 <!-- Ambient alert overlay — sits above all app content but below modals.
      Driven entirely by JS class toggles; CSS handles the animation. -->
 <div id="ambientPulse"></div>
+<!-- SUNSET-TAP: transparent edge-only hit layer for tap-to-dismiss (see CSS). -->
+<div id="pulseHit"></div>
 
 <!-- Coachmark bubble — inline contextual hints. Created once, positioned
      and repopulated by JS as needed. Hidden by default. -->
@@ -8468,6 +8488,7 @@ function saveAlertSettings(){
 }
 
 const _pulseEl = document.getElementById('ambientPulse');
+const _pulseHitEl = document.getElementById('pulseHit');   // SUNSET-TAP edge-frame
 
 // Show or hide the pulse overlay with a given color.
 // source identifies what triggered it (used to avoid restarting the CSS
@@ -8480,6 +8501,7 @@ function setAmbient(source, colorName){
   _pulseEl.classList.remove('break-fading');
   if(!source || !ALERTS.pulseEnabled){
     _pulseEl.classList.remove('show','dnd');
+    if(_pulseHitEl) _pulseHitEl.classList.remove('pulse-tappable');
     ALERTS._activeSource = null;
     return;
   }
@@ -8495,6 +8517,13 @@ function setAmbient(source, colorName){
   _pulseEl.classList.add('show');
   _pulseEl.classList.toggle('dnd', !!ALERTS.dndMode);
   ALERTS._activeSource = source;
+  // SUNSET-TAP: arm the edge-frame ONLY for dismissable sources (point 1). Fire
+  // is deliberately excluded here — its tap target stays the fire banner — and
+  // the tap handler additionally guards 'fire' so it can never be silenced.
+  if(_pulseHitEl){
+    const dismissable = (source === 'sunset' || source === 'weather' || source === 'break');
+    _pulseHitEl.classList.toggle('pulse-tappable', dismissable);
+  }
   // First time the pulse actually fires, show a coachmark explaining what
   // it is. Without this, a returning user could see the screen edges start
   // glowing yellow and have no idea why. Defined in CM_DEFS above.
@@ -8798,7 +8827,7 @@ document.getElementById('fireBanner')?.addEventListener('click', () => {
 let _fireToastTimer = null;
 // Generalized dismissable toast (C2c) — reused by fire + info alerts.
 // onDismiss runs when the × is tapped (auto-fade after 12s does not ack).
-function showAlertToast(text, onDismiss){
+function showAlertToast(text, onDismiss, persist){
   let toast = document.getElementById('fireToast');
   if(!toast){
     toast = document.createElement('div');
@@ -8812,8 +8841,19 @@ function showAlertToast(text, onDismiss){
     toast.classList.remove('show');
     if(_fireToastTimer){ clearTimeout(_fireToastTimer); _fireToastTimer = null; }
   });
-  if(_fireToastTimer) clearTimeout(_fireToastTimer);
-  _fireToastTimer = setTimeout(() => { toast.classList.remove('show'); }, 12000);
+  if(_fireToastTimer){ clearTimeout(_fireToastTimer); _fireToastTimer = null; }
+  // SUNSET-TAP: persistent toasts (sunset/weather) skip the 12s auto-fade so the
+  // × stays available until tapped/acked. Fire/break pass no persist → fade as before.
+  if(!persist){
+    _fireToastTimer = setTimeout(() => { toast.classList.remove('show'); }, 12000);
+  }
+}
+// SUNSET-TAP: hide the shared alert toast — used when a pulse is dismissed via the
+// edge frame so a persistent info toast doesn't linger after its source clears.
+function hideAlertToast(){
+  const toast = document.getElementById('fireToast');
+  if(toast) toast.classList.remove('show');
+  if(_fireToastTimer){ clearTimeout(_fireToastTimer); _fireToastTimer = null; }
 }
 function showFireToast(text, key, dist, hours){
   showAlertToast(text, () => ackFire(key, hours, dist));
@@ -8850,7 +8890,45 @@ function maybeInfoToast(source){
   } else { return; }
   if(key === _lastInfoToastKey) return;   // once per key per session
   _lastInfoToastKey = key;
-  showAlertToast(text, onDismiss);
+  // SUNSET-TAP: info toasts (sunset/weather) are PERSISTENT — no auto-fade — so
+  // the × stays reachable until tapped/acked. (Pairs with the edge-tap dismiss.)
+  showAlertToast(text, onDismiss, true);
+}
+
+// SUNSET-TAP: source-aware tap-to-dismiss on the edge frame (#pulseHit). A small
+// tap-vs-move guard (<8px, <600ms) means an edge swipe never dismisses by accident.
+// pointerup unifies mouse + touch; the frame only hit-tests the ~36px screen-edge
+// ring, so the screen center stays interactive.
+let _pulseDownX = null, _pulseDownY = null, _pulseDownT = 0;
+if(_pulseHitEl){
+  _pulseHitEl.addEventListener('pointerdown', e => {
+    _pulseDownX = e.clientX; _pulseDownY = e.clientY; _pulseDownT = Date.now();
+  }, {passive:true});
+  _pulseHitEl.addEventListener('pointerup', e => {
+    if(_pulseDownX == null) return;
+    const dx = e.clientX - _pulseDownX, dy = e.clientY - _pulseDownY, dt = Date.now() - _pulseDownT;
+    _pulseDownX = _pulseDownY = null;
+    if(Math.abs(dx) < 8 && Math.abs(dy) < 8 && dt < 600) handlePulseTap();
+  }, {passive:true});
+}
+function handlePulseTap(){
+  const src = ALERTS._activeSource;
+  if(src === 'sunset'){
+    ackInfo('sunset:'+todayDateString(), 12); hideAlertToast(); evaluateAlerts();
+  } else if(src === 'weather'){
+    ackInfo('wx', 1); hideAlertToast(); evaluateAlerts();   // C2c key 'wx' / 1h
+  } else if(src === 'break'){
+    // Same clear path the break-flash timer uses: cancel the pending timer and let
+    // evaluateAlerts settle the slot (no hazard → clears; hazard → restores).
+    if(_breakFlashTimer){ clearTimeout(_breakFlashTimer); _breakFlashTimer = null; }
+    hideAlertToast(); evaluateAlerts();
+  } else if(src === 'fire'){
+    // NEVER silence a fire pulse. Open fire details — reuse the fire-banner tap
+    // target if it's showing, else open the fire panel.
+    const fb = document.getElementById('fireBanner');
+    if(fb && fb.dataset.key) fb.click();
+    else if(typeof openFirePanel === 'function') openFirePanel();
+  }
 }
 
 // Settings controls — wire each input to its ALERTS state slot
