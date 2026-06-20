@@ -537,6 +537,8 @@ body.light #permOverlay{background:rgba(240,244,248,0.94)}
 .fpFireMap{font-family:var(--fm);font-size:10px;color:var(--accent);margin-top:6px;letter-spacing:.3px}
 .fpFireName{font-family:var(--fd);font-size:14px;font-weight:600;color:var(--txt)}
 .fpFireMeta{font-family:var(--fm);font-size:11px;color:var(--txt2);margin-top:3px}
+/* FD.2b: county line — readable (txt2, same as meta), not the invisible-secondary trap. */
+.fpFireCounty{font-family:var(--fm);font-size:11px;color:var(--txt2);margin-top:2px}
 .fpFireDate{font-family:var(--fm);font-size:10px;color:var(--txt3);margin-top:2px}
 .fpRx{font-family:var(--fm);font-size:12px;color:var(--txt3);padding:6px 0;border-bottom:1px solid var(--border)}
 .fpForest{border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:16px;background:var(--card)}
@@ -7552,6 +7554,7 @@ function buildFireMap(){
         .bindPopup('<b>'+escapeHtml(f.name)+'</b><br>'+
           (f.distance_mi!=null ? f.distance_mi+' mi' : '')+
           (f.acres!=null ? ' · '+f.acres.toLocaleString()+' ac' : '')+
+          (f.county ? '<br>📍 '+escapeHtml(_countyLabel(f.county)) : '')+
           (f.discovered ? '<br>Discovered '+escapeHtml(_fpDate(f.discovered)) : '')+
           ((f.acres === 0 && f.containment == null) ? '<br><span style="opacity:.6">Initial report — size unverified</span>' : ''))
         .addTo(_fireMapLayers);
@@ -7746,20 +7749,43 @@ document.getElementById('firePanelSections')?.addEventListener('click', e => {
   });
 });
 
-// FD.1b: tolerant name match against the cached perimeters (trim + case-fold;
-// exact → startsWith → includes; first confident hit wins). Returns null if the
-// cache is empty/unavailable (offline / not yet fetched) or nothing matches.
-function _findPerimForFire(name){
+// FD.2a: HARDENED name match against the cached perimeters. A wrong perimeter on
+// a fire is a trust-killing error, so we bias hard toward "no perimeter":
+//   1. Normalize both sides (trim + case-fold + collapse whitespace).
+//   2. EXACT normalized match first.
+//   3. A fuzzy match is allowed ONLY when BOTH: the fire has acres>0 (0-acre
+//      dispatches never fuzzy-match — they have no perimeter anyway, and they're
+//      the main false-match source, e.g. "catalina"→"santa catalina piles rx"),
+//      AND the names share a WHOLE-WORD boundary (one name appears as a complete
+//      token-run in the other) — never a bare substring.
+//   4. No confident match → null → honest centroid "approximate" fallback.
+function _findPerimForFire(name, acres){
   if(!Array.isArray(_firePerimCache) || !_firePerimCache.length || !name) return null;
-  const q = String(name).trim().toLowerCase();
+  const norm = s => String(s == null ? '' : s).trim().toLowerCase().replace(/\s+/g, ' ');
+  const q = norm(name);
   if(!q) return null;
-  const nm = p => (p && p.name) ? String(p.name).trim().toLowerCase() : '';
-  let hit = _firePerimCache.find(p => nm(p) === q);
+  // 2) exact
+  let hit = _firePerimCache.find(p => p && norm(p.name) === q);
   if(hit) return hit;
-  hit = _firePerimCache.find(p => { const n = nm(p); return n && (n.startsWith(q) || q.startsWith(n)); });
-  if(hit) return hit;
-  hit = _firePerimCache.find(p => { const n = nm(p); return n && (n.includes(q) || q.includes(n)); });
+  // 3) fuzzy — sized fires only, whole-word boundary only (no bare substring)
+  if(!(typeof acres === 'number' && acres > 0)) return null;
+  const wholeWord = (hay, needle) => {
+    const esc = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp('(^| )' + esc + '( |$)').test(hay);
+  };
+  hit = _firePerimCache.find(p => {
+    const n = norm(p && p.name);
+    return n && (wholeWord(n, q) || wholeWord(q, n));
+  });
   return hit || null;
+}
+
+// FD.2b: format a WFIGS POOCounty value ("Orange") for display ("Orange County").
+// Returns '' for missing/blank so callers omit cleanly (never "undefined County").
+function _countyLabel(c){
+  const s = String(c == null ? '' : c).trim();
+  if(!s) return '';
+  return /county$/i.test(s) ? s : (s + ' County');
 }
 
 // FD.1b: focus the persistent C4 map on a tapped fire. Two honest paths — a real
@@ -7785,7 +7811,7 @@ function focusFireOnMap(fire){
 function _focusFireNow(fire, mapEl){
   if(!_fireMap || !window.L) return;
   const note = document.getElementById('fireMapNote');
-  const perim = _findPerimForFire(fire.name);
+  const perim = _findPerimForFire(fire.name, fire.acres);   // FD.2a: acres gates the fuzzy path
   let approx = false;
   try {
     if(perim && perim.geometry){
@@ -7915,6 +7941,7 @@ function renderFirePanel(){
         (f.containment != null ? ' · ' + f.containment + '% contained' : '') +
         ((f.acres === 0 && f.containment == null) ? ' <span style="opacity:.55">· initial report — size unverified</span>' : '') +
         '</div>' +
+        (f.county ? '<div class="fpFireCounty">📍 ' + escapeHtml(_countyLabel(f.county)) + '</div>' : '') +
         (f.discovered ? '<div class="fpFireDate">Discovered ' + escapeHtml(_fpDate(f.discovered)) + '</div>' : '') +
         '<div class="fpFireMap">🗺 View on map ›</div>' +
         '</div>';
