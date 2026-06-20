@@ -2274,10 +2274,14 @@ async function exportMountLog(){
         id: t.id, name: t.name,
         startMs: t.startMs, endMs: t.endMs,
         distM: t.distM, gainM: t.gainM,
+        // SEG.1: smoothed gain/loss to compare against raw gainM, + the segments.
+        segGainM: t.segGainM ?? null, segLossM: t.segLossM ?? null,
         points: pts.length,
         msCounts,
+        segments: Array.isArray(t.segments) ? t.segments : [],
         mountLog: t.mountLog || [],
-        tuning: MOUNT_TUNING
+        tuning: MOUNT_TUNING,
+        segTuning: SEG_TUNING
       };
     });
   } catch(_){}
@@ -3309,6 +3313,23 @@ const MOUNT_TUNING = {
   gravAngleMs: 700,       // ...sustained = handheld (pick-up). MS1.9: 1000→700 for faster gentle-pickup catch
   vehicleCalmMs: 20000,   // calm vehicle-like motion to infer re-mount
   uncertainGraceMs: 4000  // conflict must persist this long before UNCERTAIN
+};
+
+// SEG.1: segment grade recorder tuning (field-tunable like MOUNT_TUNING). Built
+// on GPS altitude (no barometer in a PWA), so EMA smoothing + a minimum segment
+// length fight the altitude noise. DATA-ONLY this session — no UI.
+const SEG_TUNING = {
+  alpha: 0.2,        // EMA factor on GPS altitude (gentle: kills single-fix spikes)
+  minLenM: 80,       // min horizontal length (m) before a segment can be judged/closed
+  // abs grade % → band; signed grade kept for up/down. <5 gentle · 5–10 moderate
+  // · 10–15 steep · 15+ very_steep.
+  bands: [
+    { max: 5,        name: 'gentle' },
+    { max: 10,       name: 'moderate' },
+    { max: 15,       name: 'steep' },
+    { max: Infinity, name: 'very_steep' }
+  ],
+  gapMs: 30000       // GPS outage gap = hard segment boundary (matches tripIngestFix)
 };
 // Module-level accumulators (timestamps; 0 = inactive).
 let _msGravDevStart = 0, _msCalmStart = 0, _msConflictStart = 0;   // MS1.9: sustained-gyro accumulator removed with that arm
@@ -9286,6 +9307,9 @@ const TRIP = {
   movingMs:0,        // time spent moving (>0.5 m/s between fixes)
   lastFixMs:0,
   mountLog:[],       // MS.1: mount-state transitions {t,from,to,trigger}
+  segments:[],       // SEG.1: grade segments {startIdx,endIdx,distM,elevDeltaM,gradePct,band,dir}
+  _emaElev:null,     // SEG.1: EMA-smoothed GPS altitude (live)
+  _segAccum:null,    // SEG.1: open live-segment accumulator
 };
 
 // Haversine distance in meters between two lat/lon points
@@ -9371,6 +9395,7 @@ function tripIngestFix(pos){
       if(fix.elev>TRIP.maxElevM) TRIP.maxElevM=fix.elev;
       if(fix.elev<TRIP.minElevM) TRIP.minElevM=fix.elev;
     }
+    segOnAccepted();   // SEG.1: live rough grade pass (refined recompute runs on save)
     TRIP.lastFixMs=fix.t;
     refreshTripLive();
     checkElevationMilestones();
@@ -9381,6 +9406,106 @@ function tripIngestFix(pos){
     // to 30s of recent data on unexpected suspend.
     saveDraft();
   }
+}
+
+// ── SEG.1: grade-segment recorder (data-only; no UI this session) ──────
+// Band label from an absolute grade %.
+function segBand(gradePct){
+  const g = Math.abs(gradePct);
+  for(const b of SEG_TUNING.bands){ if(g < b.max) return b.name; }
+  return 'very_steep';
+}
+// Direction from signed grade (±1% deadband around flat).
+function segDir(gradePct){ return gradePct > 1 ? 'up' : gradePct < -1 ? 'down' : 'flat'; }
+
+// Close the open live accumulator into TRIP.segments.
+function segPushLive(seg, endIdx){
+  const elevDelta = (TRIP._emaElev != null && seg.startEma != null) ? (TRIP._emaElev - seg.startEma) : 0;
+  const grade = seg.dist > 0 ? (elevDelta / seg.dist) * 100 : 0;
+  TRIP.segments.push({
+    startIdx: seg.startIdx, endIdx,
+    distM: Math.round(seg.dist),
+    elevDeltaM: Math.round(elevDelta * 10) / 10,
+    gradePct: Math.round(grade * 10) / 10,
+    band: segBand(grade), dir: segDir(grade)
+  });
+}
+// Live rough pass — one call per accepted fix. Reads the last two pts so it needs
+// no plumbing through the three accept branches. Intentionally rough; the on-save
+// recompute is authoritative.
+function segOnAccepted(){
+  const pts = TRIP.pts, n = pts.length;
+  const fix = pts[n - 1];
+  // EMA on GPS altitude; skip on null elev (carry last good — some fixes lack it).
+  if(fix.elev != null){
+    TRIP._emaElev = (TRIP._emaElev == null) ? fix.elev
+                    : TRIP._emaElev + SEG_TUNING.alpha * (fix.elev - TRIP._emaElev);
+  }
+  if(n < 2){ TRIP._segAccum = null; return; }       // first fix — wait for a delta
+  const prev = pts[n - 2];
+  if((fix.t - prev.t) > SEG_TUNING.gapMs){           // GPS outage = hard boundary
+    if(TRIP._segAccum && TRIP._segAccum.dist >= SEG_TUNING.minLenM) segPushLive(TRIP._segAccum, TRIP._segAccum.lastIdx);
+    TRIP._segAccum = null;
+    return;
+  }
+  if(TRIP._emaElev == null) return;                  // no smoothed elevation yet
+  const dM = haversineM(prev, fix);
+  if(!TRIP._segAccum){
+    TRIP._segAccum = { startIdx: n - 1, startEma: TRIP._emaElev, dist: 0, band: null, lastIdx: n - 1 };
+    return;
+  }
+  const seg = TRIP._segAccum;
+  seg.dist += dM;
+  seg.lastIdx = n - 1;
+  if(seg.dist < SEG_TUNING.minLenM) return;          // too short to judge — accumulate
+  const band = segBand(((TRIP._emaElev - seg.startEma) / seg.dist) * 100);
+  if(seg.band == null){ seg.band = band; return; }
+  if(band !== seg.band){                              // band change → close + start new
+    segPushLive(seg, n - 1);
+    TRIP._segAccum = { startIdx: n - 1, startEma: TRIP._emaElev, dist: 0, band: null, lastIdx: n - 1 };
+  }
+}
+
+// SEG.1d: refined recompute over the COMPLETE point array (called at save).
+// Bidirectional EMA (forward+backward averaged → gentle, no lag), re-segment with
+// the same band logic, plus smoothed segGain/segLoss to compare against raw gainM.
+function recomputeSegments(pts){
+  const out = { segments: [], segGainM: 0, segLossM: 0 };
+  if(!Array.isArray(pts) || pts.length < 2) return out;
+  const A = SEG_TUNING.alpha, n = pts.length;
+  const fwd = new Array(n).fill(null), bwd = new Array(n).fill(null);
+  let e = null;
+  for(let i = 0; i < n; i++){ const v = pts[i].elev; if(v != null) e = (e == null) ? v : e + A * (v - e); fwd[i] = e; }
+  e = null;
+  for(let i = n - 1; i >= 0; i--){ const v = pts[i].elev; if(v != null) e = (e == null) ? v : e + A * (v - e); bwd[i] = e; }
+  const sm = new Array(n);
+  for(let i = 0; i < n; i++){ sm[i] = (fwd[i] != null && bwd[i] != null) ? (fwd[i] + bwd[i]) / 2 : (fwd[i] != null ? fwd[i] : bwd[i]); }
+
+  let segStart = 0, segDist = 0, segBandName = null;
+  const close = (endIdx) => {
+    if(endIdx <= segStart) return;
+    const ed = (sm[endIdx] != null && sm[segStart] != null) ? (sm[endIdx] - sm[segStart]) : 0;
+    const grade = segDist > 0 ? (ed / segDist) * 100 : 0;
+    out.segments.push({ startIdx: segStart, endIdx, distM: Math.round(segDist),
+      elevDeltaM: Math.round(ed * 10) / 10, gradePct: Math.round(grade * 10) / 10,
+      band: segBand(grade), dir: segDir(grade) });
+  };
+  for(let i = 1; i < n; i++){
+    if((pts[i].t - pts[i - 1].t) > SEG_TUNING.gapMs){   // outage boundary
+      close(i - 1); segStart = i; segDist = 0; segBandName = null; continue;
+    }
+    segDist += haversineM(pts[i - 1], pts[i]);
+    if(segDist < SEG_TUNING.minLenM) continue;
+    const ed = (sm[i] != null && sm[segStart] != null) ? sm[i] - sm[segStart] : 0;
+    const band = segBand((ed / segDist) * 100);
+    if(segBandName == null){ segBandName = band; continue; }
+    if(band !== segBandName){ close(i); segStart = i; segDist = 0; segBandName = null; }
+  }
+  close(n - 1);   // final segment (one tail segment, not micro-noise)
+  for(const s of out.segments){ if(s.elevDeltaM > 0) out.segGainM += s.elevDeltaM; else out.segLossM += -s.elevDeltaM; }
+  out.segGainM = Math.round(out.segGainM * 10) / 10;
+  out.segLossM = Math.round(out.segLossM * 10) / 10;
+  return out;
 }
 
 function fmtDuration(ms){
@@ -9439,6 +9564,7 @@ function tripStart(){
   ALERTS._lastBreakMs = 0;
   ALERTS._lastBreakDistM = 0;
   TRIP.mountLog=[];   // Session MS.1: mount-state transitions for this trip
+  TRIP.segments=[]; TRIP._emaElev=null; TRIP._segAccum=null;   // SEG.1: reset grade segments
   resetElevState();
   // Don't seed with a synthesized point. The first real GPS fix from
   // navigator.geolocation.watchPosition will become the start point in
@@ -9824,6 +9950,7 @@ async function saveDraft(){
     pausedTotalMs: pausedTotal,
     pts: TRIP.pts,
     mountLog: TRIP.mountLog || [],   // MS.1: persist mount transitions in the draft too
+    segments: TRIP.segments || [],   // SEG.1: persist live segments (recompute on save is authoritative)
     savedAt: Date.now()
   };
   try { await dbPut(draft); } catch(e) { console.warn('Draft autosave failed:', e); }
@@ -9932,6 +10059,9 @@ document.getElementById('snSave').addEventListener('click', async ()=>{
   const endMs = _saveIsRecovery && TRIP.pts.length
     ? TRIP.pts[TRIP.pts.length-1].t
     : Date.now();
+  // SEG.1d: refined grade segments computed from the COMPLETE point array (the
+  // authoritative pass — overrides the live rough one). gainM is untouched.
+  const _seg = recomputeSegments(TRIP.pts);
   const trip={
     id: 't_'+TRIP.startMs+'_'+Math.random().toString(36).slice(2,7),
     name,
@@ -9945,7 +10075,10 @@ document.getElementById('snSave').addEventListener('click', async ()=>{
     movingMs: TRIP.movingMs,
     pausedTotalMs: TRIP.pausedTotalMs,
     pts: TRIP.pts,
-    mountLog: TRIP.mountLog || []   // MS.1: shadow-mode mount transitions
+    mountLog: TRIP.mountLog || [],   // MS.1: shadow-mode mount transitions
+    segments: _seg.segments,         // SEG.1: refined grade segments
+    segGainM: _seg.segGainM,         // SEG.1: smoothed gain (compare vs raw gainM)
+    segLossM: _seg.segLossM          // SEG.1: smoothed loss
   };
   try{
     await dbPut(trip);
@@ -10694,6 +10827,10 @@ flp?.addEventListener('click', e => { if(e.target === flp) flp.classList.remove(
     TRIP.pausedTotalMs = draft.pausedTotalMs || 0;
     TRIP.pts = draft.pts;
     TRIP.mountLog = Array.isArray(draft.mountLog) ? draft.mountLog : [];   // MS.1
+    // SEG.1: keep segments built so far; restart the live accumulators (the
+    // on-save recompute rebuilds everything from the full pts[] anyway).
+    TRIP.segments = Array.isArray(draft.segments) ? draft.segments : [];
+    TRIP._emaElev = null; TRIP._segAccum = null;
     TRIP.lastPt = draft.pts[draft.pts.length-1];
     ELEV_STATE.lastMilestoneFt = Math.floor(m2ft(draft.gainM) / 1000) * 1000;
     // Rebuild summit peak from saved fixes so post-resume descent
