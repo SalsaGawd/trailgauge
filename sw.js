@@ -28,7 +28,7 @@
 
 // ↑ BUMP THIS when shipping a new version of the app. Clears old caches
 //   and forces clients to fetch fresh shell on next launch.
-const CACHE_VERSION = 'tg-v20-76';
+const CACHE_VERSION = 'tg-v20-77';
 
 const CACHE_SHELL  = `${CACHE_VERSION}-shell`;
 const CACHE_VENDOR = `${CACHE_VERSION}-vendor`;
@@ -45,7 +45,12 @@ const WX_MAX    = 20;      // weather API responses
 // GitHub Pages). './' resolves to /trailgauge/.
 const APP_SHELL = [
   './',
-  './index.html'
+  './index.html',
+  // Brand logo SVGs used by the header + canvas share cards — precached so they
+  // render offline (header mark + share-card mark/watermark).
+  './assets/logo/peak-mark-dark.svg',
+  './assets/logo/peak-mark-light.svg',
+  './assets/logo/peak-watermark-green.svg'
 ];
 
 self.addEventListener('install', (event) => {

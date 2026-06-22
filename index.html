@@ -1400,6 +1400,7 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
 <div id="app">
   <div id="hdr">
     <div style="display:flex;align-items:baseline;min-width:0;flex:1 1 auto;overflow:hidden">
+      <img id="brandMark" src="assets/logo/peak-mark-dark.svg" alt="" style="align-self:center;flex:0 0 auto;height:28px;width:auto;margin-right:7px">
       <span class="brand">TrailGauge<sup style="font-size:.45em;opacity:.7" aria-hidden="true">™</sup></span>
       <span class="sub">Off-Road Inclinometer</span>
     </div>
@@ -5399,6 +5400,17 @@ document.getElementById('pdShareCard').addEventListener('click', async () => {
   }
 });
 
+// Preloaded logo images for the canvas share cards (drawn via drawImage — shapes
+// untouched, only scaled). Loaded once at startup. Share-card renders await
+// _imgReady() so they're always present; drawTopBadge also has a ⬡-glyph fallback
+// for any path that draws before load.
+const _peakBadgeImg = new Image(); _peakBadgeImg.src = 'assets/logo/peak-mark-dark.svg';
+const _peakWatermarkImg = new Image(); _peakWatermarkImg.src = 'assets/logo/peak-watermark-green.svg';
+function _imgReady(img){
+  return (img.complete && img.naturalWidth) ? Promise.resolve()
+    : new Promise(res => { img.addEventListener('load', res, {once:true}); img.addEventListener('error', res, {once:true}); });
+}
+
 // Build a 1080x1080 (Instagram square) shareable card with the pin photo,
 // label, coordinates, and TrailGauge watermark. Returns a Promise<Blob|null>.
 function renderPinShareCard(pin){
@@ -5407,7 +5419,8 @@ function renderPinShareCard(pin){
     // before rendering. Otherwise the canvas falls back to system fonts and
     // the card looks off-brand. document.fonts.ready resolves immediately
     // if fonts are already loaded — no perf cost on warm runs.
-    const start = (document.fonts && document.fonts.ready) ? document.fonts.ready : Promise.resolve();
+    const _fr = (document.fonts && document.fonts.ready) ? document.fonts.ready : Promise.resolve();
+    const start = Promise.all([_fr, _imgReady(_peakBadgeImg)]);   // logo ready too
     start.then(() => doRenderPinShareCard(pin, resolve));
   });
 }
@@ -5597,12 +5610,19 @@ function doRenderPinShareCard(pin, resolve){
 // on photos but always readable thanks to its own dark background pill.
 function drawTopBadge(ctx, W){
   const padR = 36, padT = 36;
-  const text = '⬡ TrailGauge';
+  const label = 'TrailGauge';
   ctx.font = '700 24px "Rajdhani", sans-serif';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  const tw = ctx.measureText(text).width;
-  const pillW = tw + 32;
+  const labelW = ctx.measureText(label).width;
+  // Peak mark (SVG drawn as an image) replaces the old ⬡ glyph. Fall back to the
+  // glyph if the image isn't loaded yet so the badge never breaks. peak-mark
+  // viewBox is 70x62; we only scale it (shapes untouched).
+  const useMark = _peakBadgeImg && _peakBadgeImg.complete && _peakBadgeImg.naturalWidth > 0;
+  const mh = 20, mw = mh * 70 / 62, gap = 9;
+  const glyphW = ctx.measureText('⬡ ').width;
+  const leadW = useMark ? (mw + gap) : glyphW;
+  const pillW = leadW + labelW + 32;
   const pillH = 44;
   const pillX = W - padR - pillW;
   const pillY = padT;
@@ -5614,9 +5634,18 @@ function drawTopBadge(ctx, W){
   ctx.lineWidth = 1.5;
   roundRect(ctx, pillX, pillY, pillW, pillH, pillH/2);
   ctx.stroke();
-  // Text inside
+  // Mark (or fallback glyph) + label
+  let tx = pillX + 16;
+  if(useMark){
+    ctx.drawImage(_peakBadgeImg, tx, pillY + pillH/2 - mh/2, mw, mh);
+    tx += mw + gap;
+  } else {
+    ctx.fillStyle = '#3ddc97';
+    ctx.fillText('⬡ ', tx, pillY + pillH/2 + 1);
+    tx += glyphW;
+  }
   ctx.fillStyle = '#3ddc97';
-  ctx.fillText(text, pillX + 16, pillY + pillH/2 + 1);
+  ctx.fillText(label, tx, pillY + pillH/2 + 1);
 }
 
 /* Big angle badge for angle-pin share cards. Drawn in the upper-left of
@@ -5688,7 +5717,8 @@ function renderTripShareCard(trip){
   return new Promise(resolve => {
     // Same font-readiness wait as pin share card — keeps the brand fonts
     // applied to the canvas instead of falling back to system defaults.
-    const start = (document.fonts && document.fonts.ready) ? document.fonts.ready : Promise.resolve();
+    const _fr = (document.fonts && document.fonts.ready) ? document.fonts.ready : Promise.resolve();
+    const start = Promise.all([_fr, _imgReady(_peakBadgeImg), _imgReady(_peakWatermarkImg)]);   // logo + watermark ready
     start.then(() => doRenderTripShareCard(trip, resolve));
   });
 }
@@ -5706,14 +5736,12 @@ function doRenderTripShareCard(trip, resolve){
     ctx.fillStyle = bgGrad;
     ctx.fillRect(0, 0, W, H);
 
-    // Decorative grid for visual texture
-    ctx.strokeStyle = 'rgba(61,220,151,.05)';
-    ctx.lineWidth = 1;
-    for(let x = 0; x < W; x += 60){
-      ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke();
-    }
-    for(let y = 0; y < H; y += 60){
-      ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke();
+    // Faint PEAK watermark — large + centered behind the content (replaces the
+    // old decorative grid). Opacity is baked into the SVG; shapes untouched.
+    if(_peakWatermarkImg && _peakWatermarkImg.complete && _peakWatermarkImg.naturalWidth > 0){
+      const ww = W * 0.66;            // ~66% of card width
+      const wh = ww * 50 / 70;        // peak-watermark viewBox is 70x50
+      ctx.drawImage(_peakWatermarkImg, (W - ww) / 2, (H - wh) / 2, ww, wh);
     }
 
     // Route area — top 60% of card
@@ -8507,9 +8535,17 @@ setTimeout(() => {
 // Pin Photo: fires when the pin save modal opens. Hooked into
 // openPinSaveModal (see pin save code).
 
+// Header brand mark: dark variant on the dark header, light (dark-outlined)
+// variant when the app is in light theme so the peak reads on a light bg.
+function updateBrandMark(){
+  const m = document.getElementById('brandMark');
+  if(m) m.src = S.dark ? 'assets/logo/peak-mark-dark.svg' : 'assets/logo/peak-mark-light.svg';
+}
+
 // Apply loaded settings to UI on page load
 function applyLoadedSettings(){
   if(!S.dark) document.body.classList.add('light');
+  updateBrandMark();
   // Session B.2a-FU-V2: theme + units toggled from Settings panel now.
   // Safe lookups because applyLoadedSettings may run before the Settings
   // panel HTML is populated (depends on init order).
@@ -8529,6 +8565,7 @@ applyLoadedSettings();
 function _toggleTheme(){
   S.dark = !S.dark;
   document.body.classList.toggle('light', !S.dark);
+  updateBrandMark();
   const btn = document.getElementById('themeRowBtn');
   if(btn) btn.textContent = S.dark ? 'DARK' : 'LIGHT';
   saveSettings();
@@ -10864,7 +10901,7 @@ startGPS();
 // const lives in index.html so it reflects the ACTUAL loaded shell — it MUST be
 // bumped in lockstep with sw.js CACHE_VERSION. If the on-device marker shows
 // anything other than the latest, the device is running a stale app shell.
-const APP_SHELL_VERSION = 'tg-v20-76';
+const APP_SHELL_VERSION = 'tg-v20-77';
 { const _vm = document.getElementById('verMarker'); if(_vm) _vm.textContent = 'SHELL ' + APP_SHELL_VERSION; }
 try { document.title = document.title + ' [' + APP_SHELL_VERSION + ']'; } catch(_){}
 
