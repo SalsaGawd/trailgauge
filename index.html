@@ -629,6 +629,13 @@ body.light #permOverlay{background:rgba(240,244,248,0.94)}
   font-family:var(--fm);font-size:16px;font-weight:700;opacity:1;letter-spacing:1px;
   color:#000;background:#39ff14;text-align:center;padding:6px 8px;
   border-bottom:2px solid #000;pointer-events:none}
+/* × close button — the only tappable part of the bar (the bar itself stays
+   pointer-events:none). Hides the bar for the session only (not persisted;
+   it returns on next reload). Native <button> for reliable iOS tap. */
+#verMarkerClose{position:absolute;right:0;top:0;height:100%;min-width:52px;
+  background:none;border:none;font-family:inherit;font-size:22px;font-weight:700;
+  line-height:1;color:#000;cursor:pointer;pointer-events:auto;padding:0 16px;
+  -webkit-tap-highlight-color:transparent}
 /* Session C2b: amber fire toast (clone of #anglePinToast, warn-colored) */
 #fireToast{position:fixed;top:calc(60px + env(safe-area-inset-top,0px));
   left:50%;transform:translate(-50%,-20px);z-index:251;
@@ -10901,8 +10908,14 @@ startGPS();
 // const lives in index.html so it reflects the ACTUAL loaded shell — it MUST be
 // bumped in lockstep with sw.js CACHE_VERSION. If the on-device marker shows
 // anything other than the latest, the device is running a stale app shell.
-const APP_SHELL_VERSION = 'tg-v20-77';
-{ const _vm = document.getElementById('verMarker'); if(_vm) _vm.textContent = 'SHELL ' + APP_SHELL_VERSION; }
+const APP_SHELL_VERSION = 'tg-v20-78';
+{ const _vm = document.getElementById('verMarker');
+  if(_vm){
+    _vm.innerHTML = '<span>SHELL ' + APP_SHELL_VERSION + '</span>' +
+      '<button id="verMarkerClose" type="button" aria-label="Hide version bar">×</button>';
+    const _vc = document.getElementById('verMarkerClose');
+    if(_vc) _vc.addEventListener('click', () => { _vm.style.display = 'none'; });   // session-only; returns on reload
+  } }
 try { document.title = document.title + ' [' + APP_SHELL_VERSION + ']'; } catch(_){}
 
 // FX-OVERSCROLL2: JS rubber-band fallback for iOS < 16, where CSS
