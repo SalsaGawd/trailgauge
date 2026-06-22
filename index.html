@@ -162,12 +162,16 @@ html,body{width:100%;height:100%;overflow:hidden;overscroll-behavior:none;backgr
 #hdr > div:first-child{display:flex;align-items:baseline;min-width:0;flex:1 1 auto;overflow:hidden}
 .brand{font-family:var(--fd);font-size:20px;font-weight:700;color:var(--accent);
   letter-spacing:1px;text-transform:uppercase;white-space:nowrap;flex-shrink:0}
+/* Header peak mark. Sized in CSS (not inline) so the media queries below can
+   shrink it on tight screens — the brand word has flex-shrink:0 priority, so
+   the icon yields (and finally hides at the floor) before the word ever clips. */
+#brandMark{align-self:center;flex:0 0 auto;height:24px;width:auto;margin-right:6px}
 .sub{font-family:var(--fm);font-size:9px;color:var(--txt2);letter-spacing:1px;
   text-transform:uppercase;margin-left:8px;white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis;min-width:0}
 /* Hide the subtitle below ~520px instead of letting it ellipsize to "O…" —
    the brand block competes with the mode toggle + icon cluster there. */
-@media (max-width:520px){ .sub{display:none} }
+@media (max-width:520px){ .sub{display:none} #brandMark{height:22px;margin-right:5px} }
 /* Button cluster — pinned to right, never shrinks. Buttons themselves
    shrink on small screens via media queries below. */
 #hctl{display:flex;align-items:center;gap:8px;flex-shrink:0}
@@ -225,6 +229,7 @@ html,body{width:100%;height:100%;overflow:hidden;overscroll-behavior:none;backgr
   #hdr{padding:8px 10px;padding-top:max(8px, env(safe-area-inset-top, 0px));gap:6px}
   .sub{display:none}
   .brand{font-size:17px;letter-spacing:.5px}
+  #brandMark{height:18px;margin-right:4px}
   #hctl{gap:5px}
   .ibtn{width:30px;height:30px;font-size:13px;border-radius:7px}
   .battChip{display:none !important}
@@ -233,6 +238,7 @@ html,body{width:100%;height:100%;overflow:hidden;overscroll-behavior:none;backgr
    becomes just the brand mark on the left + 5 compact buttons on the right. */
 @media (max-width:340px){
   .brand{font-size:15px}
+  #brandMark{display:none}
   #hctl{gap:4px}
   .ibtn{width:28px;height:28px;font-size:12px;border-radius:6px}
 }
@@ -676,6 +682,12 @@ body.light #permOverlay{background:rgba(240,244,248,0.94)}
 #gps{max-width:none;width:100%}
 .gval{font-size:10px}
 #wx{width:220px;flex-shrink:0;border-top:none;border-left:1px solid var(--border);overflow:hidden}
+/* WX-SWIPE FIX: in landscape the strip is a full-height side column, so the
+   portrait "collapse to a 40px bar" minimize would strand the column below it
+   as a blank void. Neutralize the collapsed state here (no height cap) and hide
+   its chevron — collapse only applies to the portrait bottom strip. */
+#wx.wx-collapsed{max-height:none}
+#wxCollapseBtn{display:none}
 #wxhdr{padding:6px 10px 4px}
 #ctbox{padding:3px 8px} #ctime{font-size:12px} #ctmp{font-size:13px}
 #hscroll{flex-direction:column;overflow-x:hidden;overflow-y:auto;flex:1;padding:4px 8px 8px;gap:4px}
@@ -1407,7 +1419,7 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
 <div id="app">
   <div id="hdr">
     <div style="display:flex;align-items:baseline;min-width:0;flex:1 1 auto;overflow:hidden">
-      <img id="brandMark" src="assets/logo/peak-mark-dark.svg" alt="" style="align-self:center;flex:0 0 auto;height:28px;width:auto;margin-right:7px">
+      <img id="brandMark" src="assets/logo/peak-mark-dark.svg" alt="">
       <span class="brand">TrailGauge<sup style="font-size:.45em;opacity:.7" aria-hidden="true">™</sup></span>
       <span class="sub">Off-Road Inclinometer</span>
     </div>
@@ -7259,7 +7271,14 @@ document.getElementById('wx').addEventListener('touchend', e => {
   _wxDragging = false;
   // Downward swipe → collapse. Fires on enough displacement OR a quick flick.
   if((dy > 24 || (dy > 12 && vy > 0.35)) && Math.abs(dy) > Math.abs(dx)){
-    if(_wxEl && !_wxEl.classList.contains('wx-collapsed')) setWxCollapsed(true);
+    // WX-SWIPE FIX: collapse is a portrait bottom-strip affordance (strip → 40px
+    // bar, gauge grows to fill). In LANDSCAPE #wx is a full-height side column,
+    // so shrinking its height to 40px strands the column region below it as a
+    // blank void. Neutralize the collapse gesture there — the strip stays put and
+    // a tap still opens the full panel.
+    if(!window.matchMedia('(orientation:landscape)').matches){
+      if(_wxEl && !_wxEl.classList.contains('wx-collapsed')) setWxCollapsed(true);
+    }
     return;
   }
   // Upward swipe → expand if collapsed, otherwise open the full panel.
@@ -9154,16 +9173,40 @@ function showFireHideSheet(key, dist){
 let _fireToastTimer = null;
 // Generalized dismissable toast (C2c) — reused by fire + info alerts.
 // onDismiss runs when the × is tapped (auto-fade after 12s does not ack).
-function showAlertToast(text, onDismiss, persist){
+function showAlertToast(text, onDismiss, persist, onBodyTap){
   let toast = document.getElementById('fireToast');
   if(!toast){
     toast = document.createElement('div');
     toast.id = 'fireToast';
     document.body.appendChild(toast);
+    // FIRE-TAP: optional body-tap action, set per-call via toast._onBody. Only the
+    // fire toast wires it (→ open fire panel + focus the fire on the map); the
+    // shared sunset/weather/break toasts leave it null so a body tap does nothing.
+    // iOS often skips the synthesized click on a non-button body, so bind touchend
+    // too, with a timestamp guard so the two don't double-fire. Bound once on the
+    // div (survives innerHTML swaps). The × stops propagation + bails on touchend,
+    // so it only ever dismisses.
+    let _toastTapTs = 0;
+    toast.addEventListener('touchend', (e) => {
+      if(typeof toast._onBody !== 'function') return;
+      if(e.target.closest('.apt-x')) return;
+      e.preventDefault();
+      _toastTapTs = Date.now();
+      toast._onBody();
+    }, {passive:false});
+    toast.addEventListener('click', (e) => {
+      if(typeof toast._onBody !== 'function') return;
+      if(e.target.closest('.apt-x')) return;
+      if(Date.now() - _toastTapTs < 700) return;
+      toast._onBody();
+    });
   }
+  toast._onBody = (typeof onBodyTap === 'function') ? onBodyTap : null;
+  toast.style.cursor = toast._onBody ? 'pointer' : '';
   toast.innerHTML = `<span class="apt-msg">${escapeHtml(text)}</span><button class="apt-x" aria-label="Dismiss">×</button>`;
   toast.classList.add('show');
-  toast.querySelector('.apt-x').addEventListener('click', () => {
+  toast.querySelector('.apt-x').addEventListener('click', (e) => {
+    e.stopPropagation();   // × never triggers the body-tap action
     if(typeof onDismiss === 'function') onDismiss();
     toast.classList.remove('show');
     if(_fireToastTimer){ clearTimeout(_fireToastTimer); _fireToastTimer = null; }
@@ -9183,7 +9226,9 @@ function hideAlertToast(){
   if(_fireToastTimer){ clearTimeout(_fireToastTimer); _fireToastTimer = null; }
 }
 function showFireToast(text, key, dist, hours){
-  showAlertToast(text, () => ackFire(key, hours, dist));
+  // FIRE-TAP: body tap opens the fire panel + focuses the nearest wildfire on the
+  // map (same reused action as the #fireBanner). × still only dismisses.
+  showAlertToast(text, () => ackFire(key, hours, dist), false, fireBannerViewOnMap);
 }
 
 let _lastFireToastKey = null;
@@ -10908,7 +10953,7 @@ startGPS();
 // const lives in index.html so it reflects the ACTUAL loaded shell — it MUST be
 // bumped in lockstep with sw.js CACHE_VERSION. If the on-device marker shows
 // anything other than the latest, the device is running a stale app shell.
-const APP_SHELL_VERSION = 'tg-v20-78';
+const APP_SHELL_VERSION = 'tg-v20-79';
 { const _vm = document.getElementById('verMarker');
   if(_vm){
     _vm.innerHTML = '<span>SHELL ' + APP_SHELL_VERSION + '</span>' +
