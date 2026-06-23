@@ -195,7 +195,10 @@ html,body{width:100%;height:100%;overflow:hidden;overscroll-behavior:none;backgr
   border-radius:8px;cursor:pointer;-webkit-tap-highlight-color:transparent;
   flex-shrink:0;height:30px;transition:all var(--tr)}
 .modeToggleBtn:active{transform:scale(.94);background:var(--accent);color:#000}
-@media (max-width:380px){
+/* HEADER-FIT: phones are 390–430px in portrait — just ABOVE the old 380px
+   breakpoint, so they ran the full-size pill and clipped the brand. Tighten
+   across the whole phone range (≤480px) so the brand word always fits. */
+@media (max-width:480px){
   .modeToggleBtn{font-size:9px;letter-spacing:1px;padding:4px 7px;height:28px}
 }
 @media (max-width:340px){
@@ -225,7 +228,11 @@ html,body{width:100%;height:100%;overflow:hidden;overscroll-behavior:none;backgr
    Battery chip also hides on narrow screens to keep the action button row
    from overflowing — users on iPhone don't have battery API support
    anyway, so this is mostly a defensive guard for narrow Android. */
-@media (max-width:380px){
+/* HEADER-FIT: applies to the full phone range (≤480px), not just ≤380px —
+   the tightened layout already fits "TRAILGAUGE" at 375px, so by monotonicity
+   it fits at every width ≥375px. The right cluster (gaps, buttons, mode pill)
+   tightens before the brand word ever clips; OFF-ROAD is the worst case. */
+@media (max-width:480px){
   #hdr{padding:8px 10px;padding-top:max(8px, env(safe-area-inset-top, 0px));gap:6px}
   .sub{display:none}
   .brand{font-size:17px;letter-spacing:.5px}
@@ -661,7 +668,7 @@ body.light #permOverlay{background:rgba(240,244,248,0.94)}
 #hscroll::-webkit-scrollbar{display:none}
 .hcard{flex-shrink:0;background:var(--card);border:1px solid var(--border);border-radius:10px;
   padding:6px 10px;display:flex;flex-direction:column;align-items:center;gap:3px;min-width:60px;
-  transition:border-color var(--tr);animation:fadeUp .3s ease both}
+  transition:border-color var(--tr);animation:fadeUp .3s ease}
 .hcard.cur{border-color:var(--accent);box-shadow:0 0 8px var(--aglow)}
 .hcard.ww{border-color:var(--warn)} .hcard.dw{border-color:var(--danger)}
 .htime{font-family:var(--fm);font-size:9px;color:var(--txt3)}
@@ -7051,7 +7058,11 @@ function renderWx(data,ageMs){
     const wdir=data.hourly.winddirection_10m?.[idx];
     const cd=data.hourly.weathercode[idx];
     const card=document.createElement('div');
-    card.className='hcard'; card.style.animationDelay=(i*.04)+'s';
+    // WX-VOID FIX: no fadeUp fill-mode + no per-card stagger. The old
+    // `both` fill pinned cards at opacity:0 until their staggered delay
+    // played; on iOS that entry could drop/throttle, leaving cards stuck
+    // invisible (DOM height reserved → blank void). Natural opacity is 1.
+    card.className='hcard';
     if(i===0) card.classList.add('cur');
     if(tc<=1||(tc<=4&&pr>30)) card.classList.add('dw');
     else if(pr>50||cd>=80)    card.classList.add('ww');
@@ -10953,7 +10964,7 @@ startGPS();
 // const lives in index.html so it reflects the ACTUAL loaded shell — it MUST be
 // bumped in lockstep with sw.js CACHE_VERSION. If the on-device marker shows
 // anything other than the latest, the device is running a stale app shell.
-const APP_SHELL_VERSION = 'tg-v20-79';
+const APP_SHELL_VERSION = 'tg-v20-80';
 { const _vm = document.getElementById('verMarker');
   if(_vm){
     _vm.innerHTML = '<span>SHELL ' + APP_SHELL_VERSION + '</span>' +
