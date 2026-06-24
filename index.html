@@ -1218,6 +1218,38 @@ body.prof-trail.trip-active #trailTripStrip{display:flex}
   max-height:80vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
 #tlp.open #tlsh,#snp.open #snsh,#tdp.open #tdsh,#rcp.open #rcsh,#shp.open #shsh,#pnsp.open #pnssh,#plp.open #plsh,#pdp.open #pdsh,#flp.open #flsh,#texp.open #texpsh{transform:translateY(0)}
 
+/* ─── TRAIL "Pin & Post" ─────────────────────────────────────────────────
+   A trail-only button under the compass that drops+saves a pin at the current
+   spot, then offers Postcard / Share. Hidden in off-road; shown via prof-trail. */
+#pinPostBtn{display:none}
+body.prof-trail #pinPostBtn{display:flex;align-items:center;justify-content:center;gap:8px;
+  width:100%;max-width:480px;align-self:center;
+  background:var(--card);border:1px solid var(--accent);color:var(--accent);
+  border-radius:12px;padding:12px 16px;cursor:pointer;
+  font-family:var(--fd);font-size:14px;font-weight:700;letter-spacing:1.5px;
+  text-transform:uppercase;-webkit-tap-highlight-color:transparent;transition:all var(--tr)}
+body.prof-trail #pinPostBtn:active{transform:scale(.97);background:var(--accent);color:#000}
+#pinPostBtn .ppIco{font-size:16px;line-height:1}
+/* Pin & Post popup — small centered modal shown right after a pin is dropped. */
+#pinPostPopup{position:fixed;inset:0;z-index:105;display:flex;align-items:center;justify-content:center;
+  padding:20px;background:rgba(0,0,0,.65);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);
+  opacity:0;pointer-events:none;transition:opacity .25s ease}
+#pinPostPopup.open{opacity:1;pointer-events:all}
+#pinPostCard{position:relative;width:100%;max-width:320px;background:var(--card);
+  border:1px solid var(--border);border-radius:18px;padding:22px 20px 20px;
+  box-shadow:0 12px 40px rgba(0,0,0,.5);transform:translateY(12px) scale(.97);
+  transition:transform .25s cubic-bezier(.34,1.56,.64,1)}
+#pinPostPopup.open #pinPostCard{transform:translateY(0) scale(1)}
+#pinPostTitle{font-family:var(--fd);font-size:18px;font-weight:700;color:var(--accent);
+  letter-spacing:1px;text-transform:uppercase;text-align:center;margin-bottom:4px}
+#pinPostSub{font-family:var(--fm);font-size:11px;color:var(--txt2);text-align:center;
+  margin-bottom:18px;word-break:break-word}
+#pinPostBtns{display:flex;flex-direction:column;gap:10px}
+#pinPostClose{position:absolute;top:8px;right:8px;width:34px;height:34px;background:transparent;
+  border:none;color:var(--txt3);font-size:22px;line-height:1;cursor:pointer;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent}
+#pinPostClose:active{color:var(--txt)}
+
 /* Pin save modal field styling */
 .pinFieldLbl{font-family:var(--fd);font-size:9px;letter-spacing:1.5px;
   text-transform:uppercase;color:var(--txt2);display:block;
@@ -1536,6 +1568,12 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
           </div>
         </div>
       </div>
+
+      <!-- TRAIL-only Pin & Post: drops + SAVES a pin at the current spot, then
+           offers Postcard / Share. Hidden in off-road (shown via body.prof-trail). -->
+      <button id="pinPostBtn" type="button" aria-label="Pin and post current spot">
+        <span class="ppIco" aria-hidden="true">📍</span><span class="ppTxt">Pin &amp; Post</span>
+      </button>
 
       <!-- Session C2a: Trail-mode fire status chip (full-width). Tap → fire panel. -->
       <div id="fireStatus" role="button" tabindex="0"><span class="gico">🔥</span><div class="gdata"><span class="glbl">Fire &amp; Restrictions · tap for detail</span><span class="gval">Loading fire data…</span></div></div>
@@ -2031,6 +2069,20 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
       <button class="modalbtn ghost"   id="pdOpenMaps">Open in Maps…</button>
       <button class="modalbtn ghost"   id="pdEdit">Edit Pin</button>
       <button class="modalbtn ghost"   id="pdDelete" style="color:var(--danger)">Delete Pin</button>
+    </div>
+  </div>
+</div>
+
+<!-- TRAIL Pin & Post popup — appears after a pin is dropped+saved. The pin is
+     already persisted, so dismissing (× or tap-outside) just leaves it saved. -->
+<div id="pinPostPopup" role="dialog" aria-label="Pin saved — post options">
+  <div id="pinPostCard">
+    <button id="pinPostClose" type="button" aria-label="Close">×</button>
+    <div id="pinPostTitle">📍 Pinned ✓</div>
+    <div id="pinPostSub">Saved to your pins</div>
+    <div id="pinPostBtns">
+      <button class="modalbtn primary" id="pinPostCardBtn" type="button">📮 Postcard</button>
+      <button class="modalbtn" id="pinPostShareBtn" type="button">📤 Share</button>
     </div>
   </div>
 </div>
@@ -5445,6 +5497,130 @@ document.getElementById('pdShareCard').addEventListener('click', async () => {
     btn.textContent = origLabel;
   }
 });
+
+// ─── TRAIL "Pin & Post" ────────────────────────────────────────────────────
+// Drops + SAVES a pin at the current spot, then offers Postcard / Share. The pin
+// is persisted BEFORE the popup opens, so dismissing the popup never loses it.
+
+// Drop + persist a pin at the current GPS spot. Mirrors the new-pin branch of the
+// pin save flow (lines ~4643), minus the label form. Returns the saved pin, or
+// null if GPS isn't ready. Label is enriched from reverse geocode asynchronously.
+async function dropPinAtCurrentSpot(){
+  if(S.lat == null || S.lon == null){
+    alert('GPS not ready yet. Wait for location lock.');
+    return null;
+  }
+  const lat = S.lat, lon = S.lon, elev = S.elev;
+  const pin = {
+    id: 'pin_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+    lat, lon, elev,
+    label: 'Trail Pin · ' + fmtT(new Date()),
+    notes: '',
+    photo: null,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    ownerId: null,
+    visibility: 'private'
+  };
+  await pinPut(pin);     // saved first — nothing downstream can lose it
+  // Non-blocking: replace the placeholder label with a reverse-geocoded place
+  // name once it resolves (the pin is already saved either way).
+  tryReverseGeocode(lat, lon).then(name => {
+    if(name){ pin.label = name; pin.updatedAt = Date.now(); pinPut(pin); }
+  }).catch(() => {});
+  return pin;
+}
+
+// Share a pin as an image card via the OS share sheet (mirrors the #pdShareCard
+// handler). Kept gesture-safe by the click-only binding on the Share button.
+async function sharePinAsCard(pin){
+  if(!pin) return;
+  try {
+    const blob = await renderPinShareCard(pin);
+    if(!blob){ alert('Could not generate the share card.'); return; }
+    const file = new File([blob], `${safeFilename(pin.label, 'pin')}.png`, { type: 'image/png' });
+    if(navigator.canShare && navigator.canShare({ files: [file] })){
+      try {
+        await navigator.share({ files: [file], title: pin.label || 'TrailGauge Pin',
+          text: `${pin.lat.toFixed(5)}, ${pin.lon.toFixed(5)}` });
+      } catch(e){ /* user cancelled the share sheet */ }
+    } else {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `${pin.label || 'pin'}.png`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+  } catch(err){
+    console.warn('Pin & Post share failed:', err);
+    alert('Could not generate the share card.');
+  }
+}
+
+let _pinPostPin = null;
+const _pinPostPopupEl = document.getElementById('pinPostPopup');
+function openPinPostPopup(pin){
+  _pinPostPin = pin;
+  const sub = document.getElementById('pinPostSub');
+  if(sub) sub.textContent = (pin && pin.label) ? pin.label : 'Saved to your pins';
+  if(_pinPostPopupEl) _pinPostPopupEl.classList.add('open');
+}
+function closePinPostPopup(){
+  if(_pinPostPopupEl) _pinPostPopupEl.classList.remove('open');
+}
+
+// iOS-robust tap: native <button>s fire click reliably, but iOS can skip the
+// synthesized click on the backdrop <div>. Bind touchend + click with a shared
+// timestamp guard so neither double-fires. `selfOnly` makes the backdrop ignore
+// taps that bubble up from its children (card/buttons).
+function _ppBindTap(el, handler, selfOnly){
+  if(!el) return;
+  let ts = 0;
+  el.addEventListener('touchend', (e) => {
+    if(selfOnly && e.target !== el) return;
+    e.preventDefault();
+    ts = Date.now();
+    handler(e);
+  }, { passive: false });
+  el.addEventListener('click', (e) => {
+    if(selfOnly && e.target !== el) return;
+    if(Date.now() - ts < 700) return;   // touchend already handled it
+    handler(e);
+  });
+}
+
+(function initPinPost(){
+  const btn = document.getElementById('pinPostBtn');
+  if(!btn) return;
+  let _busy = false;
+  // Main button → drop+save the pin, then open the popup.
+  _ppBindTap(btn, async () => {
+    if(_busy) return;
+    _busy = true;
+    try {
+      const pin = await dropPinAtCurrentSpot();
+      if(pin) openPinPostPopup(pin);
+    } finally { _busy = false; }
+  });
+  // 📮 Postcard → placeholder: open the existing pin share-card screen.
+  _ppBindTap(document.getElementById('pinPostCardBtn'), () => {
+    const pin = _pinPostPin;
+    closePinPostPopup();
+    // TODO: connect to postcard designer flow when built.
+    if(pin) openPinDetail(pin);
+  });
+  // 📤 Share → social share-sheet flow. CLICK-ONLY on purpose: navigator.share
+  // needs the user-gesture token, and the proven #pdShareCard path uses click.
+  const shareBtn = document.getElementById('pinPostShareBtn');
+  if(shareBtn) shareBtn.addEventListener('click', () => {
+    const pin = _pinPostPin;
+    closePinPostPopup();
+    sharePinAsCard(pin);
+  });
+  // Dismiss: × button and tap-outside (backdrop, selfOnly so card taps don't close).
+  _ppBindTap(document.getElementById('pinPostClose'), () => closePinPostPopup());
+  _ppBindTap(_pinPostPopupEl, () => closePinPostPopup(), true);
+})();
 
 // Preloaded logo images for the canvas share cards (drawn via drawImage — shapes
 // untouched, only scaled). Loaded once at startup. Share-card renders await
@@ -10981,7 +11157,7 @@ startGPS();
 // const lives in index.html so it reflects the ACTUAL loaded shell — it MUST be
 // bumped in lockstep with sw.js CACHE_VERSION. If the on-device marker shows
 // anything other than the latest, the device is running a stale app shell.
-const APP_SHELL_VERSION = 'tg-v20-83';
+const APP_SHELL_VERSION = 'tg-v20-84';
 { const _vm = document.getElementById('verMarker');
   if(_vm){
     _vm.innerHTML = '<span>SHELL ' + APP_SHELL_VERSION + '</span>' +
