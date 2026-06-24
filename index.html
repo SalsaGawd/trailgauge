@@ -1352,6 +1352,27 @@ body.prof-trail.trip-active #actionBar #pinPostBtn{display:none}
 .pcBgBtn.on{border-color:var(--accent);color:var(--accent)}
 .pcSrcBtn{font-size:11px}
 .pcBgBtn:active,.pcSrcBtn:active{transform:scale(.97)}
+/* Tap-to-enlarge — lift the live card into a full-screen centered lightbox so
+   the photo + coords overlay can be inspected before continuing. Reuses the SAME
+   card node (signature canvas + flip state intact), so nothing is cloned. */
+#pcCard{position:relative;cursor:zoom-in}
+#pcZoomHint{position:absolute;bottom:8px;right:8px;z-index:3;pointer-events:none;
+  font-family:var(--fm);font-size:9px;letter-spacing:.5px;color:#fff;
+  background:rgba(10,12,15,.55);border-radius:20px;padding:4px 9px;
+  opacity:.9;transition:opacity var(--tr)}
+#pcDesigner.pcZoom #pcStage{position:fixed;inset:0;z-index:40;padding:0;margin:0;
+  background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;
+  animation:pcZoomIn .2s ease}
+@keyframes pcZoomIn{from{opacity:0}to{opacity:1}}
+/* Keep the 3:2 card as big as fits a portrait phone (1.5 × the height cap). */
+#pcDesigner.pcZoom #pcCard{max-width:min(94vw, 141vh);cursor:zoom-out}
+#pcDesigner.pcZoom #pcZoomHint{display:none}
+#pcZoomClose{display:none}
+#pcDesigner.pcZoom #pcZoomClose{display:flex;position:fixed;z-index:41;
+  top:max(12px,env(safe-area-inset-top,0px));right:14px;width:42px;height:42px;
+  align-items:center;justify-content:center;border-radius:50%;
+  background:rgba(10,12,15,.7);border:1px solid var(--border);color:#fff;
+  font-size:24px;line-height:1;cursor:pointer;-webkit-tap-highlight-color:transparent}
 /* Big signature overlay — finger-friendly full-width signing surface. */
 #pcSigOverlay{position:fixed;inset:0;z-index:170;display:none;flex-direction:column;
   background:var(--bg);padding:max(10px,env(safe-area-inset-top,0px)) 14px calc(14px + var(--sb))}
@@ -2216,6 +2237,7 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
   </div>
   <div id="pcStage">
     <div id="pcCard">
+      <div id="pcZoomHint" aria-hidden="true">⤢ Tap to enlarge</div>
       <div id="pcFlip">
         <!-- FRONT: pin share card + coordinates overlay (the framed side) -->
         <div id="pcFront" class="pcFace">
@@ -2247,6 +2269,7 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
       </div>
     </div>
   </div>
+  <button id="pcZoomClose" type="button" aria-label="Close enlarged preview">×</button>
   <div id="pcControls">
     <div id="pcFrontCtl">
       <div id="pcBgToggle">
@@ -5855,6 +5878,14 @@ function fmtLatLon(lat, lon){
   return la + ' ' + lo;
 }
 
+// The pin-drop seeds a placeholder label ("Trail Pin · 2:15am") until a reverse
+// geocode resolves a real place name. Treat that placeholder as "no name yet" so
+// the postcard never prints it as the location. Mirrors the drop format at
+// dropPinAtCurrentSpot().
+function _pcIsPlaceholderLabel(label){
+  return !label || /^Trail Pin\b/.test(label);
+}
+
 // Render the front per current mode: PHOTO (full-bleed user photo + coords scrim)
 // or STOCK (the generated share-card design). Coords overlay shows only over a
 // photo; the stock card already has its text baked in.
@@ -5875,15 +5906,37 @@ async function openPostcardDesigner(pin){
   if(!pin || !_pcEl) return;
   _pcPin = pin;
   _pcEl.classList.remove('flipped');           // always start on the front
+  _pcCloseZoom();                              // never re-open zoomed
   document.getElementById('pcHint').textContent = '';
-  // FRONT coords overlay — the framed side leads with name + coordinates.
+  // Label the card with the pin's LOCATION NAME (the reverse-geocoded place the
+  // pin-drop resolves in the background). The "Trail Pin · 2:15am" auto label is
+  // a placeholder, not a real name — treat it as "no name yet" and fall back to
+  // the timestamp/coords only when no place name is (or becomes) available.
   const coords = fmtLatLon(pin.lat, pin.lon);
-  document.getElementById('pcFrontCoords').innerHTML =
-    (pin.label ? '<b>' + escapeHtml(pin.label) + '</b><br>' : '') + coords;
-  // BACK printed meta: coords · date.
   let dateStr = '';
   try { dateStr = new Date(pin.createdAt || Date.now()).toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric'}); } catch(_){}
-  document.getElementById('pcFootMeta').textContent = coords + (dateStr ? '  ·  ' + dateStr : '');
+  const footTail = coords + (dateStr ? '  ·  ' + dateStr : '');
+  function applyPcLabel(name){
+    // FRONT overlay — the framed side leads with the place name + coordinates.
+    document.getElementById('pcFrontCoords').innerHTML =
+      (name ? '<b>' + escapeHtml(name) + '</b><br>' : '') + coords;
+    // BACK printed meta — lead with the place name when known; coords · date otherwise.
+    document.getElementById('pcFootMeta').textContent = (name ? name + '  ·  ' : '') + footTail;
+  }
+  const knownName = _pcIsPlaceholderLabel(pin.label) ? null : pin.label;
+  applyPcLabel(knownName);
+  // Only a placeholder so far → resolve the real place name now and swap it in
+  // when it lands (guarded so a stale lookup can't relabel a different pin).
+  if(knownName == null){
+    const reqPin = pin;
+    tryReverseGeocode(pin.lat, pin.lon).then(name => {
+      if(name && _pcPin === reqPin){
+        reqPin.label = name; reqPin.updatedAt = Date.now();
+        try { pinPut(reqPin); } catch(_){}
+        applyPcLabel(name);
+      }
+    }).catch(() => {});
+  }
   // Reset the writable back each open.
   const msg = document.getElementById('pcMsg');
   msg.value = '';
@@ -5912,19 +5965,46 @@ async function openPostcardDesigner(pin){
 
 function closePostcardDesigner(){
   if(!_pcEl) return;
+  _pcCloseZoom();
   _pcEl.classList.remove('open');
   _pcCloseSigOverlay();
   if(_pcStockUrl){ URL.revokeObjectURL(_pcStockUrl); _pcStockUrl = null; }
   // The pin is already saved — nothing to persist here, nothing lost.
 }
 
+// ── Tap-to-enlarge (FIX 4) ─────────────────────────────────────────────────
+// Full-screen preview of the live card. Uses the same node, so flip state and the
+// signature canvas survive; closing just drops the class.
+let _pcZoomed = false;
+function _pcOpenZoom(){
+  if(!_pcEl || _pcZoomed) return;
+  _pcZoomed = true; _pcEl.classList.add('pcZoom');
+  // Canvas re-lays-out at the larger size → redraw the signature preview crisply.
+  requestAnimationFrame(_pcRenderSigPreview);
+}
+function _pcCloseZoom(){
+  if(!_pcEl || !_pcZoomed) return;
+  _pcZoomed = false; _pcEl.classList.remove('pcZoom');
+  requestAnimationFrame(_pcRenderSigPreview);
+}
+// A tap belongs to the back's editable controls (type / sign / clear) — don't
+// hijack it for zoom so the card stays usable.
+function _pcTapIsEdit(e){
+  return _pcEl.classList.contains('flipped') &&
+         !!(e.target.closest && e.target.closest('#pcMsg, #pcSigBox, #pcSigClear'));
+}
+
 // Reusable pointer-event signature pad (touch + mouse, iOS-robust). touch-action:
-// none on the canvas stops the page scrolling mid-stroke. Quadratic midpoint
-// smoothing. Used by the big overlay (the actual high-res signing surface).
+// none on the canvas stops the page scrolling mid-stroke. Continuous quadratic
+// midpoint smoothing — each segment starts exactly where the previous one ended
+// (lastMid), so the stroke is one unbroken solid line (no gaps/dashes/dots), and
+// coalesced pointer events are recovered so it keeps up with a fast finger.
+// Used by the big overlay (the actual high-res signing surface).
 function _pcMakePad(canvas, strokeColor){
   const ctx = canvas.getContext('2d');
-  let drawing = false, last = null;
+  let drawing = false, last = null, lastMid = null;
   const pad = { canvas, ctx, hasInk: false, _cssW: 0, _cssH: 0 };
+  const ink = strokeColor || '#1c1a12';
   function size(){
     const r = canvas.getBoundingClientRect();
     if(r.width < 2 || r.height < 2) return;
@@ -5935,23 +6015,36 @@ function _pcMakePad(canvas, strokeColor){
     canvas.width = w; canvas.height = h;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.lineWidth = 2.6; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    ctx.strokeStyle = strokeColor || '#1c1a12';
+    ctx.setLineDash([]);                 // solid stroke — never dashed/dotted
+    ctx.strokeStyle = ink; ctx.fillStyle = ink;
   }
   function pt(e){ const r = canvas.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+  // Draw one continuous quadratic from the previous midpoint, curving through the
+  // previous raw point, to the new midpoint. Because the next segment begins at
+  // this same new midpoint, the path never lifts — no gaps between segments.
+  function extend(p){
+    const mid = { x: (last.x + p.x) / 2, y: (last.y + p.y) / 2 };
+    ctx.beginPath();
+    ctx.moveTo(lastMid.x, lastMid.y);
+    ctx.quadraticCurveTo(last.x, last.y, mid.x, mid.y);
+    ctx.stroke();
+    last = p; lastMid = mid; pad.hasInk = true;
+  }
   canvas.addEventListener('pointerdown', (e) => {
-    size(); drawing = true; last = pt(e);
+    size(); drawing = true; last = pt(e); lastMid = { x: last.x, y: last.y };
+    // Seed dot so a single tap (no move) still leaves a mark.
+    ctx.beginPath(); ctx.arc(last.x, last.y, ctx.lineWidth / 2, 0, Math.PI * 2); ctx.fill();
+    pad.hasInk = true;
     try { canvas.setPointerCapture(e.pointerId); } catch(_){}
     e.preventDefault();
   });
   canvas.addEventListener('pointermove', (e) => {
     if(!drawing) return;
-    const p = pt(e);
-    const mid = { x: (last.x + p.x) / 2, y: (last.y + p.y) / 2 };
-    ctx.beginPath();
-    ctx.moveTo(last.x, last.y);
-    ctx.quadraticCurveTo(last.x, last.y, mid.x, mid.y);
-    ctx.stroke();
-    last = p; pad.hasInk = true;
+    // Recover the in-between samples the browser merged into this event so a fast
+    // stroke is plotted as a dense continuous line instead of sparse long jumps.
+    const evs = (typeof e.getCoalescedEvents === 'function') ? e.getCoalescedEvents() : null;
+    if(evs && evs.length){ for(const ev of evs) extend(pt(ev)); }
+    else extend(pt(e));
     e.preventDefault();
   });
   const end = () => { drawing = false; };
@@ -6037,6 +6130,28 @@ function _pcCommitSigOverlay(){
   });
   const closeBtn = document.getElementById('pcClose');
   if(closeBtn) closeBtn.addEventListener('click', closePostcardDesigner);
+
+  // Tap-to-enlarge: tap the card to preview full-screen; tap again / × / outside
+  // closes. iOS-robust (touchend + click guard). On the back, taps on the
+  // editable controls fall through so typing/signing still work.
+  const pcCard = document.getElementById('pcCard');
+  if(pcCard){
+    let ts = 0;
+    const onCardTap = () => { _pcZoomed ? _pcCloseZoom() : _pcOpenZoom(); };
+    pcCard.addEventListener('touchend', (e) => {
+      if(!_pcZoomed && _pcTapIsEdit(e)) return;   // let the control handle it
+      e.preventDefault(); ts = Date.now(); onCardTap();
+    }, { passive: false });
+    pcCard.addEventListener('click', (e) => {
+      if(!_pcZoomed && _pcTapIsEdit(e)) return;
+      if(Date.now() - ts < 700) return;           // touchend already handled it
+      onCardTap();
+    });
+  }
+  // Tap the dark backdrop (the stage itself, not the card) to close the preview.
+  _ppBindTap(document.getElementById('pcStage'), () => _pcCloseZoom(), true);
+  const zoomClose = document.getElementById('pcZoomClose');
+  if(zoomClose) zoomClose.addEventListener('click', _pcCloseZoom);
 
   // Signature: tap the box to open the big signing overlay; Clear wipes it.
   const sigBox = document.getElementById('pcSigBox');
@@ -11641,7 +11756,7 @@ startGPS();
 // Loaded-shell version string. Lives in index.html so it reflects the ACTUAL
 // loaded shell, and MUST be bumped in lockstep with sw.js CACHE_VERSION. Rendered
 // as a small, dim line at the bottom of Settings (no longer a loud top bar).
-const APP_SHELL_VERSION = 'tg-v20-93';
+const APP_SHELL_VERSION = 'tg-v20-95';
 { const _sv = document.getElementById('stVersion');
   if(_sv) _sv.textContent = 'TrailGauge ' + APP_SHELL_VERSION; }
 
