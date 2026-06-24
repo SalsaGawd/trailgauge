@@ -1219,17 +1219,14 @@ body.prof-trail.trip-active #trailTripStrip{display:flex}
 #tlp.open #tlsh,#snp.open #snsh,#tdp.open #tdsh,#rcp.open #rcsh,#shp.open #shsh,#pnsp.open #pnssh,#plp.open #plsh,#pdp.open #pdsh,#flp.open #flsh,#texp.open #texpsh{transform:translateY(0)}
 
 /* ─── TRAIL "Pin & Post" ─────────────────────────────────────────────────
-   A trail-only button under the compass that drops+saves a pin at the current
-   spot, then offers Postcard / Share. Hidden in off-road; shown via prof-trail. */
+   An .actBtn that pairs with Start Trip inside the action bar (same family of
+   action). Drops+saves a pin at the current spot, then offers Postcard / Share.
+   Hidden by default + in off-road; shown only in trail when NOT recording — the
+   STOP/Summit recording controls take over the bar during an active trip, so
+   pairing it only with Start Trip keeps the row from overflowing. */
 #pinPostBtn{display:none}
-body.prof-trail #pinPostBtn{display:flex;align-items:center;justify-content:center;gap:8px;
-  width:100%;max-width:480px;align-self:center;
-  background:var(--card);border:1px solid var(--accent);color:var(--accent);
-  border-radius:12px;padding:12px 16px;cursor:pointer;
-  font-family:var(--fd);font-size:14px;font-weight:700;letter-spacing:1.5px;
-  text-transform:uppercase;-webkit-tap-highlight-color:transparent;transition:all var(--tr)}
-body.prof-trail #pinPostBtn:active{transform:scale(.97);background:var(--accent);color:#000}
-#pinPostBtn .ppIco{font-size:16px;line-height:1}
+body.prof-trail #actionBar #pinPostBtn{display:flex;max-width:240px;flex:0 1 240px}
+body.prof-trail.trip-active #actionBar #pinPostBtn{display:none}
 /* Pin & Post popup — small centered modal shown right after a pin is dropped. */
 #pinPostPopup{position:fixed;inset:0;z-index:105;display:flex;align-items:center;justify-content:center;
   padding:20px;background:rgba(0,0,0,.65);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);
@@ -1517,6 +1514,10 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
 
   <div id="main">
     <div id="gsec">
+      <!-- Fire & Restrictions chip — moved to the TOP of the content stack since
+           it's safety-related and should lead, in both off-road and trail. Tap → fire panel. -->
+      <div id="fireStatus" role="button" tabindex="0"><span class="gico">🔥</span><div class="gdata"><span class="glbl">Fire &amp; Restrictions · tap for detail</span><span class="gval">Loading fire data…</span></div></div>
+
       <div id="readouts">
         <div class="rcard p" id="pcard">
           <div class="rlbl">Pitch</div>
@@ -1569,15 +1570,6 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
         </div>
       </div>
 
-      <!-- TRAIL-only Pin & Post: drops + SAVES a pin at the current spot, then
-           offers Postcard / Share. Hidden in off-road (shown via body.prof-trail). -->
-      <button id="pinPostBtn" type="button" aria-label="Pin and post current spot">
-        <span class="ppIco" aria-hidden="true">📍</span><span class="ppTxt">Pin &amp; Post</span>
-      </button>
-
-      <!-- Session C2a: Trail-mode fire status chip (full-width). Tap → fire panel. -->
-      <div id="fireStatus" role="button" tabindex="0"><span class="gico">🔥</span><div class="gdata"><span class="glbl">Fire &amp; Restrictions · tap for detail</span><span class="gval">Loading fire data…</span></div></div>
-
       <div id="gps">
         <div class="gchip" id="gcoordsChip" role="button" tabindex="0"><span class="gico">📍</span><div class="gdata"><span class="glbl">Coords · tap to share</span><span class="gval" id="gcoords">Locating…</span></div></div>
         <div class="gchip" id="gelevChip"><span class="gico">⛰️</span><div class="gdata"><span class="glbl">Elevation</span><span class="gval" id="gelev">—</span></div></div>
@@ -1619,6 +1611,9 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
         <button id="zbtn" class="actBtn">ZERO<br><span class="actBtnSub">CALIBRATE</span></button>
         <button id="anglePinBtn" class="actBtn primary">📍<br><span class="actBtnMain">PIN ANGLE</span></button>
         <button id="tripBtn" class="actBtn">▶<br><span class="actBtnSub">START TRIP</span></button>
+        <!-- TRAIL-only Pin & Post — pairs with Start Trip (same .actBtn sizing).
+             Drops+saves a pin, then offers Postcard / Share. -->
+        <button id="pinPostBtn" class="actBtn" type="button" aria-label="Pin and post current spot">📍<br><span class="actBtnSub">PIN &amp; POST</span></button>
         <button id="summitBtn" class="actBtn">🏔️<br><span class="actBtnSub">MARK SUMMIT</span></button>
         <button id="tripPauseBtn" style="display:none">⏸</button>
         <!-- BRK.6: Trail-only break-reminder quick toggle (shown only while a Trail trip records). -->
@@ -11157,7 +11152,7 @@ startGPS();
 // const lives in index.html so it reflects the ACTUAL loaded shell — it MUST be
 // bumped in lockstep with sw.js CACHE_VERSION. If the on-device marker shows
 // anything other than the latest, the device is running a stale app shell.
-const APP_SHELL_VERSION = 'tg-v20-84';
+const APP_SHELL_VERSION = 'tg-v20-85';
 { const _vm = document.getElementById('verMarker');
   if(_vm){
     _vm.innerHTML = '<span>SHELL ' + APP_SHELL_VERSION + '</span>' +
