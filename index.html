@@ -1258,6 +1258,82 @@ body.prof-trail.trip-active #actionBar #pinPostBtn{display:none}
   display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent}
 #pinPostClose:active{color:var(--txt)}
 
+/* ─── POSTCARD DESIGNER ──────────────────────────────────────────────────────
+   Full-screen local-only designer: flippable front/back postcard + signature.
+   No payment/server yet. Matches the dark / green-border aesthetic. */
+#pcDesigner{position:fixed;inset:0;z-index:160;display:none;flex-direction:column;
+  background:var(--bg);padding:0 0 calc(12px + var(--sb));overflow-y:auto;-webkit-overflow-scrolling:touch}
+#pcDesigner.open{display:flex}
+#pcHdr{display:flex;align-items:center;justify-content:space-between;flex-shrink:0;
+  padding:max(10px,env(safe-area-inset-top,0px)) 16px 10px;border-bottom:1px solid var(--border);
+  background:var(--bg2);position:sticky;top:0;z-index:2}
+#pcTitle{font-family:var(--fd);font-size:16px;font-weight:700;letter-spacing:1px;
+  text-transform:uppercase;color:var(--accent)}
+#pcClose{width:38px;height:38px;background:transparent;border:none;color:var(--txt2);
+  font-size:26px;line-height:1;cursor:pointer;-webkit-tap-highlight-color:transparent;
+  display:flex;align-items:center;justify-content:center;border-radius:50%}
+#pcClose:active{color:var(--txt)}
+#pcStage{padding:18px 16px 8px;display:flex;justify-content:center}
+/* 3D flip card — landscape 3:2 postcard. */
+#pcCard{width:100%;max-width:380px;aspect-ratio:3/2;perspective:1400px}
+#pcFlip{position:relative;width:100%;height:100%;transform-style:preserve-3d;
+  transition:transform .55s cubic-bezier(.4,0,.2,1)}
+#pcDesigner.flipped #pcFlip{transform:rotateY(180deg)}
+.pcFace{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;
+  border:1px solid var(--accent);border-radius:12px;overflow:hidden;background:var(--card);
+  box-shadow:0 10px 30px rgba(0,0,0,.45)}
+/* Front face visible by default; back rotated behind. pointer-events flip with the
+   card so only the visible face is interactive (avoids 3D hit-test bleed). */
+#pcFront{pointer-events:auto}
+#pcBack{transform:rotateY(180deg);pointer-events:none;display:flex;flex-direction:column;
+  padding:10px 12px;gap:8px;background:#f3efe4;color:#1c1a12}
+#pcDesigner.flipped #pcFront{pointer-events:none}
+#pcDesigner.flipped #pcBack{pointer-events:auto}
+#pcFrontImg{width:100%;height:100%;object-fit:cover;display:block}
+#pcFrontCoords{position:absolute;left:0;right:0;bottom:0;padding:10px 12px;
+  font-family:var(--fm);font-size:11px;letter-spacing:.5px;color:#fff;
+  background:linear-gradient(to top,rgba(0,0,0,.72),rgba(0,0,0,0));text-align:center;line-height:1.4}
+#pcFrontCoords b{font-family:var(--fd);font-weight:700;letter-spacing:1px;text-transform:uppercase}
+/* Postcard back layout: message (left), signature (right), printed footer. */
+#pcBackTop{display:flex;gap:8px;flex:1;min-height:0}
+#pcMsgWrap{flex:1.2;display:flex;flex-direction:column;min-width:0}
+#pcMsg{flex:1;width:100%;resize:none;border:none;background:transparent;
+  font-family:var(--fm);font-size:12px;line-height:1.5;color:#2a2620;padding:2px;
+  outline:none}
+#pcMsg::placeholder{color:#9a8f78}
+#pcMsgCount{font-family:var(--fm);font-size:9px;color:#9a8f78;text-align:right;margin-top:2px}
+#pcSigWrap{flex:1;display:flex;flex-direction:column;border-left:1px dashed #c9bfa6;padding-left:8px}
+.pcSigLbl{font-family:var(--fm);font-size:8px;letter-spacing:1px;text-transform:uppercase;color:#9a8f78;margin-bottom:2px}
+#pcSig{flex:1;width:100%;background:rgba(255,255,255,.55);border:1px solid #d8cfb8;
+  border-radius:6px;touch-action:none;cursor:crosshair;display:block}
+#pcSigClear{align-self:flex-end;margin-top:4px;background:transparent;border:1px solid #c9bfa6;
+  border-radius:5px;color:#6b6353;font-family:var(--fm);font-size:9px;letter-spacing:1px;
+  text-transform:uppercase;padding:3px 8px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+#pcBackFooter{display:flex;align-items:center;gap:6px;border-top:1px solid #d8cfb8;padding-top:6px;flex-shrink:0}
+#pcBackFooter img{height:16px;width:auto;opacity:.85}
+#pcFootMeta{font-family:var(--fm);font-size:9px;letter-spacing:.5px;color:#6b6353;line-height:1.3}
+/* Controls */
+#pcControls{display:flex;flex-direction:column;gap:12px;padding:10px 16px 4px;max-width:412px;
+  width:100%;align-self:center}
+#pcSizePick{display:flex;gap:8px}
+.pcSizeBtn{flex:1;background:var(--card);border:1px solid var(--border);border-radius:10px;
+  color:var(--txt2);font-family:var(--fd);font-size:13px;font-weight:700;letter-spacing:1px;
+  padding:10px 6px;cursor:pointer;-webkit-tap-highlight-color:transparent;
+  display:flex;flex-direction:column;align-items:center;gap:2px;transition:all var(--tr)}
+.pcSizeBtn span{font-family:var(--fm);font-size:8px;letter-spacing:1px;color:var(--txt3);font-weight:400}
+.pcSizeBtn.on{border-color:var(--accent);color:var(--accent)}
+.pcSizeBtn.on span{color:var(--accent)}
+#pcActions{display:flex;gap:8px}
+#pcFlipBtn{flex:1;background:var(--card);border:1px solid var(--accent);border-radius:10px;
+  color:var(--accent);font-family:var(--fd);font-size:13px;font-weight:700;letter-spacing:1px;
+  text-transform:uppercase;padding:12px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+#pcNextBtn{flex:1.4;background:var(--accent);border:1px solid var(--accent);border-radius:10px;
+  color:#000;font-family:var(--fd);font-size:13px;font-weight:700;letter-spacing:1px;
+  text-transform:uppercase;padding:12px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+#pcFlipBtn:active,#pcNextBtn:active,.pcSizeBtn:active{transform:scale(.97)}
+#pcHint{text-align:center;font-family:var(--fm);font-size:11px;color:var(--accent);
+  min-height:14px;padding:2px 16px;letter-spacing:.5px}
+
 /* Pin save modal field styling */
 .pinFieldLbl{font-family:var(--fd);font-size:9px;letter-spacing:1.5px;
   text-transform:uppercase;color:var(--txt2);display:block;
@@ -2093,6 +2169,56 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
       <button class="modalbtn" id="pinPostShareBtn" type="button">📤 Share</button>
     </div>
   </div>
+</div>
+
+<!-- POSTCARD DESIGNER — full-screen, local-only (no payment/server yet). Flip
+     between the share-card FRONT (with coords overlay) and a writable BACK
+     (message + finger-signature + printed coords/date/logo). -->
+<div id="pcDesigner" role="dialog" aria-label="Postcard designer">
+  <div id="pcHdr">
+    <span id="pcTitle">Postcard</span>
+    <button id="pcClose" type="button" aria-label="Close postcard designer">×</button>
+  </div>
+  <div id="pcStage">
+    <div id="pcCard">
+      <div id="pcFlip">
+        <!-- FRONT: pin share card + coordinates overlay (the framed side) -->
+        <div id="pcFront" class="pcFace">
+          <img id="pcFrontImg" alt="Postcard front — your pin">
+          <div id="pcFrontCoords"></div>
+        </div>
+        <!-- BACK: message + signature + printed meta -->
+        <div id="pcBack" class="pcFace">
+          <div id="pcBackTop">
+            <div id="pcMsgWrap">
+              <textarea id="pcMsg" maxlength="300" placeholder="Wish you were here…"></textarea>
+              <div id="pcMsgCount">300</div>
+            </div>
+            <div id="pcSigWrap">
+              <div class="pcSigLbl">Sign here</div>
+              <canvas id="pcSig"></canvas>
+              <button id="pcSigClear" type="button">Clear</button>
+            </div>
+          </div>
+          <div id="pcBackFooter">
+            <img src="assets/logo/peak-mark-dark.svg" alt="">
+            <span id="pcFootMeta"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="pcControls">
+    <div id="pcSizePick">
+      <button class="pcSizeBtn on" data-size="4x6" type="button">4×6<span>Standard</span></button>
+      <button class="pcSizeBtn" data-size="6x9" type="button">6×9<span>Premium</span></button>
+    </div>
+    <div id="pcActions">
+      <button id="pcFlipBtn" type="button">↻ Flip</button>
+      <button id="pcNextBtn" type="button">Continue</button>
+    </div>
+  </div>
+  <div id="pcHint"></div>
 </div>
 
 <script>
@@ -5624,12 +5750,11 @@ function _ppBindTap(el, handler, selfOnly){
       if(pin) openPinPostPopup(pin);
     } finally { _busy = false; }
   });
-  // 📮 Postcard → placeholder: open the existing pin share-card screen.
+  // 📮 Postcard → open the postcard designer for this pin.
   _ppBindTap(document.getElementById('pinPostCardBtn'), () => {
     const pin = _pinPostPin;
     closePinPostPopup();
-    // TODO: connect to postcard designer flow when built.
-    if(pin) openPinDetail(pin);
+    if(pin) openPostcardDesigner(pin);
   });
   // 📤 Share → social share-sheet flow. CLICK-ONLY on purpose: navigator.share
   // needs the user-gesture token, and the proven #pdShareCard path uses click.
@@ -5642,6 +5767,159 @@ function _ppBindTap(el, handler, selfOnly){
   // Dismiss: × button and tap-outside (backdrop, selfOnly so card taps don't close).
   _ppBindTap(document.getElementById('pinPostClose'), () => closePinPostPopup());
   _ppBindTap(_pinPostPopupEl, () => closePinPostPopup(), true);
+})();
+
+// ─── POSTCARD DESIGNER (local-only front-end; NO payment/server/Stannp yet) ──
+// Flippable front/back postcard for a pin. FRONT reuses renderPinShareCard with a
+// coordinates overlay (the framed side). BACK has a typed message, a finger-drawn
+// signature, and printed coords/date/logo. Size picker (4×6 / 6×9) stores the
+// choice. Everything is held in-memory; Continue is a placeholder until checkout.
+const _pcEl = document.getElementById('pcDesigner');
+let _pcPin = null;
+let _pcSize = '4x6';
+let _pcFrontUrl = null;     // object URL for the front image (revoked on close)
+let _pcSigSized = false;
+
+function fmtLatLon(lat, lon){
+  const la = Math.abs(lat).toFixed(4) + '°' + (lat >= 0 ? 'N' : 'S');
+  const lo = Math.abs(lon).toFixed(4) + '°' + (lon >= 0 ? 'E' : 'W');
+  return la + ' ' + lo;
+}
+
+async function openPostcardDesigner(pin){
+  if(!pin || !_pcEl) return;
+  _pcPin = pin;
+  _pcEl.classList.remove('flipped');           // always start on the front
+  document.getElementById('pcHint').textContent = '';
+  // FRONT coords overlay — the framed side leads with name + coordinates.
+  const coords = fmtLatLon(pin.lat, pin.lon);
+  document.getElementById('pcFrontCoords').innerHTML =
+    (pin.label ? '<b>' + escapeHtml(pin.label) + '</b><br>' : '') + coords;
+  // BACK printed meta: coords · date.
+  let dateStr = '';
+  try { dateStr = new Date(pin.createdAt || Date.now()).toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric'}); } catch(_){}
+  document.getElementById('pcFootMeta').textContent = coords + (dateStr ? '  ·  ' + dateStr : '');
+  // Reset the writable back each open.
+  const msg = document.getElementById('pcMsg');
+  msg.value = '';
+  document.getElementById('pcMsgCount').textContent = '300';
+  _pcEl.classList.add('open');
+  // Size + clear the signature canvas once the sheet has laid out.
+  requestAnimationFrame(() => { _pcSizeSignature(); _pcClearSignature(); });
+  // FRONT image — reuse the existing pin share-card render (Promise<Blob>).
+  const imgEl = document.getElementById('pcFrontImg');
+  try {
+    const blob = await renderPinShareCard(pin);
+    if(blob){
+      if(_pcFrontUrl) URL.revokeObjectURL(_pcFrontUrl);
+      _pcFrontUrl = URL.createObjectURL(blob);
+      imgEl.src = _pcFrontUrl;
+    }
+  } catch(_){ /* leave front blank if the render fails */ }
+}
+
+function closePostcardDesigner(){
+  if(!_pcEl) return;
+  _pcEl.classList.remove('open');
+  if(_pcFrontUrl){ URL.revokeObjectURL(_pcFrontUrl); _pcFrontUrl = null; }
+  // The pin is already saved — nothing to persist here, nothing lost.
+}
+
+// Signature pad — Pointer Events unify touch + mouse; touch-action:none on the
+// canvas stops the page scrolling mid-stroke. Quadratic midpoint smoothing for a
+// smooth line. Idempotent sizing so flipping front/back never wipes the strokes.
+const _pcSigCanvas = document.getElementById('pcSig');
+const _pcSigCtx = _pcSigCanvas ? _pcSigCanvas.getContext('2d') : null;
+let _pcDrawing = false, _pcLast = null, _pcHasInk = false;
+
+function _pcSizeSignature(){
+  if(!_pcSigCanvas || !_pcSigCtx) return;
+  const r = _pcSigCanvas.getBoundingClientRect();
+  if(r.width < 2 || r.height < 2) return;
+  const dpr = window.devicePixelRatio || 1;
+  const w = Math.round(r.width * dpr), h = Math.round(r.height * dpr);
+  if(_pcSigCanvas.width === w && _pcSigCanvas.height === h){ _pcSigSized = true; return; } // unchanged → preserve ink
+  _pcSigCanvas.width = w; _pcSigCanvas.height = h;
+  _pcSigCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  _pcSigCtx.lineWidth = 2.2; _pcSigCtx.lineCap = 'round'; _pcSigCtx.lineJoin = 'round';
+  _pcSigCtx.strokeStyle = '#1c1a12';
+  _pcSigSized = true;
+}
+function _pcClearSignature(){
+  if(!_pcSigCtx || !_pcSigCanvas) return;
+  _pcSigCtx.clearRect(0, 0, _pcSigCanvas.width, _pcSigCanvas.height);
+  _pcHasInk = false;
+}
+function _pcSigPoint(e){
+  const r = _pcSigCanvas.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+if(_pcSigCanvas){
+  _pcSigCanvas.addEventListener('pointerdown', (e) => {
+    if(!_pcSigSized) _pcSizeSignature();
+    _pcDrawing = true; _pcLast = _pcSigPoint(e);
+    try { _pcSigCanvas.setPointerCapture(e.pointerId); } catch(_){}
+    e.preventDefault();
+  });
+  _pcSigCanvas.addEventListener('pointermove', (e) => {
+    if(!_pcDrawing || !_pcSigCtx) return;
+    const p = _pcSigPoint(e);
+    const mid = { x: (_pcLast.x + p.x) / 2, y: (_pcLast.y + p.y) / 2 };
+    _pcSigCtx.beginPath();
+    _pcSigCtx.moveTo(_pcLast.x, _pcLast.y);
+    _pcSigCtx.quadraticCurveTo(_pcLast.x, _pcLast.y, mid.x, mid.y);
+    _pcSigCtx.stroke();
+    _pcLast = p; _pcHasInk = true;
+    e.preventDefault();
+  });
+  const _pcEndStroke = () => { _pcDrawing = false; };
+  _pcSigCanvas.addEventListener('pointerup', _pcEndStroke);
+  _pcSigCanvas.addEventListener('pointercancel', _pcEndStroke);
+  _pcSigCanvas.addEventListener('pointerleave', _pcEndStroke);
+}
+
+(function initPostcardControls(){
+  if(!_pcEl) return;
+  const flipBtn = document.getElementById('pcFlipBtn');
+  if(flipBtn) flipBtn.addEventListener('click', () => {
+    _pcEl.classList.toggle('flipped');
+    // Re-check canvas size the first time the back faces forward (idempotent).
+    if(_pcEl.classList.contains('flipped')) requestAnimationFrame(_pcSizeSignature);
+  });
+  const closeBtn = document.getElementById('pcClose');
+  if(closeBtn) closeBtn.addEventListener('click', closePostcardDesigner);
+  const sigClear = document.getElementById('pcSigClear');
+  if(sigClear) sigClear.addEventListener('click', _pcClearSignature);
+
+  // Live character counter (cap 300).
+  const msg = document.getElementById('pcMsg');
+  if(msg) msg.addEventListener('input', () => {
+    document.getElementById('pcMsgCount').textContent = String(300 - msg.value.length);
+  });
+
+  // Size picker — visual toggle; stores the choice in _pcSize (no pricing yet).
+  document.querySelectorAll('.pcSizeBtn').forEach(b => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('.pcSizeBtn').forEach(x => x.classList.remove('on'));
+      b.classList.add('on');
+      _pcSize = b.dataset.size;
+    });
+  });
+
+  // Continue — placeholder until payment + fulfillment exist.
+  const nextBtn = document.getElementById('pcNextBtn');
+  if(nextBtn) nextBtn.addEventListener('click', () => {
+    // TODO: wire to payment + Stannp fulfillment. Address entry is also a later
+    // step. For now the design is collected in-memory only and nothing is sent.
+    const design = {
+      pin: _pcPin,
+      size: _pcSize,
+      message: (document.getElementById('pcMsg') || {}).value || '',
+      signature: _pcHasInk ? _pcSigCanvas.toDataURL('image/png') : null
+    };
+    void design;
+    document.getElementById('pcHint').textContent = '✓ Postcard ready — checkout coming soon.';
+  });
 })();
 
 // Preloaded logo images for the canvas share cards (drawn via drawImage — shapes
@@ -11178,7 +11456,7 @@ startGPS();
 // Loaded-shell version string. Lives in index.html so it reflects the ACTUAL
 // loaded shell, and MUST be bumped in lockstep with sw.js CACHE_VERSION. Rendered
 // as a small, dim line at the bottom of Settings (no longer a loud top bar).
-const APP_SHELL_VERSION = 'tg-v20-91';
+const APP_SHELL_VERSION = 'tg-v20-92';
 { const _sv = document.getElementById('stVersion');
   if(_sv) _sv.textContent = 'TrailGauge ' + APP_SHELL_VERSION; }
 
