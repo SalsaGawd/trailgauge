@@ -651,20 +651,6 @@ body.light #permOverlay{background:rgba(240,244,248,0.94)}
   line-height:1;padding:2px 8px;cursor:pointer;opacity:.65;pointer-events:auto;position:relative;z-index:1;
   -webkit-tap-highlight-color:transparent}
 .fbDismiss:active{opacity:1}
-/* TEMP instrument: LOUD full-width version bar across the very top — unmissable,
-   so the loaded shell version is readable on-device at a glance. pointer-events:
-   none so it can't block taps on the UI underneath. */
-#verMarker{position:fixed;top:0;left:0;right:0;z-index:99999;
-  font-family:var(--fm);font-size:16px;font-weight:700;opacity:1;letter-spacing:1px;
-  color:#000;background:#39ff14;text-align:center;padding:6px 8px;
-  border-bottom:2px solid #000;pointer-events:none}
-/* × close button — the only tappable part of the bar (the bar itself stays
-   pointer-events:none). Hides the bar for the session only (not persisted;
-   it returns on next reload). Native <button> for reliable iOS tap. */
-#verMarkerClose{position:absolute;right:0;top:0;height:100%;min-width:52px;
-  background:none;border:none;font-family:inherit;font-size:22px;font-weight:700;
-  line-height:1;color:#000;cursor:pointer;pointer-events:auto;padding:0 16px;
-  -webkit-tap-highlight-color:transparent}
 /* Session C2b: amber fire toast (clone of #anglePinToast, warn-colored) */
 #fireToast{position:fixed;top:calc(60px + env(safe-area-inset-top,0px));
   left:50%;transform:translate(-50%,-20px);z-index:251;
@@ -1522,9 +1508,6 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
   <!-- Session C2b: persistent severe-fire banner. Tap → confirm-to-hide. -->
   <div id="fireBanner" role="button"></div>
 
-  <!-- TEMP instrument: loaded-shell version marker (set from APP_SHELL_VERSION). -->
-  <div id="verMarker"></div>
-
   <!-- Persistent live trip overlay — visible whenever a trip is active.
        Glanceable status bar; tapping opens the trip controls. -->
   <div id="liveBanner">
@@ -1908,6 +1891,10 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
         <button id="copyMountLogBtn" class="modalbtn ghost" style="padding:8px 14px;font-size:11px">Copy Mount Log</button>
       </div>
     </div>
+
+    <!-- Quiet build/version indicator (replaces the old loud top bar). Populated
+         from APP_SHELL_VERSION in JS so it always reflects the loaded shell. -->
+    <div id="stVersion" style="text-align:center;padding:16px 0 4px;font-family:var(--fm);font-size:10px;color:var(--txt3);letter-spacing:.5px"></div>
   </div>
 </div>
 
@@ -11188,19 +11175,12 @@ window.addEventListener('orientationchange',()=>{setTimeout(resize,250);});
 // resize() and initOri() already ran higher up — no need to call them again here.
 startGPS();
 
-// TEMP instrument: stamp the loaded-shell version into the corner marker. This
-// const lives in index.html so it reflects the ACTUAL loaded shell — it MUST be
-// bumped in lockstep with sw.js CACHE_VERSION. If the on-device marker shows
-// anything other than the latest, the device is running a stale app shell.
-const APP_SHELL_VERSION = 'tg-v20-90';
-{ const _vm = document.getElementById('verMarker');
-  if(_vm){
-    _vm.innerHTML = '<span>SHELL ' + APP_SHELL_VERSION + '</span>' +
-      '<button id="verMarkerClose" type="button" aria-label="Hide version bar">×</button>';
-    const _vc = document.getElementById('verMarkerClose');
-    if(_vc) _vc.addEventListener('click', () => { _vm.style.display = 'none'; });   // session-only; returns on reload
-  } }
-try { document.title = document.title + ' [' + APP_SHELL_VERSION + ']'; } catch(_){}
+// Loaded-shell version string. Lives in index.html so it reflects the ACTUAL
+// loaded shell, and MUST be bumped in lockstep with sw.js CACHE_VERSION. Rendered
+// as a small, dim line at the bottom of Settings (no longer a loud top bar).
+const APP_SHELL_VERSION = 'tg-v20-91';
+{ const _sv = document.getElementById('stVersion');
+  if(_sv) _sv.textContent = 'TrailGauge ' + APP_SHELL_VERSION; }
 
 // FX-OVERSCROLL2: JS rubber-band fallback for iOS < 16, where CSS
 // overscroll-behavior is unsupported. Only install when the CSS property is
