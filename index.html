@@ -1304,8 +1304,12 @@ body.prof-trail.trip-active #actionBar #pinPostBtn{display:none}
 #pcMsgCount{font-family:var(--fm);font-size:9px;color:#9a8f78;text-align:right;margin-top:2px}
 #pcSigWrap{flex:1;display:flex;flex-direction:column;border-left:1px dashed #c9bfa6;padding-left:8px}
 .pcSigLbl{font-family:var(--fm);font-size:8px;letter-spacing:1px;text-transform:uppercase;color:#9a8f78;margin-bottom:2px}
-#pcSig{flex:1;width:100%;background:rgba(255,255,255,.55);border:1px solid #d8cfb8;
-  border-radius:6px;touch-action:none;cursor:crosshair;display:block}
+/* Small signature box = tap-to-expand preview (drawing happens in the big overlay). */
+#pcSigBox{flex:1;position:relative;background:rgba(255,255,255,.55);border:1px solid #d8cfb8;
+  border-radius:6px;cursor:pointer;overflow:hidden;min-height:0}
+#pcSig{width:100%;height:100%;display:block}
+#pcSigPrompt{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-family:var(--fm);font-size:9px;letter-spacing:1px;text-transform:uppercase;color:#9a8f78}
 #pcSigClear{align-self:flex-end;margin-top:4px;background:transparent;border:1px solid #c9bfa6;
   border-radius:5px;color:#6b6353;font-family:var(--fm);font-size:9px;letter-spacing:1px;
   text-transform:uppercase;padding:3px 8px;cursor:pointer;-webkit-tap-highlight-color:transparent}
@@ -1333,6 +1337,37 @@ body.prof-trail.trip-active #actionBar #pinPostBtn{display:none}
 #pcFlipBtn:active,#pcNextBtn:active,.pcSizeBtn:active{transform:scale(.97)}
 #pcHint{text-align:center;font-family:var(--fm);font-size:11px;color:var(--accent);
   min-height:14px;padding:2px 16px;letter-spacing:.5px}
+/* Front photo prompt — shown in photo mode before a photo is chosen. */
+#pcFrontPrompt{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;
+  justify-content:center;gap:6px;background:rgba(0,0,0,.55);color:#fff;font-size:30px;
+  font-family:var(--fm);text-align:center}
+#pcFrontPrompt span{font-size:11px;letter-spacing:.5px;color:#dfe6ee}
+/* Front controls: background-mode toggle (Photo ⇄ Stock) + photo sources. */
+#pcFrontCtl{display:flex;flex-direction:column;gap:8px}
+#pcBgToggle,#pcPhotoSrc{display:flex;gap:8px}
+.pcBgBtn,.pcSrcBtn{flex:1;background:var(--card);border:1px solid var(--border);border-radius:10px;
+  color:var(--txt2);font-family:var(--fd);font-size:12px;font-weight:700;letter-spacing:.5px;
+  text-transform:uppercase;padding:10px 6px;cursor:pointer;-webkit-tap-highlight-color:transparent;
+  transition:all var(--tr)}
+.pcBgBtn.on{border-color:var(--accent);color:var(--accent)}
+.pcSrcBtn{font-size:11px}
+.pcBgBtn:active,.pcSrcBtn:active{transform:scale(.97)}
+/* Big signature overlay — finger-friendly full-width signing surface. */
+#pcSigOverlay{position:fixed;inset:0;z-index:170;display:none;flex-direction:column;
+  background:var(--bg);padding:max(10px,env(safe-area-inset-top,0px)) 14px calc(14px + var(--sb))}
+#pcSigOverlay.open{display:flex}
+#pcSigOverlayHdr{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-bottom:10px}
+#pcSigOverlayHdr span{font-family:var(--fd);font-size:14px;font-weight:700;letter-spacing:1px;
+  text-transform:uppercase;color:var(--accent)}
+#pcSigBigCancel,#pcSigBigClear{background:transparent;border:1px solid var(--border);border-radius:8px;
+  color:var(--txt2);font-family:var(--fm);font-size:11px;letter-spacing:1px;text-transform:uppercase;
+  padding:7px 12px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+#pcSigBig{flex:1;width:100%;background:#f3efe4;border:1px solid var(--accent);border-radius:10px;
+  touch-action:none;cursor:crosshair;display:block}
+#pcSigBigDone{margin-top:12px;background:var(--accent);border:none;border-radius:10px;color:#000;
+  font-family:var(--fd);font-size:14px;font-weight:700;letter-spacing:1px;text-transform:uppercase;
+  padding:13px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+#pcSigBigDone:active{transform:scale(.98)}
 
 /* Pin save modal field styling */
 .pinFieldLbl{font-family:var(--fd);font-size:9px;letter-spacing:1.5px;
@@ -2186,17 +2221,21 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
         <div id="pcFront" class="pcFace">
           <img id="pcFrontImg" alt="Postcard front — your pin">
           <div id="pcFrontCoords"></div>
+          <div id="pcFrontPrompt">📷<span>Choose a photo below</span></div>
         </div>
         <!-- BACK: message + signature + printed meta -->
         <div id="pcBack" class="pcFace">
           <div id="pcBackTop">
             <div id="pcMsgWrap">
-              <textarea id="pcMsg" maxlength="300" placeholder="Wish you were here…"></textarea>
-              <div id="pcMsgCount">300</div>
+              <textarea id="pcMsg" maxlength="250" placeholder="Wish you were here…"></textarea>
+              <div id="pcMsgCount">250</div>
             </div>
             <div id="pcSigWrap">
-              <div class="pcSigLbl">Sign here</div>
-              <canvas id="pcSig"></canvas>
+              <div class="pcSigLbl">Signature</div>
+              <div id="pcSigBox" role="button" tabindex="0" aria-label="Tap to sign">
+                <canvas id="pcSig"></canvas>
+                <span id="pcSigPrompt">✍ Tap to sign</span>
+              </div>
               <button id="pcSigClear" type="button">Clear</button>
             </div>
           </div>
@@ -2209,6 +2248,17 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
     </div>
   </div>
   <div id="pcControls">
+    <div id="pcFrontCtl">
+      <div id="pcBgToggle">
+        <button class="pcBgBtn on" data-bg="photo" type="button">📷 Photo</button>
+        <button class="pcBgBtn" data-bg="stock" type="button">✦ Stock</button>
+      </div>
+      <div id="pcPhotoSrc">
+        <button id="pcSrcPin" class="pcSrcBtn" type="button">📌 Pin Photo</button>
+        <button id="pcSrcLib" class="pcSrcBtn" type="button">🖼 Library</button>
+      </div>
+      <input type="file" id="pcPhotoInput" accept="image/*" style="display:none">
+    </div>
     <div id="pcSizePick">
       <button class="pcSizeBtn on" data-size="4x6" type="button">4×6<span>Standard</span></button>
       <button class="pcSizeBtn" data-size="6x9" type="button">6×9<span>Premium</span></button>
@@ -2219,6 +2269,18 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
     </div>
   </div>
   <div id="pcHint"></div>
+</div>
+
+<!-- Big signing overlay — finger-friendly full-width canvas; captured high-res so
+     it scales down cleanly to the printed signature size. -->
+<div id="pcSigOverlay" role="dialog" aria-label="Sign your postcard">
+  <div id="pcSigOverlayHdr">
+    <button id="pcSigBigCancel" type="button">Cancel</button>
+    <span>Sign here</span>
+    <button id="pcSigBigClear" type="button">Clear</button>
+  </div>
+  <canvas id="pcSigBig"></canvas>
+  <button id="pcSigBigDone" type="button">Done</button>
 </div>
 
 <script>
@@ -5777,13 +5839,36 @@ function _ppBindTap(el, handler, selfOnly){
 const _pcEl = document.getElementById('pcDesigner');
 let _pcPin = null;
 let _pcSize = '4x6';
-let _pcFrontUrl = null;     // object URL for the front image (revoked on close)
-let _pcSigSized = false;
+let _pcStockUrl = null;     // object URL for the stock share-card image (revoked on close)
+let _pcBgMode = 'photo';    // 'photo' (default) | 'stock'
+let _pcPhotoUrl = null;     // chosen front photo (data URL, in-memory only)
+let _pcSigData = null;      // captured signature image (high-res data URL) | null
+
+// Printed-card message cap. Tuned to what fits the back's message area at a
+// READABLE print size (no auto-shrink) — ~250 chars ≈ a clean, full-but-legible
+// 4×6 message. Erring slightly low so every card prints cleanly.
+const PC_MSG_MAX = 250;
 
 function fmtLatLon(lat, lon){
   const la = Math.abs(lat).toFixed(4) + '°' + (lat >= 0 ? 'N' : 'S');
   const lo = Math.abs(lon).toFixed(4) + '°' + (lon >= 0 ? 'E' : 'W');
   return la + ' ' + lo;
+}
+
+// Render the front per current mode: PHOTO (full-bleed user photo + coords scrim)
+// or STOCK (the generated share-card design). Coords overlay shows only over a
+// photo; the stock card already has its text baked in.
+function _pcRenderFront(){
+  const img = document.getElementById('pcFrontImg');
+  const coords = document.getElementById('pcFrontCoords');
+  const prompt = document.getElementById('pcFrontPrompt');
+  const showPhoto = (_pcBgMode === 'photo' && !!_pcPhotoUrl);
+  if(img) img.src = showPhoto ? _pcPhotoUrl : (_pcStockUrl || '');
+  if(coords) coords.style.display = showPhoto ? 'block' : 'none';
+  if(prompt) prompt.style.display = (_pcBgMode === 'photo' && !_pcPhotoUrl) ? 'flex' : 'none';
+  document.querySelectorAll('.pcBgBtn').forEach(b => b.classList.toggle('on', b.dataset.bg === _pcBgMode));
+  const src = document.getElementById('pcPhotoSrc');
+  if(src) src.style.display = (_pcBgMode === 'photo') ? 'flex' : 'none';
 }
 
 async function openPostcardDesigner(pin){
@@ -5802,80 +5887,145 @@ async function openPostcardDesigner(pin){
   // Reset the writable back each open.
   const msg = document.getElementById('pcMsg');
   msg.value = '';
-  document.getElementById('pcMsgCount').textContent = '300';
+  document.getElementById('pcMsgCount').textContent = String(PC_MSG_MAX);
+  _pcSigData = null;
+  // Front background: default to PHOTO. Pre-fill the pin's own photo when it has
+  // one (best default look + surfaces the in-app photo); the two source buttons
+  // stay equally available to switch between the pin photo and the library.
+  _pcBgMode = 'photo';
+  _pcPhotoUrl = pin.photo ? pin.photo : null;
+  const srcPin = document.getElementById('pcSrcPin');
+  if(srcPin) srcPin.style.display = pin.photo ? 'flex' : 'none';
   _pcEl.classList.add('open');
-  // Size + clear the signature canvas once the sheet has laid out.
-  requestAnimationFrame(() => { _pcSizeSignature(); _pcClearSignature(); });
-  // FRONT image — reuse the existing pin share-card render (Promise<Blob>).
-  const imgEl = document.getElementById('pcFrontImg');
+  requestAnimationFrame(_pcRenderSigPreview);
+  _pcRenderFront();   // immediate (uses photo if pre-filled; stock fills in below)
+  // Stock image — reuse the existing pin share-card render (Promise<Blob>).
   try {
     const blob = await renderPinShareCard(pin);
     if(blob){
-      if(_pcFrontUrl) URL.revokeObjectURL(_pcFrontUrl);
-      _pcFrontUrl = URL.createObjectURL(blob);
-      imgEl.src = _pcFrontUrl;
+      if(_pcStockUrl) URL.revokeObjectURL(_pcStockUrl);
+      _pcStockUrl = URL.createObjectURL(blob);
     }
-  } catch(_){ /* leave front blank if the render fails */ }
+  } catch(_){ /* stock card unavailable — photo mode still works */ }
+  _pcRenderFront();
 }
 
 function closePostcardDesigner(){
   if(!_pcEl) return;
   _pcEl.classList.remove('open');
-  if(_pcFrontUrl){ URL.revokeObjectURL(_pcFrontUrl); _pcFrontUrl = null; }
+  _pcCloseSigOverlay();
+  if(_pcStockUrl){ URL.revokeObjectURL(_pcStockUrl); _pcStockUrl = null; }
   // The pin is already saved — nothing to persist here, nothing lost.
 }
 
-// Signature pad — Pointer Events unify touch + mouse; touch-action:none on the
-// canvas stops the page scrolling mid-stroke. Quadratic midpoint smoothing for a
-// smooth line. Idempotent sizing so flipping front/back never wipes the strokes.
-const _pcSigCanvas = document.getElementById('pcSig');
-const _pcSigCtx = _pcSigCanvas ? _pcSigCanvas.getContext('2d') : null;
-let _pcDrawing = false, _pcLast = null, _pcHasInk = false;
+// Reusable pointer-event signature pad (touch + mouse, iOS-robust). touch-action:
+// none on the canvas stops the page scrolling mid-stroke. Quadratic midpoint
+// smoothing. Used by the big overlay (the actual high-res signing surface).
+function _pcMakePad(canvas, strokeColor){
+  const ctx = canvas.getContext('2d');
+  let drawing = false, last = null;
+  const pad = { canvas, ctx, hasInk: false, _cssW: 0, _cssH: 0 };
+  function size(){
+    const r = canvas.getBoundingClientRect();
+    if(r.width < 2 || r.height < 2) return;
+    pad._cssW = r.width; pad._cssH = r.height;
+    const dpr = window.devicePixelRatio || 1;
+    const w = Math.round(r.width * dpr), h = Math.round(r.height * dpr);
+    if(canvas.width === w && canvas.height === h) return;   // unchanged → preserve ink
+    canvas.width = w; canvas.height = h;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.lineWidth = 2.6; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.strokeStyle = strokeColor || '#1c1a12';
+  }
+  function pt(e){ const r = canvas.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+  canvas.addEventListener('pointerdown', (e) => {
+    size(); drawing = true; last = pt(e);
+    try { canvas.setPointerCapture(e.pointerId); } catch(_){}
+    e.preventDefault();
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if(!drawing) return;
+    const p = pt(e);
+    const mid = { x: (last.x + p.x) / 2, y: (last.y + p.y) / 2 };
+    ctx.beginPath();
+    ctx.moveTo(last.x, last.y);
+    ctx.quadraticCurveTo(last.x, last.y, mid.x, mid.y);
+    ctx.stroke();
+    last = p; pad.hasInk = true;
+    e.preventDefault();
+  });
+  const end = () => { drawing = false; };
+  canvas.addEventListener('pointerup', end);
+  canvas.addEventListener('pointercancel', end);
+  canvas.addEventListener('pointerleave', end);
+  pad.size = size;
+  pad.clear = () => { size(); ctx.clearRect(0, 0, canvas.width, canvas.height); pad.hasInk = false; };
+  // Seed the pad with an existing signature image (scaled to fit / contain).
+  pad.loadDataUrl = (url) => {
+    size(); ctx.clearRect(0, 0, canvas.width, canvas.height); pad.hasInk = false;
+    if(!url) return;
+    const im = new Image();
+    im.onload = () => {
+      const cw = pad._cssW, ch = pad._cssH;
+      const s = Math.min(cw / im.width, ch / im.height);
+      const dw = im.width * s, dh = im.height * s;
+      ctx.drawImage(im, (cw - dw) / 2, (ch - dh) / 2, dw, dh);
+      pad.hasInk = true;
+    };
+    im.src = url;
+  };
+  return pad;
+}
 
-function _pcSizeSignature(){
-  if(!_pcSigCanvas || !_pcSigCtx) return;
-  const r = _pcSigCanvas.getBoundingClientRect();
-  if(r.width < 2 || r.height < 2) return;
-  const dpr = window.devicePixelRatio || 1;
-  const w = Math.round(r.width * dpr), h = Math.round(r.height * dpr);
-  if(_pcSigCanvas.width === w && _pcSigCanvas.height === h){ _pcSigSized = true; return; } // unchanged → preserve ink
-  _pcSigCanvas.width = w; _pcSigCanvas.height = h;
-  _pcSigCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  _pcSigCtx.lineWidth = 2.2; _pcSigCtx.lineCap = 'round'; _pcSigCtx.lineJoin = 'round';
-  _pcSigCtx.strokeStyle = '#1c1a12';
-  _pcSigSized = true;
+// Small preview canvas — renders the captured signature (not directly drawable;
+// tap the box to open the big overlay). Toggles the "Tap to sign" prompt.
+const _pcSigPreview = document.getElementById('pcSig');
+const _pcSigPreviewCtx = _pcSigPreview ? _pcSigPreview.getContext('2d') : null;
+function _pcRenderSigPreview(){
+  if(!_pcSigPreview || !_pcSigPreviewCtx) return;
+  const r = _pcSigPreview.getBoundingClientRect();
+  if(r.width >= 2 && r.height >= 2){
+    const dpr = window.devicePixelRatio || 1;
+    _pcSigPreview.width = Math.round(r.width * dpr);
+    _pcSigPreview.height = Math.round(r.height * dpr);
+    _pcSigPreviewCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  _pcSigPreviewCtx.clearRect(0, 0, _pcSigPreview.width, _pcSigPreview.height);
+  const prompt = document.getElementById('pcSigPrompt');
+  if(_pcSigData){
+    if(prompt) prompt.style.display = 'none';
+    const im = new Image();
+    im.onload = () => {
+      const r2 = _pcSigPreview.getBoundingClientRect();
+      const s = Math.min(r2.width / im.width, r2.height / im.height);
+      const dw = im.width * s, dh = im.height * s;
+      _pcSigPreviewCtx.drawImage(im, (r2.width - dw) / 2, (r2.height - dh) / 2, dw, dh);
+    };
+    im.src = _pcSigData;
+  } else if(prompt){
+    prompt.style.display = 'flex';
+  }
 }
-function _pcClearSignature(){
-  if(!_pcSigCtx || !_pcSigCanvas) return;
-  _pcSigCtx.clearRect(0, 0, _pcSigCanvas.width, _pcSigCanvas.height);
-  _pcHasInk = false;
+
+// Big signing overlay.
+const _pcSigOverlayEl = document.getElementById('pcSigOverlay');
+let _pcBigPad = null;
+function _pcOpenSigOverlay(){
+  if(!_pcSigOverlayEl) return;
+  _pcSigOverlayEl.classList.add('open');
+  const big = document.getElementById('pcSigBig');
+  if(!_pcBigPad) _pcBigPad = _pcMakePad(big, '#1c1a12');
+  // Size + seed with any existing signature once the overlay has laid out.
+  requestAnimationFrame(() => { _pcBigPad.size(); _pcBigPad.loadDataUrl(_pcSigData); });
 }
-function _pcSigPoint(e){
-  const r = _pcSigCanvas.getBoundingClientRect();
-  return { x: e.clientX - r.left, y: e.clientY - r.top };
+function _pcCloseSigOverlay(){
+  if(_pcSigOverlayEl) _pcSigOverlayEl.classList.remove('open');
 }
-if(_pcSigCanvas){
-  _pcSigCanvas.addEventListener('pointerdown', (e) => {
-    if(!_pcSigSized) _pcSizeSignature();
-    _pcDrawing = true; _pcLast = _pcSigPoint(e);
-    try { _pcSigCanvas.setPointerCapture(e.pointerId); } catch(_){}
-    e.preventDefault();
-  });
-  _pcSigCanvas.addEventListener('pointermove', (e) => {
-    if(!_pcDrawing || !_pcSigCtx) return;
-    const p = _pcSigPoint(e);
-    const mid = { x: (_pcLast.x + p.x) / 2, y: (_pcLast.y + p.y) / 2 };
-    _pcSigCtx.beginPath();
-    _pcSigCtx.moveTo(_pcLast.x, _pcLast.y);
-    _pcSigCtx.quadraticCurveTo(_pcLast.x, _pcLast.y, mid.x, mid.y);
-    _pcSigCtx.stroke();
-    _pcLast = p; _pcHasInk = true;
-    e.preventDefault();
-  });
-  const _pcEndStroke = () => { _pcDrawing = false; };
-  _pcSigCanvas.addEventListener('pointerup', _pcEndStroke);
-  _pcSigCanvas.addEventListener('pointercancel', _pcEndStroke);
-  _pcSigCanvas.addEventListener('pointerleave', _pcEndStroke);
+function _pcCommitSigOverlay(){
+  // Capture high-res from the big canvas so it downsamples cleanly at print size.
+  if(_pcBigPad && _pcBigPad.hasInk) _pcSigData = _pcBigPad.canvas.toDataURL('image/png');
+  _pcCloseSigOverlay();
+  _pcRenderSigPreview();
 }
 
 (function initPostcardControls(){
@@ -5883,18 +6033,51 @@ if(_pcSigCanvas){
   const flipBtn = document.getElementById('pcFlipBtn');
   if(flipBtn) flipBtn.addEventListener('click', () => {
     _pcEl.classList.toggle('flipped');
-    // Re-check canvas size the first time the back faces forward (idempotent).
-    if(_pcEl.classList.contains('flipped')) requestAnimationFrame(_pcSizeSignature);
+    if(_pcEl.classList.contains('flipped')) requestAnimationFrame(_pcRenderSigPreview);
   });
   const closeBtn = document.getElementById('pcClose');
   if(closeBtn) closeBtn.addEventListener('click', closePostcardDesigner);
-  const sigClear = document.getElementById('pcSigClear');
-  if(sigClear) sigClear.addEventListener('click', _pcClearSignature);
 
-  // Live character counter (cap 300).
+  // Signature: tap the box to open the big signing overlay; Clear wipes it.
+  const sigBox = document.getElementById('pcSigBox');
+  if(sigBox) sigBox.addEventListener('click', _pcOpenSigOverlay);
+  const sigClear = document.getElementById('pcSigClear');
+  if(sigClear) sigClear.addEventListener('click', (e) => { e.stopPropagation(); _pcSigData = null; _pcRenderSigPreview(); });
+  const bigClear = document.getElementById('pcSigBigClear');
+  if(bigClear) bigClear.addEventListener('click', () => { if(_pcBigPad) _pcBigPad.clear(); });
+  const bigDone = document.getElementById('pcSigBigDone');
+  if(bigDone) bigDone.addEventListener('click', _pcCommitSigOverlay);
+  const bigCancel = document.getElementById('pcSigBigCancel');
+  if(bigCancel) bigCancel.addEventListener('click', _pcCloseSigOverlay);
+
+  // Live character counter (cap PC_MSG_MAX).
   const msg = document.getElementById('pcMsg');
   if(msg) msg.addEventListener('input', () => {
-    document.getElementById('pcMsgCount').textContent = String(300 - msg.value.length);
+    document.getElementById('pcMsgCount').textContent = String(PC_MSG_MAX - msg.value.length);
+  });
+
+  // Front background-mode toggle (Photo ⇄ Stock).
+  document.querySelectorAll('.pcBgBtn').forEach(b => {
+    b.addEventListener('click', () => { _pcBgMode = b.dataset.bg; _pcRenderFront(); });
+  });
+  // Photo sources — shown equally; pin photo button only when the pin has one.
+  const srcPin = document.getElementById('pcSrcPin');
+  if(srcPin) srcPin.addEventListener('click', () => {
+    if(_pcPin && _pcPin.photo){ _pcPhotoUrl = _pcPin.photo; _pcBgMode = 'photo'; _pcRenderFront(); }
+  });
+  const srcLib = document.getElementById('pcSrcLib');
+  const photoInput = document.getElementById('pcPhotoInput');
+  if(srcLib && photoInput) srcLib.addEventListener('click', () => photoInput.click());
+  if(photoInput) photoInput.addEventListener('change', async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';   // allow re-picking the same file
+    if(!file) return;
+    try {
+      // Downscale large photos for snappy preview on older phones.
+      _pcPhotoUrl = await compressImage(file, 1280, 0.82);
+      _pcBgMode = 'photo';
+      _pcRenderFront();
+    } catch(_){ document.getElementById('pcHint').textContent = 'Could not load that photo.'; }
   });
 
   // Size picker — visual toggle; stores the choice in _pcSize (no pricing yet).
@@ -5914,8 +6097,10 @@ if(_pcSigCanvas){
     const design = {
       pin: _pcPin,
       size: _pcSize,
+      bg: _pcBgMode,
+      photo: (_pcBgMode === 'photo') ? _pcPhotoUrl : null,
       message: (document.getElementById('pcMsg') || {}).value || '',
-      signature: _pcHasInk ? _pcSigCanvas.toDataURL('image/png') : null
+      signature: _pcSigData
     };
     void design;
     document.getElementById('pcHint').textContent = '✓ Postcard ready — checkout coming soon.';
@@ -11456,7 +11641,7 @@ startGPS();
 // Loaded-shell version string. Lives in index.html so it reflects the ACTUAL
 // loaded shell, and MUST be bumped in lockstep with sw.js CACHE_VERSION. Rendered
 // as a small, dim line at the bottom of Settings (no longer a loud top bar).
-const APP_SHELL_VERSION = 'tg-v20-92';
+const APP_SHELL_VERSION = 'tg-v20-93';
 { const _sv = document.getElementById('stVersion');
   if(_sv) _sv.textContent = 'TrailGauge ' + APP_SHELL_VERSION; }
 
