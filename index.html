@@ -160,7 +160,12 @@ html,body{width:100%;height:100%;overflow:hidden;overscroll-behavior:none;backgr
    The subtitle is decorative and disappears below ~360px width so the
    button cluster always fits. */
 #hdr > div:first-child{display:flex;align-items:baseline;min-width:0;flex:1 1 auto;overflow:hidden}
-.brand{font-family:var(--fd);font-size:20px;font-weight:700;color:var(--accent);
+/* HERO BRAND: the wordmark scales fluidly to fill the row's trailing space
+   instead of leaving dead space after the buttons. Tuned so "TRAILGAUGE" never
+   clips in OFF-ROAD (the tightest, widest-pill mode) from 320px up: ~21px at
+   390px, scaling 15→23px across phone widths, capped at 23px for tablets/desktop.
+   Verified against the clip ceiling at each width (see header-fit notes). */
+.brand{font-family:var(--fd);font-size:clamp(15px, 13.3vw - 31px, 23px);font-weight:700;color:var(--accent);
   letter-spacing:1px;text-transform:uppercase;white-space:nowrap;flex-shrink:0}
 /* Header peak mark. Sized in CSS (not inline) so the media queries below can
    shrink it on tight screens — the brand word has flex-shrink:0 priority, so
@@ -240,7 +245,9 @@ html,body{width:100%;height:100%;overflow:hidden;overscroll-behavior:none;backgr
   #hdr{padding:8px 10px;padding-top:max(8px, env(safe-area-inset-top, 0px));gap:6px;justify-content:flex-start}
   #hdr > div:first-child{flex:0 1 auto}
   .sub{display:none}
-  .brand{font-size:17px;letter-spacing:.5px}
+  /* font-size comes from the fluid clamp on the base .brand rule; only the
+     tighter letter-spacing is overridden here. */
+  .brand{letter-spacing:.5px}
   #brandMark{height:18px;margin-right:4px}
   #hctl{gap:5px}
   .ibtn{width:30px;height:30px;font-size:13px;border-radius:7px}
@@ -248,9 +255,13 @@ html,body{width:100%;height:100%;overflow:hidden;overscroll-behavior:none;backgr
 }
 /* Even narrower (iPhone SE 1st gen at 320px): squeeze further. The header
    becomes just the brand mark on the left + 5 compact buttons on the right. */
-@media (max-width:340px){
-  .brand{font-size:15px}
+@media (max-width:360px){
+  /* HERO BRAND: hide the peak mark ≤360px so the enlarged wordmark has the full
+     row to itself and never clips on small Androids / SE-class widths. */
   #brandMark{display:none}
+}
+@media (max-width:340px){
+  /* Brand font-size is handled by the fluid clamp (bottoms out at its 15px min). */
   #hctl{gap:4px}
   .ibtn{width:28px;height:28px;font-size:12px;border-radius:6px}
 }
@@ -10970,7 +10981,7 @@ startGPS();
 // const lives in index.html so it reflects the ACTUAL loaded shell — it MUST be
 // bumped in lockstep with sw.js CACHE_VERSION. If the on-device marker shows
 // anything other than the latest, the device is running a stale app shell.
-const APP_SHELL_VERSION = 'tg-v20-82';
+const APP_SHELL_VERSION = 'tg-v20-83';
 { const _vm = document.getElementById('verMarker');
   if(_vm){
     _vm.innerHTML = '<span>SHELL ' + APP_SHELL_VERSION + '</span>' +
