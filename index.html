@@ -927,6 +927,13 @@ body.prof-trail #gsec { justify-content: flex-start; padding-top: 12px; gap: 14p
   flex: 0 0 auto;
   overflow-y: visible; }
 body.prof-trail #main { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+/* Fire-bar order is per-mode. #fireStatus is the first DOM child of #gsec so it
+   LEADS in trail (safety-first). In OFF-ROAD the pitch/roll readouts + gauge are
+   the live data the driver watches, so float them above the (DOM-first) fire chip
+   with negative flex order — restoring fire to its original spot (after the gauge,
+   before GPS). Off-road-only elements, so this never affects trail. */
+body.prof-offroad #readouts { order: -2; }
+body.prof-offroad #gwrap    { order: -1; }
 body.prof-trail #trailHero { display: flex !important; }
 body.prof-trail #wx { padding: 14px 16px; }
 body.prof-trail .wxbig { font-size: 32px; }
@@ -11152,7 +11159,7 @@ startGPS();
 // const lives in index.html so it reflects the ACTUAL loaded shell — it MUST be
 // bumped in lockstep with sw.js CACHE_VERSION. If the on-device marker shows
 // anything other than the latest, the device is running a stale app shell.
-const APP_SHELL_VERSION = 'tg-v20-85';
+const APP_SHELL_VERSION = 'tg-v20-86';
 { const _vm = document.getElementById('verMarker');
   if(_vm){
     _vm.innerHTML = '<span>SHELL ' + APP_SHELL_VERSION + '</span>' +
