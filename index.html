@@ -1986,6 +1986,7 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
       <button class="modalbtn ghost"   id="shWaze">Open in Waze</button>
       <button class="modalbtn ghost"   id="shGaia">📋 Copy for Gaia GPS</button>
       <button class="modalbtn ghost"   id="shOnX">📋 Copy for onX</button>
+      <button class="modalbtn ghost"   id="shAllTrails">📋 Copy for AllTrails</button>
       <button class="modalbtn ghost"   id="shCopy">Copy Coordinates</button>
       <button class="modalbtn ghost"   id="shShare">Share via…</button>
     </div>
@@ -4408,11 +4409,12 @@ document.getElementById('shWaze').addEventListener('click', () => {
   shp.classList.remove('open');
 });
 
-// onX & Gaia GPS have NO public URL scheme to open to an external coordinate
-// (unlike comgooglemaps:// / waze:// / maps:// above) — a platform limit on
-// their side, not a malformed link here. So instead of faking an app launch we
-// copy the coordinate and say exactly where to paste it. The button labels read
-// "📋 Copy for…" (not "Open in…") so they don't promise a launch we can't deliver.
+// onX, Gaia GPS & AllTrails have NO public URL scheme to open to an external
+// coordinate (unlike comgooglemaps:// / waze:// / maps:// above) — a platform
+// limit on their side, not a malformed link here. So instead of faking an app
+// launch we copy the coordinate and say exactly where to paste it. The button
+// labels read "📋 Copy for…" (not "Open in…") so they don't promise a launch
+// we can't deliver.
 document.getElementById('shGaia').addEventListener('click', () => {
   copyCoordsToClipboard();
   const c = `${_shareLat.toFixed(6)}, ${_shareLon.toFixed(6)}`;
@@ -4423,6 +4425,12 @@ document.getElementById('shOnX').addEventListener('click', () => {
   copyCoordsToClipboard();
   const c = `${_shareLat.toFixed(6)}, ${_shareLon.toFixed(6)}`;
   document.getElementById('shHint').textContent = `✓ Copied ${c} — open onX, tap the search bar, and paste.`;
+});
+
+document.getElementById('shAllTrails').addEventListener('click', () => {
+  copyCoordsToClipboard();
+  const c = `${_shareLat.toFixed(6)}, ${_shareLon.toFixed(6)}`;
+  document.getElementById('shHint').textContent = `✓ Copied ${c} — open AllTrails, tap Search, and paste.`;
 });
 
 document.getElementById('shCopy').addEventListener('click', () => {
@@ -11184,7 +11192,7 @@ startGPS();
 // const lives in index.html so it reflects the ACTUAL loaded shell — it MUST be
 // bumped in lockstep with sw.js CACHE_VERSION. If the on-device marker shows
 // anything other than the latest, the device is running a stale app shell.
-const APP_SHELL_VERSION = 'tg-v20-89';
+const APP_SHELL_VERSION = 'tg-v20-90';
 { const _vm = document.getElementById('verMarker');
   if(_vm){
     _vm.innerHTML = '<span>SHELL ' + APP_SHELL_VERSION + '</span>' +
