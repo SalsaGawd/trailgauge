@@ -911,6 +911,17 @@ body.prof-trail #actionBar #tripBtn { max-width: 240px; flex: 0 1 240px; }
    at 320-430px (no shift, growth, or clip). */
 body.prof-trail #actionBar #tripBtn,
 body.prof-trail #actionBar #pinPostBtn { border: 1px solid var(--accent); border-radius: 8px; }
+/* Off-road controls cohesion: the SAME green border (1px solid accent, 8px radius)
+   on Elevation, Heading, Session Max, Zero, and Start Trip so they match the coords
+   box / trail controls as one family. Off-road-scoped. The pitch/roll/total gauges
+   are .rcard (kept out of these selectors) — they keep their own color-coding.
+   box-sizing:border-box → the 2px→1px change on the buttons doesn't resize them, so
+   nothing shifts/grows/clips. */
+body.prof-offroad #gelevChip,
+body.prof-offroad #gheadChip,
+body.prof-offroad #maxAngleCard,
+body.prof-offroad #actionBar #zbtn,
+body.prof-offroad #actionBar #tripBtn { border: 1px solid var(--accent); border-radius: 8px; }
 body.prof-trail #actionBar #tripPauseBtn { flex: 0 0 48px; }
 /* BRK.6: Trail-only break button — fixed 48px like the pause button so it can't
    stretch and unbalance the centered Start/Stop layout. Dimmed when reminders
@@ -11166,7 +11177,7 @@ startGPS();
 // const lives in index.html so it reflects the ACTUAL loaded shell — it MUST be
 // bumped in lockstep with sw.js CACHE_VERSION. If the on-device marker shows
 // anything other than the latest, the device is running a stale app shell.
-const APP_SHELL_VERSION = 'tg-v20-87';
+const APP_SHELL_VERSION = 'tg-v20-88';
 { const _vm = document.getElementById('verMarker');
   if(_vm){
     _vm.innerHTML = '<span>SHELL ' + APP_SHELL_VERSION + '</span>' +
