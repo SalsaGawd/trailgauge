@@ -1430,7 +1430,11 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
 
 <div id="app">
   <div id="hdr">
-    <div style="display:flex;align-items:baseline;min-width:0;flex:1 1 auto;overflow:hidden">
+    <!-- Brand block. Styling lives entirely in CSS (#hdr > div:first-child, line ~162,
+         + the ≤480px override) — NO inline flex here. An inline flex:1 1 auto used to
+         sit here and, via inline specificity, defeated the ≤480px flex:0 1 auto rule,
+         so the block kept growing and parked the freed space as a gap before the pill. -->
+    <div class="brandBlock">
       <img id="brandMark" src="assets/logo/peak-mark-dark.svg" alt="">
       <span class="brand">TrailGauge<sup style="font-size:.45em;opacity:.7" aria-hidden="true">™</sup></span>
       <span class="sub">Off-Road Inclinometer</span>
@@ -10966,7 +10970,7 @@ startGPS();
 // const lives in index.html so it reflects the ACTUAL loaded shell — it MUST be
 // bumped in lockstep with sw.js CACHE_VERSION. If the on-device marker shows
 // anything other than the latest, the device is running a stale app shell.
-const APP_SHELL_VERSION = 'tg-v20-81';
+const APP_SHELL_VERSION = 'tg-v20-82';
 { const _vm = document.getElementById('verMarker');
   if(_vm){
     _vm.innerHTML = '<span>SHELL ' + APP_SHELL_VERSION + '</span>' +
