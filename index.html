@@ -904,6 +904,13 @@ body.prof-trail #actionBar #anglePinBtn { display: none !important; }
    of the centered trip button as a stray sibling. */
 body.prof-trail #actionBar { justify-content: center; gap: 8px; }
 body.prof-trail #actionBar #tripBtn { max-width: 240px; flex: 0 1 240px; }
+/* Trail controls cohesion: Start Trip + Pin & Post get the SAME green border as
+   the trail coordinates box (#gcoordsChip.ready → 1px solid accent, 8px radius)
+   so the three read as a family. Trail-scoped only. box-sizing:border-box means
+   the 2px→1px border change does NOT resize the buttons, so the pair still fits
+   at 320-430px (no shift, growth, or clip). */
+body.prof-trail #actionBar #tripBtn,
+body.prof-trail #actionBar #pinPostBtn { border: 1px solid var(--accent); border-radius: 8px; }
 body.prof-trail #actionBar #tripPauseBtn { flex: 0 0 48px; }
 /* BRK.6: Trail-only break button — fixed 48px like the pause button so it can't
    stretch and unbalance the centered Start/Stop layout. Dimmed when reminders
@@ -11159,7 +11166,7 @@ startGPS();
 // const lives in index.html so it reflects the ACTUAL loaded shell — it MUST be
 // bumped in lockstep with sw.js CACHE_VERSION. If the on-device marker shows
 // anything other than the latest, the device is running a stale app shell.
-const APP_SHELL_VERSION = 'tg-v20-86';
+const APP_SHELL_VERSION = 'tg-v20-87';
 { const _vm = document.getElementById('verMarker');
   if(_vm){
     _vm.innerHTML = '<span>SHELL ' + APP_SHELL_VERSION + '</span>' +
