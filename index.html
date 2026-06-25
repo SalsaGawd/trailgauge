@@ -2241,6 +2241,7 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
     <div style="display:flex;flex-direction:column;gap:8px;margin-top:16px">
       <button class="modalbtn ghost"   id="pdToggleMap">Show Map</button>
       <button class="modalbtn primary" id="pdShareCard">Share as Image Card</button>
+      <button class="modalbtn"          id="pdPostcard">📮 Postcard</button>
       <button class="modalbtn ghost"   id="pdOpenMaps">Open in Maps…</button>
       <button class="modalbtn ghost"   id="pdEdit">Edit Pin</button>
       <button class="modalbtn ghost"   id="pdDelete" style="color:var(--danger)">Delete Pin</button>
@@ -5771,6 +5772,17 @@ document.getElementById('pdShareCard').addEventListener('click', async () => {
     btn.disabled = false;
     btn.textContent = origLabel;
   }
+});
+
+// 📮 Postcard from pin detail → open the postcard designer for this pin. Close
+// the pin detail modal first (mirrors the Pin & Post popup's closePinPostPopup()
+// before openPostcardDesigner) so the full-screen designer doesn't stack over a
+// stale sheet and closing it returns cleanly to the pin list.
+document.getElementById('pdPostcard').addEventListener('click', () => {
+  if(!_currentPin) return;
+  const pin = _currentPin;
+  pdp.classList.remove('open');
+  openPostcardDesigner(pin);
 });
 
 // ─── TRAIL "Pin & Post" ────────────────────────────────────────────────────
@@ -12243,7 +12255,7 @@ startGPS();
 // Loaded-shell version string. Lives in index.html so it reflects the ACTUAL
 // loaded shell, and MUST be bumped in lockstep with sw.js CACHE_VERSION. Rendered
 // as a small, dim line at the bottom of Settings (no longer a loud top bar).
-const APP_SHELL_VERSION = 'tg-v20-97';
+const APP_SHELL_VERSION = 'tg-v20-98';
 { const _sv = document.getElementById('stVersion');
   if(_sv) _sv.textContent = 'TrailGauge ' + APP_SHELL_VERSION; }
 
