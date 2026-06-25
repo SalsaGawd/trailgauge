@@ -1352,6 +1352,33 @@ body.prof-trail.trip-active #actionBar #pinPostBtn{display:none}
 .pcBgBtn.on{border-color:var(--accent);color:var(--accent)}
 .pcSrcBtn{font-size:11px}
 .pcBgBtn:active,.pcSrcBtn:active{transform:scale(.97)}
+/* Format (orientation) picker — Landscape / Portrait / Square. */
+#pcFmtLbl{font-family:var(--fm);font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--txt3)}
+#pcFormatPick{display:flex;gap:8px}
+.pcFmtBtn{flex:1;background:var(--card);border:1px solid var(--border);border-radius:10px;
+  color:var(--txt2);font-family:var(--fd);font-size:15px;font-weight:700;padding:8px 4px;
+  cursor:pointer;-webkit-tap-highlight-color:transparent;display:flex;flex-direction:column;
+  align-items:center;gap:1px;transition:all var(--tr)}
+.pcFmtBtn span{font-family:var(--fm);font-size:8px;letter-spacing:.5px;text-transform:uppercase;
+  color:var(--txt3);font-weight:400}
+.pcFmtBtn.on{border-color:var(--accent);color:var(--accent)}
+.pcFmtBtn.on span{color:var(--accent)}
+.pcFmtBtn:active{transform:scale(.97)}
+/* Stock style picker — a row of live card-style thumbnails (FIX 3 / PC_STYLES). */
+#pcStyleLbl{font-family:var(--fm);font-size:9px;letter-spacing:1px;text-transform:uppercase;
+  color:var(--txt3);margin-top:2px}
+#pcStyleRow{display:flex;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;
+  padding-bottom:2px;scrollbar-width:none}
+#pcStyleRow::-webkit-scrollbar{display:none}
+.pcStyleThumb{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:4px;
+  background:transparent;border:none;padding:0;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.pcStyleThumb canvas{width:64px;height:64px;border-radius:9px;display:block;
+  border:2px solid var(--border);box-shadow:0 3px 8px rgba(0,0,0,.4);transition:border-color var(--tr)}
+.pcStyleThumb span{font-family:var(--fm);font-size:8px;letter-spacing:.5px;text-transform:uppercase;
+  color:var(--txt3)}
+.pcStyleThumb.on canvas{border-color:var(--accent)}
+.pcStyleThumb.on span{color:var(--accent)}
+.pcStyleThumb:active{transform:scale(.96)}
 /* Tap-to-enlarge — lift the live card into a full-screen centered lightbox so
    the photo + coords overlay can be inspected before continuing. Reuses the SAME
    card node (signature canvas + flip state intact), so nothing is cloned. */
@@ -2272,15 +2299,22 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
   <button id="pcZoomClose" type="button" aria-label="Close enlarged preview">×</button>
   <div id="pcControls">
     <div id="pcFrontCtl">
+      <div id="pcFmtLbl">▭ Format</div>
+      <div id="pcFormatPick" role="group" aria-label="Card format">
+        <button class="pcFmtBtn on" data-fmt="landscape" type="button">▭<span>Landscape</span></button>
+        <button class="pcFmtBtn" data-fmt="portrait" type="button">▯<span>Portrait</span></button>
+        <button class="pcFmtBtn" data-fmt="square" type="button">◻<span>Square</span></button>
+      </div>
       <div id="pcBgToggle">
         <button class="pcBgBtn on" data-bg="photo" type="button">📷 Photo</button>
-        <button class="pcBgBtn" data-bg="stock" type="button">✦ Stock</button>
       </div>
       <div id="pcPhotoSrc">
         <button id="pcSrcPin" class="pcSrcBtn" type="button">📌 Pin Photo</button>
         <button id="pcSrcLib" class="pcSrcBtn" type="button">🖼 Library</button>
       </div>
       <input type="file" id="pcPhotoInput" accept="image/*" style="display:none">
+      <div id="pcStyleLbl">✦ Or pick a card style</div>
+      <div id="pcStyleRow" aria-label="Card styles"></div>
     </div>
     <div id="pcSizePick">
       <button class="pcSizeBtn on" data-size="4x6" type="button">4×6<span>Standard</span></button>
@@ -5900,6 +5934,448 @@ function _pcRenderFront(){
   document.querySelectorAll('.pcBgBtn').forEach(b => b.classList.toggle('on', b.dataset.bg === _pcBgMode));
   const src = document.getElementById('pcPhotoSrc');
   if(src) src.style.display = (_pcBgMode === 'photo') ? 'flex' : 'none';
+  document.querySelectorAll('.pcStyleThumb').forEach(t =>
+    t.classList.toggle('on', _pcBgMode === 'stock' && t.dataset.style === _pcStyle));
+}
+
+// ─── STOCK CARD STYLES (PC_STYLES) ──────────────────────────────────────────
+// Four designed postcard fronts ported from sharecard-FINAL-FOUR.html into pure
+// canvas painters. Each render(ctx, pin, W, H) paints a full square card. Text is
+// driven by the pin's real data via _pcModel(); route lines + ridgelines are the
+// designed poster art (no per-pin track exists). Brand fonts (Rajdhani / Share
+// Tech Mono / Exo 2) substitute the mockup's Archivo/Space/Barlow so it stays
+// offline-safe. Tunable: positions are proportional to W (=370-unit mockup × S).
+const _RAJ  = (w, px) => w + ' ' + px + "px 'Rajdhani',sans-serif";       // Archivo Expanded / Barlow Condensed
+const _MONO = (px)    => px + "px 'Share Tech Mono',monospace";           // Space Mono
+const _EXO  = (w, px) => w + ' ' + px + "px 'Exo 2',sans-serif";          // Space Grotesk / Archivo
+
+// Minimal absolute SVG path runner (M/L/C/Z — the only commands the mockup uses).
+// mx/my map viewBox coords → canvas. Leaves the path open for fill()/stroke().
+function _svgPath(ctx, d, mx, my){
+  const toks = d.match(/[MLCZ]|-?\d*\.?\d+/g);
+  if(!toks) return;
+  ctx.beginPath();
+  let i = 0, cmd = '';
+  const num = () => +toks[i++];
+  while(i < toks.length){
+    let t = toks[i];
+    if(/[MLCZ]/.test(t)){ cmd = t; i++; } // explicit command
+    if(cmd === 'M'){ ctx.moveTo(mx(num()), my(num())); cmd = 'L'; }      // implicit lineto after M
+    else if(cmd === 'L'){ ctx.lineTo(mx(num()), my(num())); }
+    else if(cmd === 'C'){ ctx.bezierCurveTo(mx(num()), my(num()), mx(num()), my(num()), mx(num()), my(num())); }
+    else if(cmd === 'Z'){ ctx.closePath(); }
+    else { i++; }
+  }
+}
+// Fill one ridgeline/elevation path stretched (non-uniform) into a rect.
+function _band(ctx, d, rect, fill, alpha){
+  const mx = x => rect.x + x / rect.vbW * rect.w, my = y => rect.y + y / rect.vbH * rect.h;
+  ctx.save(); if(alpha != null) ctx.globalAlpha = alpha;
+  _svgPath(ctx, d, mx, my); ctx.fillStyle = fill; ctx.fill(); ctx.restore();
+}
+// Draw a route line (uniformly scaled into rect) with a vertical color gradient.
+// Returns the coord-map so the painter can place endpoints/tags. opt.glow adds a soft halo.
+function _route(ctx, d, vbW, vbH, rect, stops, opt){
+  const sc = rect.w / vbW;
+  const mx = px => rect.x + px / vbW * rect.w, my = py => rect.y + py / vbH * rect.h;
+  const g = ctx.createLinearGradient(0, rect.y + rect.h, 0, rect.y);
+  for(const s of stops) g.addColorStop(s[0], s[1]);
+  ctx.save();
+  ctx.lineWidth = 5 * sc; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = g;
+  if(opt && opt.glow){ ctx.shadowColor = opt.glow; ctx.shadowBlur = 7 * sc; }
+  _svgPath(ctx, d, mx, my); ctx.stroke();
+  ctx.restore();
+  return { mx, my, sc };
+}
+// Text helper — save/restore isolates font/align/letterSpacing/shadow per call.
+function _txt(ctx, str, x, y, font, color, o){
+  o = o || {};
+  ctx.save();
+  ctx.font = font; ctx.fillStyle = color;
+  ctx.textAlign = o.align || 'left'; ctx.textBaseline = o.baseline || 'alphabetic';
+  if(o.ls != null){ try { ctx.letterSpacing = o.ls + 'px'; } catch(_){} }
+  if(o.shadow){ ctx.shadowColor = o.shadow; ctx.shadowBlur = o.blur || 0; ctx.shadowOffsetY = o.sy || 0; }
+  ctx.fillText(str, x, y);
+  ctx.restore();
+}
+
+// Build the text model from a pin's REAL data (location, coords, elevation, date,
+// tilt, summit). Trip-only fields (distance/gain/time) intentionally absent.
+function _pcModel(pin){
+  pin = pin || {};
+  const raw = (pin.label && !_pcIsPlaceholderLabel(pin.label)) ? pin.label : '';
+  const parts = raw.split(',').map(s => s.trim()).filter(Boolean);
+  const name = parts[0] || 'Saved Pin';
+  const region = parts.slice(1).join(' · ').toUpperCase();
+  const lat = (typeof pin.lat === 'number') ? pin.lat : 0;
+  const lon = (typeof pin.lon === 'number') ? pin.lon : 0;
+  const elevFt = (pin.elev != null) ? Math.round(pin.elev * 3.28084) : null;
+  const summitFt = (pin.peakFt != null) ? pin.peakFt : elevFt;
+  const tilt = (pin.peakAngle != null) ? pin.peakAngle : null;
+  const dt = new Date(pin.createdAt || Date.now());
+  const p2 = n => String(n).padStart(2, '0');
+  const mo = p2(dt.getMonth() + 1), da = p2(dt.getDate()), yr = dt.getFullYear();
+  return {
+    name, region, lat, lon, elevFt, summitFt, tilt, year: yr,
+    latS: Math.abs(lat).toFixed(2) + '°' + (lat >= 0 ? 'N' : 'S'),
+    lonS: Math.abs(lon).toFixed(2) + '°' + (lon >= 0 ? 'E' : 'W'),
+    dMid: mo + ' · ' + da + ' · ' + yr,
+    dDot: mo + '.' + da + '.' + yr,
+    dShort: mo + '·' + da,
+    ft: n => (n != null ? n.toLocaleString() : '—')
+  };
+}
+
+// ── A · Field Log ───────────────────────────────────────────────────────────
+function _pcPaintFieldLog(ctx, pin, W, H){
+  const M = _pcModel(pin), S = Math.min(W, H) / 370, pad = 24 * S;
+  const orient = (W > H * 1.05) ? 'land' : (H > W * 1.05) ? 'port' : 'square';
+  let g = ctx.createRadialGradient(W * 0.5, -0.10 * H, 0, W * 0.5, -0.10 * H, Math.max(W, H) * 0.85);
+  g.addColorStop(0, '#1d2a22'); g.addColorStop(.55, '#121b16'); g.addColorStop(1, '#0b110d');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  // Faint TG monogram (centered)
+  _txt(ctx, 'TG', W / 2, 0.46 * H, _RAJ(700, 172 * S), 'rgba(61,220,151,.055)', { align: 'center', baseline: 'middle', ls: -9 * S });
+  // Gold elevation profile — anchored to the bottom of the frame
+  const eh = H * (orient === 'land' ? 0.42 : 0.40);
+  const er = { x: 0, y: H - eh, w: W, h: eh, vbW: 370, vbH: 140 };
+  ctx.save(); ctx.globalAlpha = .5;
+  const emx = x => er.x + x / er.vbW * er.w, emy = y => er.y + y / er.vbH * er.h;
+  _svgPath(ctx, 'M0,120 L30,110 L58,95 L88,98 L120,70 L155,75 L185,45 L215,30 L250,48 L282,40 L312,65 L342,80 L370,72 L370,140 L0,140 Z', emx, emy);
+  let eg = ctx.createLinearGradient(0, er.y, 0, er.y + er.h);
+  eg.addColorStop(0, 'rgba(201,162,94,.5)'); eg.addColorStop(1, 'rgba(201,162,94,0)');
+  ctx.fillStyle = eg; ctx.fill();
+  ctx.strokeStyle = 'rgba(201,162,94,.6)'; ctx.lineWidth = 1.5 * S; ctx.stroke();
+  ctx.restore();
+  // Top row
+  _txt(ctx, '◇ TRAILGAUGE', pad, pad + 11 * S, _MONO(11 * S), '#c9a25e', { ls: 2 * S });
+  const rx = W - pad, logNo = String((Math.floor(((pin && pin.createdAt) || Date.now()) / 8.64e7)) % 1000).padStart(3, '0');
+  _txt(ctx, 'FIELD LOG № ' + logNo, rx, pad + 10 * S, _MONO(8.5 * S), '#cbd2c5', { align: 'right', ls: .5 * S });
+  _txt(ctx, M.dMid, rx, pad + 25 * S, _MONO(8.5 * S), '#cbd2c5', { align: 'right', ls: .5 * S });
+  _txt(ctx, M.latS + ' ' + M.lonS, rx, pad + 40 * S, _MONO(8.5 * S), '#cbd2c5', { align: 'right', ls: .5 * S });
+  // Route + endpoints (size capped so the tall route doesn't dominate landscape)
+  const rw = Math.min(0.55 * W, 0.60 * H), rh = rw * 250 / 300;
+  const cyR = H * (orient === 'port' ? 0.34 : 0.38);
+  const rr = { x: (W - rw) / 2, y: cyR - rh / 2, w: rw, h: rh };
+  const rm = _route(ctx, 'M60,205 C85,213 100,190 110,170 C120,150 105,128 125,114 C145,100 140,78 160,68 C180,58 175,40 200,38 C218,36 235,46 248,42', 300, 250, rr,
+    [[0, '#3ddc97'], [.55, '#e8b54a'], [1, '#e85a4a']]);
+  function dot(cx, cy, r, fill){ ctx.beginPath(); ctx.arc(rm.mx(cx), rm.my(cy), r * rm.sc, 0, 7); ctx.fillStyle = fill; ctx.fill(); ctx.lineWidth = 1.5 * rm.sc; ctx.strokeStyle = '#0b110d'; ctx.stroke(); }
+  dot(60, 205, 5, '#3ddc97'); dot(200, 38, 5.5, '#e85a4a');
+  _txt(ctx, '▽ START', rm.mx(24), rm.my(226), _MONO(8.5 * rm.sc), '#e8e4d6', { ls: .3 * S });
+  _txt(ctx, '▲ PEAK ' + M.ft(M.summitFt) + ' ft', rm.mx(160), rm.my(24), _MONO(8.5 * rm.sc), '#e8e4d6', { ls: .3 * S });
+  // ── BOTTOM BLOCK — left-aligned, anchored up from the bottom margin ──
+  const by = H - pad;
+  _txt(ctx, 'ELEVATION', pad, by - 40 * S, _MONO(8 * S), '#cbd2c5', { ls: 1.5 * S });
+  _txt(ctx, M.ft(M.elevFt), pad, by - 8 * S, _RAJ(700, 34 * S), '#ffffff');
+  const ftw = ctx2width(ctx, M.ft(M.elevFt), _RAJ(700, 34 * S));
+  _txt(ctx, ' ft', pad + ftw, by - 8 * S, _RAJ(700, 16 * S), '#e0b873');
+  const mini = [['LATITUDE', M.latS], ['LONGITUDE', M.lonS], ['LOGGED', M.dShort]];
+  let mx0 = pad + ftw + 44 * S;
+  mini.forEach(m => {
+    _txt(ctx, m[0], mx0, by - 30 * S, _MONO(7.5 * S), '#cbd2c5', { ls: 1 * S });
+    _txt(ctx, m[1], mx0, by - 10 * S, _EXO(700, 13 * S), '#e8e4d6');
+    mx0 += Math.max(ctx2width(ctx, m[1], _EXO(700, 13 * S)), 46 * S) + 14 * S;
+  });
+  const nmPx = _fitPx(ctx, M.name, 700, 30 * S, W - pad * 2);
+  _txt(ctx, M.name, pad, by - 86 * S, _RAJ(700, nmPx), '#ffffff');
+  if(M.region) _txt(ctx, M.region, pad, by - 70 * S, _MONO(8.5 * S), '#e0b873', { ls: 1.5 * S });
+}
+
+// ── B · Instrument (Yosemite granite) ───────────────────────────────────────
+function _pcPaintInstrument(ctx, pin, W, H){
+  const M = _pcModel(pin), S = Math.min(W, H) / 370, pad = 24 * S;
+  const orient = (W > H * 1.05) ? 'land' : (H > W * 1.05) ? 'port' : 'square';
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  [[0,'#cfe0d8'],[.14,'#a9c4bd'],[.30,'#7da296'],[.48,'#4f7d6f'],[.66,'#2f5a4d'],[.82,'#1d3a30'],[1,'#12231d']]
+    .forEach(s => bg.addColorStop(s[0], s[1]));
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+  // Haze band
+  ctx.save(); ctx.globalAlpha = .6;
+  const hz = ctx.createLinearGradient(0, 0.28 * H, 0, 0.60 * H);
+  hz.addColorStop(0, 'rgba(220,232,228,.35)'); hz.addColorStop(1, 'rgba(220,232,228,0)');
+  ctx.fillStyle = hz; ctx.fillRect(0, 0.28 * H, W, 0.32 * H); ctx.restore();
+  // Ridgelines — anchored to the bottom of the frame
+  const ridgeH = H * (orient === 'land' ? 0.72 : 0.66);
+  const rb = { x: 0, y: H - ridgeH, w: W, h: ridgeH, vbW: 540, vbH: 360 };
+  _band(ctx, 'M0,150 L80,80 L130,120 L200,55 L250,100 L330,60 L400,110 L470,75 L540,120 L540,360 L0,360 Z', rb, '#5e7d72', .5);
+  _band(ctx, 'M150,140 L150,70 L185,55 L210,80 L210,140 Z', rb, '#7a8f88', .55);
+  _band(ctx, 'M330,130 L330,75 L355,62 L388,95 L388,130 Z', rb, '#7a8f88', .5);
+  _band(ctx, 'M0,210 L90,150 L160,200 L230,130 L300,190 L380,140 L460,195 L540,155 L540,360 L0,360 Z', rb, '#2f5a4d', .85);
+  _band(ctx, 'M0,300 L30,250 L45,275 L70,235 L90,270 L120,240 L145,285 L175,250 L200,290 L240,250 L270,295 L310,255 L345,295 L380,255 L420,295 L455,260 L490,295 L520,265 L540,290 L540,360 L0,360 Z', rb, '#16291f', 1);
+  // Scrim
+  const sc = ctx.createLinearGradient(0, 0, 0, H);
+  sc.addColorStop(0, 'rgba(18,35,29,.12)'); sc.addColorStop(.5, 'rgba(18,35,29,.45)'); sc.addColorStop(1, 'rgba(12,23,19,.92)');
+  ctx.fillStyle = sc; ctx.fillRect(0, 0, W, H);
+  // Top row
+  ctx.beginPath(); ctx.arc(pad + 4 * S, pad + 7 * S, 4 * S, 0, 7); ctx.fillStyle = '#7ee0a8';
+  ctx.save(); ctx.shadowColor = '#7ee0a8'; ctx.shadowBlur = 8 * S; ctx.fill(); ctx.restore();
+  _txt(ctx, 'TrailGauge', pad + 13 * S, pad + 11 * S, _EXO(700, 13 * S), '#ffffff');
+  // Route + tags (width capped so it doesn't smear wide in landscape)
+  const rw = Math.min(0.62 * W, 0.64 * H), rh = rw * 230 / 300;
+  const cyR = H * (orient === 'land' ? 0.42 : orient === 'port' ? 0.32 : 0.30);
+  const rr = { x: (W - rw) / 2, y: cyR - rh / 2, w: rw, h: rh };
+  const rm = _route(ctx, 'M65,190 C90,198 105,175 115,158 C125,141 110,118 130,105 C150,92 145,72 165,63 C185,54 180,38 205,36 C223,34 238,44 250,40', 300, 230, rr,
+    [[0, '#3ddc97'], [.5, '#f5c84a'], [1, '#ff5a4a']], { glow: 'rgba(126,224,168,.55)' });
+  ctx.beginPath(); ctx.arc(rm.mx(65), rm.my(190), 4.5 * rm.sc, 0, 7); ctx.fillStyle = '#7ee0a8'; ctx.fill();
+  ctx.beginPath(); ctx.arc(rm.mx(205), rm.my(36), 5 * rm.sc, 0, 7); ctx.fillStyle = '#ff5a4a'; ctx.fill();
+  _txt(ctx, M.ft(M.summitFt) + ' ft', rm.mx(222), rm.my(28), _MONO(8 * rm.sc), '#e4efe9');
+  // Legend
+  const lg = [['#3ddc97', 'EASY 0–5%'], ['#f5c84a', 'STEEP 10–15%'], ['#ff5a4a', 'GNARLY 15%+']];
+  let ly = (pad + 64 * S);
+  lg.forEach(l => {
+    ctx.fillStyle = l[0]; roundRect(ctx, pad, ly, 13 * S, 2.5 * S, 1 * S); ctx.fill();
+    _txt(ctx, l[1], pad + 18 * S, ly + 4 * S, _MONO(7 * S), '#bcd0c8', { ls: .3 * S });
+    ly += 12 * S;
+  });
+  // ── BOTTOM BLOCK — anchored up from the bottom margin ──
+  const by = H - pad;
+  const stats = [['LATITUDE', M.latS], ['LONGITUDE', M.lonS], ['LOGGED', M.dShort]];
+  let sx = pad;
+  stats.forEach(st => {
+    _txt(ctx, st[0], sx, by - 20 * S, _MONO(7.5 * S), '#a8c0b6', { ls: 1 * S });
+    _txt(ctx, st[1], sx, by - 2 * S, _EXO(700, 13 * S), '#ffffff');
+    sx += Math.max(ctx2width(ctx, st[1], _EXO(700, 13 * S)), 80 * S) + 18 * S;
+  });
+  ctx.strokeStyle = 'rgba(255,255,255,.2)'; ctx.lineWidth = 1 * S;
+  ctx.beginPath(); ctx.moveTo(pad, by - 36 * S); ctx.lineTo(W - pad, by - 36 * S); ctx.stroke();
+  _txt(ctx, M.name, pad, by - 46 * S, _EXO(700, 16 * S), '#ffffff');
+  const bigFt = M.ft(M.elevFt);
+  _txt(ctx, bigFt, pad, by - 70 * S, _RAJ(700, 47 * S), '#ffffff', { shadow: 'rgba(0,0,0,.45)', blur: 12 * S, sy: 2 * S });
+  const bw = ctx2width(ctx, bigFt, _RAJ(700, 47 * S));
+  _txt(ctx, 'ft', pad + bw + 3 * S, by - 70 * S, _RAJ(700, 17 * S), '#7ee0a8');
+  _txt(ctx, 'ELEVATION', pad + bw + 24 * S, by - 86 * S, _MONO(8 * S), '#bcd0c8', { ls: 2 * S });
+  _txt(ctx, M.dDot + (M.region ? '  ·  ' + M.region : ''), pad, by - 118 * S, _MONO(8.5 * S), '#a8c0b6', { ls: 1 * S });
+}
+
+// ── C · Trail Poster (Desert / Coastal palette family) ──────────────────────
+// Ridgelines are stored as VERTEX lists (viewBox 540×340) so snow caps can be
+// derived from the SAME peaks as the mountain silhouette (bug fix: snow now sits
+// exactly on the summits). The painter is orientation-aware — text anchors to the
+// bottom margin so nothing is ever clipped, whatever the aspect ratio.
+const _PC_C_VARIANTS = {
+  desert: {
+    bg: [[0,'#f4a14e'],[.22,'#e87d3e'],[.42,'#c85a32'],[.62,'#8f3f2c'],[.80,'#5c2c24'],[1,'#2e1a18']],
+    sun: ['#ffe9b0','#ffd27a','#ffb858'],
+    route: [[0,'#ffe07a'],[.55,'#ff9a4a'],[1,'#ff5a3a']],
+    ridges: [
+      { v:[[0,170],[70,90],[120,140],[190,60],[260,130],[330,50],[410,120],[480,70],[540,130]], fill:'#7a3b2c', alpha:.55,
+        snow:{ color:'#f6ead8', alpha:.85, depth:26, count:2 } },
+      { v:[[0,220],[90,140],[160,200],[230,110],[300,190],[380,120],[460,200],[540,150]], fill:'#5a2a24', alpha:.8 },
+      { v:[[0,300],[60,200],[130,290],[200,170],[280,280],[360,180],[440,290],[500,210],[540,270]], fill:'#2e1a18', alpha:1 }
+    ], accent:'#ffce95', border:'rgba(255,206,149,.45)', sub:'#ffce95', foot:'#e0a878'
+  },
+  coastal: {
+    // Beach scene: blue sky/sea, layered headlands receding to the waterline, and
+    // a warm sandy shoreline band at the bottom (its own identity, not desert-blue).
+    bg: [[0,'#244a74'],[.24,'#3a6790'],[.46,'#6f9fb8'],[.62,'#a9c6cf'],[1,'#cfe0e2']],
+    sun: ['#fff0c8','#ffe49a','#ffd277'],
+    route: [[0,'#ffe07a'],[.55,'#ff9a4a'],[1,'#ff5a3a']],
+    hills: [
+      { v:[[0,205],[90,165],[185,190],[285,155],[380,188],[470,158],[540,182]], fill:'#5b86a4', alpha:.6 },
+      { v:[[0,245],[120,205],[240,232],[360,200],[470,226],[540,212]], fill:'#3f6a8a', alpha:.9 }
+    ],
+    shore: { sand:[[0,'#e7d09c'],[.45,'#c2a067'],[1,'#52402c']], foam:'#f3ead6' },
+    accent:'#e8c890', border:'rgba(240,217,168,.5)', sub:'#e8c890', foot:'#e8d2a0'
+  }
+};
+// Coastal scene — layered headlands sitting on a wavy waterline, with a warm sand
+// shoreline band filling the bottom (text sits over the darker lower sand).
+function _coastalScene(ctx, V, W, H, orient, S){
+  // Landscape: horizon on the lower-third line (sky/hills dominate the upper 2/3,
+  // where the sun + route live). Portrait/square keep their tuned proportions.
+  const shoreTop = H * (orient === 'land' ? 0.66 : orient === 'port' ? 0.66 : 0.62);
+  const hillH = H * (orient === 'land' ? 0.34 : 0.30);
+  const hr = { x: 0, y: shoreTop - hillH, w: W, h: hillH, vbW: 540, vbH: 340 };
+  V.hills.forEach(r => _ridge(ctx, r, hr));        // headlands fill down to the waterline
+  // Soft sun reflection on the water — a feathered radial glow (no hard edges)
+  ctx.save();
+  const rgx = W / 2, rgy = shoreTop - hillH * 0.28, rgr = hillH * 0.5;
+  const refl = ctx.createRadialGradient(rgx, rgy, 0, rgx, rgy, rgr);
+  refl.addColorStop(0, 'rgba(255,236,180,.20)'); refl.addColorStop(1, 'rgba(255,236,180,0)');
+  ctx.fillStyle = refl; ctx.beginPath(); ctx.ellipse(rgx, rgy, 62 * S, rgr, 0, 0, 7); ctx.fill();
+  ctx.restore();
+  // Wavy waterline points
+  const amp = 9 * S, segs = 8, pts = [];
+  for(let i = 0; i <= segs; i++) pts.push([W * i / segs, shoreTop + Math.sin(i / segs * Math.PI * 1.5 + 0.6) * amp]);
+  // Sand band
+  ctx.save();
+  ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+  for(let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.closePath();
+  const sand = ctx.createLinearGradient(0, shoreTop, 0, H);
+  V.shore.sand.forEach(s => sand.addColorStop(s[0], s[1]));
+  ctx.fillStyle = sand; ctx.fill();
+  ctx.restore();
+  // Foam line along the waterline
+  ctx.save(); ctx.globalAlpha = .5; ctx.strokeStyle = V.shore.foam; ctx.lineWidth = 3 * S; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+  for(let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  ctx.stroke(); ctx.restore();
+}
+// Draw a vertex ridge filled to the bottom of its rect; derive snow caps from the
+// N highest interior peaks, following the actual slope edges down `depth` units.
+function _ridge(ctx, r, rect){
+  const mx = x => rect.x + x / rect.vbW * rect.w, my = y => rect.y + y / rect.vbH * rect.h;
+  const v = r.v;
+  ctx.save(); if(r.alpha != null) ctx.globalAlpha = r.alpha;
+  ctx.beginPath(); ctx.moveTo(mx(v[0][0]), my(v[0][1]));
+  for(let i = 1; i < v.length; i++) ctx.lineTo(mx(v[i][0]), my(v[i][1]));
+  ctx.lineTo(rect.x + rect.w, rect.y + rect.h); ctx.lineTo(rect.x, rect.y + rect.h); ctx.closePath();
+  ctx.fillStyle = r.fill; ctx.fill(); ctx.restore();
+  if(r.snow){
+    const along = (P, Q, d) => { const dy = Q[1] - P[1]; if(dy <= 0) return P; const t = Math.min(1, d / dy); return [P[0] + t * (Q[0] - P[0]), P[1] + t * (Q[1] - P[1])]; };
+    const inner = [];
+    for(let i = 1; i < v.length - 1; i++) inner.push(i);
+    inner.sort((a, b) => v[a][1] - v[b][1]);             // highest peaks first (lowest y)
+    ctx.save(); if(r.snow.alpha != null) ctx.globalAlpha = r.snow.alpha; ctx.fillStyle = r.snow.color;
+    inner.slice(0, r.snow.count || 2).forEach(i => {
+      const P = v[i], lp = along(P, v[i - 1], r.snow.depth), rp = along(P, v[i + 1], r.snow.depth);
+      ctx.beginPath(); ctx.moveTo(mx(P[0]), my(P[1])); ctx.lineTo(mx(lp[0]), my(lp[1])); ctx.lineTo(mx(rp[0]), my(rp[1])); ctx.closePath(); ctx.fill();
+    });
+    ctx.restore();
+  }
+}
+// Shrink a font's px so `str` fits maxW (prevents long place names clipping).
+function _fitPx(ctx, str, weight, basePx, maxW){
+  const w = ctx2width(ctx, str, _RAJ(weight, basePx));
+  return (w > maxW && w > 0) ? basePx * maxW / w : basePx;
+}
+function _pcPaintPoster(ctx, pin, W, H, variant){
+  const V = _PC_C_VARIANTS[variant], M = _pcModel(pin);
+  const S = Math.min(W, H) / 370;          // type scale = short side (consistent across shapes)
+  const pad = 22 * S;
+  const orient = (W > H * 1.05) ? 'land' : (H > W * 1.05) ? 'port' : 'square';
+  // Background
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  V.bg.forEach(s => bg.addColorStop(s[0], s[1]));
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+  // Sun — centered, upper region (placed lower in landscape to use the short height)
+  const sr = 52 * S, scx = W / 2, scy = H * (orient === 'land' ? 0.30 : orient === 'port' ? 0.17 : 0.20);
+  const sg = ctx.createRadialGradient(scx, scy, 0, scx, scy, sr);
+  sg.addColorStop(0, V.sun[0]); sg.addColorStop(.5, V.sun[1]); sg.addColorStop(.68, V.sun[2]); sg.addColorStop(.7, 'rgba(255,184,88,0)');
+  ctx.save(); ctx.globalAlpha = .9; ctx.fillStyle = sg; ctx.beginPath(); ctx.arc(scx, scy, sr, 0, 7); ctx.fill(); ctx.restore();
+  // Scenery — Coastal gets a beach scene (headlands + sand shoreline); Desert gets
+  // its layered mountain ridgelines. Both anchored to the bottom of the frame.
+  if(V.shore){
+    _coastalScene(ctx, V, W, H, orient, S);
+  } else {
+    const ridgeH = H * (orient === 'land' ? 0.62 : 0.55);
+    const rb = { x: 0, y: H - ridgeH, w: W, h: ridgeH, vbW: 540, vbH: 340 };
+    V.ridges.forEach(r => _ridge(ctx, r, rb));
+  }
+  // Brand + eyebrow (top)
+  _txt(ctx, '◇ TRAILGAUGE', pad, pad + 12 * S, _RAJ(700, 13 * S), '#ffe9c4', { ls: 2 * S });
+  _txt(ctx, 'EXPEDITION RECORD', W / 2, pad + (orient === 'land' ? 14 : 32) * S, _RAJ(700, 10 * S), '#ffdca8', { align: 'center', ls: 5 * S });
+  // Route arc (upper-middle), width capped so it doesn't stretch wide in landscape
+  const rw = Math.min(0.58 * W, 0.85 * H), rh = rw * 120 / 300;
+  const cyR = H * (orient === 'land' ? 0.50 : orient === 'port' ? 0.36 : 0.40);
+  const rr = { x: (W - rw) / 2, y: cyR - rh / 2, w: rw, h: rh };
+  const rm = _route(ctx, 'M40,95 C70,100 85,60 110,55 C140,48 150,75 175,60 C205,42 225,58 260,40', 300, 120, rr, V.route, { glow: 'rgba(0,0,0,.4)' });
+  ctx.beginPath(); ctx.arc(rm.mx(40), rm.my(95), 5 * rm.sc, 0, 7); ctx.fillStyle = '#fff'; ctx.fill();
+  ctx.lineWidth = 2.5 * rm.sc; ctx.strokeStyle = '#ff5a3a'; ctx.stroke();
+  ctx.beginPath(); ctx.arc(rm.mx(260), rm.my(40), 5.5 * rm.sc, 0, 7); ctx.fillStyle = '#ffe07a'; ctx.fill();
+  ctx.lineWidth = 2 * rm.sc; ctx.strokeStyle = '#ff5a3a'; ctx.stroke();
+  _txt(ctx, M.ft(M.summitFt) + ' FT ▲', rm.mx(205), rm.my(32), _RAJ(700, 11 * rm.sc), '#fff3df', { ls: 1 * S });
+  // ── BOTTOM BLOCK — stacked UP from the bottom margin so nothing clips ──
+  const footY = H - pad;
+  _txt(ctx, M.region || 'TRAILGAUGE', W / 2, footY, _MONO(6.5 * S), V.foot, { align: 'center', ls: 1.2 * S });
+  const labelY = footY - 16 * S;            // stat labels row
+  const valueY = labelY - 14 * S;           // stat values row
+  const lineY  = valueY - 18 * S;           // top divider of the strip
+  ctx.strokeStyle = V.border; ctx.lineWidth = 2 * S;
+  ctx.beginPath(); ctx.moveTo(pad, lineY); ctx.lineTo(W - pad, lineY); ctx.stroke();
+  const cells = [
+    [M.ft(M.elevFt), 'ft', 'ELEVATION'], [M.latS, '', 'LATITUDE'],
+    [M.lonS, '', 'LONGITUDE'], [M.dShort, '', String(M.year)]
+  ];
+  const cw = (W - pad * 2) / 4;
+  cells.forEach((c, i) => {
+    const cx = pad + cw * i + cw / 2;
+    const vw = ctx2width(ctx, c[0], _RAJ(700, 16 * S));
+    _txt(ctx, c[0], cx - (c[1] ? vw * 0.12 : 0), valueY, _RAJ(700, 16 * S), '#fff3df', { align: 'center' });
+    if(c[1]) _txt(ctx, c[1], cx + vw / 2, valueY, _RAJ(700, 8.5 * S), V.sub, { align: 'left' });
+    _txt(ctx, c[2], cx, labelY, _RAJ(600, 8.5 * S), V.foot, { align: 'center', ls: 1.5 * S });
+  });
+  // Place name + summit sub, anchored just above the stat strip
+  const subY = lineY - 20 * S;
+  const namePx = _fitPx(ctx, M.name.toUpperCase(), 700, 28 * S, W - pad * 2);
+  _txt(ctx, '▲ ' + M.ft(M.summitFt) + ' FT SUMMIT', W / 2, subY, _RAJ(700, 11 * S), V.sub, { align: 'center', ls: 2 * S });
+  _txt(ctx, M.name.toUpperCase(), W / 2, subY - 18 * S, _RAJ(700, namePx), '#fff3df', { align: 'center', ls: -1 * S, shadow: 'rgba(0,0,0,.45)', blur: 10 * S, sy: 2 * S });
+}
+
+// measureText helper (font set + restored).
+function ctx2width(ctx, str, font){ ctx.save(); ctx.font = font; const w = ctx.measureText(str).width; ctx.restore(); return w; }
+
+const PC_STYLES = [
+  { id: 'fieldlog',   name: 'Field Log',  render: (ctx, pin, W, H) => _pcPaintFieldLog(ctx, pin, W, H) },
+  { id: 'instrument', name: 'Instrument', render: (ctx, pin, W, H) => _pcPaintInstrument(ctx, pin, W, H) },
+  { id: 'desert',     name: 'Desert',     render: (ctx, pin, W, H) => _pcPaintPoster(ctx, pin, W, H, 'desert') },
+  { id: 'coastal',    name: 'Coastal',    render: (ctx, pin, W, H) => _pcPaintPoster(ctx, pin, W, H, 'coastal') }
+];
+let _pcStyle = PC_STYLES[0].id;
+
+// Card orientations (format picker). The painters recompose to any (W,H), so a
+// format is just the dimensions + the CSS aspect ratio the preview card uses.
+const _PC_FORMATS = {
+  landscape: { w: 1620, h: 1080, ar: '3 / 2' },
+  portrait:  { w: 1080, h: 1620, ar: '2 / 3' },
+  square:    { w: 1080, h: 1080, ar: '1 / 1' }
+};
+let _pcFormat = 'landscape';
+
+// Render the selected style in the chosen orientation to a PNG blob (fonts + logo
+// ready first).
+function renderStyleCard(pin, styleId, fmt){
+  const F = _PC_FORMATS[fmt] || _PC_FORMATS.landscape;
+  return new Promise(resolve => {
+    const fr = (document.fonts && document.fonts.ready) ? document.fonts.ready : Promise.resolve();
+    Promise.all([fr, _imgReady(_peakBadgeImg)]).then(() => {
+      const st = PC_STYLES.find(s => s.id === styleId) || PC_STYLES[0];
+      const c = document.createElement('canvas'); c.width = F.w; c.height = F.h;
+      const ctx = c.getContext('2d');
+      try { st.render(ctx, pin, F.w, F.h); } catch(e){ console.warn('style render failed', e); }
+      c.toBlob(b => resolve(b), 'image/png');
+    });
+  });
+}
+
+// Render the picked stock style (current orientation) into the front image.
+async function _pcRenderStock(){
+  if(!_pcPin) return;
+  try {
+    const blob = await renderStyleCard(_pcPin, _pcStyle, _pcFormat);
+    if(blob){ if(_pcStockUrl) URL.revokeObjectURL(_pcStockUrl); _pcStockUrl = URL.createObjectURL(blob); }
+  } catch(_){}
+  _pcRenderFront();
+}
+
+// Apply the chosen orientation to the preview card (aspect ratio) and re-render.
+// Style × format are both selectable: changing either re-renders the front.
+function _pcApplyFormat(){
+  const F = _PC_FORMATS[_pcFormat] || _PC_FORMATS.landscape;
+  const card = document.getElementById('pcCard');
+  if(card) card.style.aspectRatio = F.ar;
+  document.querySelectorAll('.pcFmtBtn').forEach(b => b.classList.toggle('on', b.dataset.fmt === _pcFormat));
+  if(_pcBgMode === 'stock') _pcRenderStock();        // re-paint the style at new dims
+  requestAnimationFrame(_pcRenderSigPreview);        // back face resized → redraw sig
+}
+
+// Build the selectable style thumbnail row (live previews of the current pin).
+function _pcBuildStyleThumbs(){
+  const row = document.getElementById('pcStyleRow');
+  if(!row) return;
+  row.innerHTML = '';
+  PC_STYLES.forEach(st => {
+    const btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'pcStyleThumb'; btn.dataset.style = st.id;
+    const cv = document.createElement('canvas'); cv.width = 132; cv.height = 132;
+    try { st.render(cv.getContext('2d'), _pcPin || {}, 132, 132); } catch(_){}
+    const lbl = document.createElement('span'); lbl.textContent = st.name;
+    btn.appendChild(cv); btn.appendChild(lbl);
+    btn.addEventListener('click', () => { _pcBgMode = 'stock'; _pcStyle = st.id; _pcRenderStock(); });
+    row.appendChild(btn);
+  });
+  document.querySelectorAll('.pcStyleThumb').forEach(t =>
+    t.classList.toggle('on', _pcBgMode === 'stock' && t.dataset.style === _pcStyle));
 }
 
 async function openPostcardDesigner(pin){
@@ -5946,21 +6422,19 @@ async function openPostcardDesigner(pin){
   // one (best default look + surfaces the in-app photo); the two source buttons
   // stay equally available to switch between the pin photo and the library.
   _pcBgMode = 'photo';
+  _pcFormat = 'landscape';            // postcard default = wide 3:2
   _pcPhotoUrl = pin.photo ? pin.photo : null;
   const srcPin = document.getElementById('pcSrcPin');
   if(srcPin) srcPin.style.display = pin.photo ? 'flex' : 'none';
   _pcEl.classList.add('open');
   requestAnimationFrame(_pcRenderSigPreview);
-  _pcRenderFront();   // immediate (uses photo if pre-filled; stock fills in below)
-  // Stock image — reuse the existing pin share-card render (Promise<Blob>).
-  try {
-    const blob = await renderPinShareCard(pin);
-    if(blob){
-      if(_pcStockUrl) URL.revokeObjectURL(_pcStockUrl);
-      _pcStockUrl = URL.createObjectURL(blob);
-    }
-  } catch(_){ /* stock card unavailable — photo mode still works */ }
   _pcRenderFront();
+  _pcApplyFormat();                   // set the card aspect ratio for the default format
+  // Stock fronts — build the style thumbnail row (live previews of this pin).
+  // Built immediately, then rebuilt once fonts load so the text is on-brand.
+  _pcBuildStyleThumbs();
+  const fr = (document.fonts && document.fonts.ready) ? document.fonts.ready : Promise.resolve();
+  fr.then(() => { if(_pcPin === pin) _pcBuildStyleThumbs(); });
 }
 
 function closePostcardDesigner(){
@@ -6174,6 +6648,11 @@ function _pcCommitSigOverlay(){
   // Front background-mode toggle (Photo ⇄ Stock).
   document.querySelectorAll('.pcBgBtn').forEach(b => {
     b.addEventListener('click', () => { _pcBgMode = b.dataset.bg; _pcRenderFront(); });
+  });
+  // Format (orientation) picker — Landscape / Portrait / Square (native buttons →
+  // click is reliable on iOS). Re-renders the front + sets the card aspect ratio.
+  document.querySelectorAll('.pcFmtBtn').forEach(b => {
+    b.addEventListener('click', () => { _pcFormat = b.dataset.fmt; _pcApplyFormat(); });
   });
   // Photo sources — shown equally; pin photo button only when the pin has one.
   const srcPin = document.getElementById('pcSrcPin');
@@ -11756,7 +12235,7 @@ startGPS();
 // Loaded-shell version string. Lives in index.html so it reflects the ACTUAL
 // loaded shell, and MUST be bumped in lockstep with sw.js CACHE_VERSION. Rendered
 // as a small, dim line at the bottom of Settings (no longer a loud top bar).
-const APP_SHELL_VERSION = 'tg-v20-95';
+const APP_SHELL_VERSION = 'tg-v20-96';
 { const _sv = document.getElementById('stVersion');
   if(_sv) _sv.textContent = 'TrailGauge ' + APP_SHELL_VERSION; }
 
