@@ -28,7 +28,7 @@
 
 // ↑ BUMP THIS when shipping a new version of the app. Clears old caches
 //   and forces clients to fetch fresh shell on next launch.
-const CACHE_VERSION = 'tg-v20-96';
+const CACHE_VERSION = 'tg-v20-97';
 
 const CACHE_SHELL  = `${CACHE_VERSION}-shell`;
 const CACHE_VENDOR = `${CACHE_VERSION}-vendor`;
@@ -46,11 +46,27 @@ const WX_MAX    = 20;      // weather API responses
 const APP_SHELL = [
   './',
   './index.html',
+  './manifest.webmanifest',
   // Brand logo SVGs used by the header + canvas share cards — precached so they
   // render offline (header mark + share-card mark/watermark).
   './assets/logo/peak-mark-dark.svg',
   './assets/logo/peak-mark-light.svg',
-  './assets/logo/peak-watermark-green.svg'
+  './assets/logo/peak-watermark-green.svg',
+  // App icons (PWA install + favicons) — precached so install/offline works.
+  './assets/icons/icon.svg',
+  './assets/icons/icon-maskable.svg',
+  './assets/icons/icon-16.png',
+  './assets/icons/icon-32.png',
+  './assets/icons/icon-48.png',
+  './assets/icons/icon-180.png',
+  './assets/icons/icon-192.png',
+  './assets/icons/icon-256.png',
+  './assets/icons/icon-384.png',
+  './assets/icons/icon-512.png',
+  './assets/icons/icon-1024.png',
+  './assets/icons/apple-touch-icon.png',
+  './assets/icons/icon-maskable-192.png',
+  './assets/icons/icon-maskable-512.png'
 ];
 
 self.addEventListener('install', (event) => {
