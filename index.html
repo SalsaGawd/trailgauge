@@ -465,6 +465,13 @@ body.light #permOverlay{background:rgba(240,244,248,0.94)}
 #wx.wx-big .hwspd{font-size:14px}
 #wx.wx-big .hwlbl{font-size:9px}
 #wx.wx-big #hscroll{padding-bottom:14px}
+/* BIG also scales the HEADER bar (sunrise/sunset/daylight/time/temp). These use
+   explicit px and don't inherit the 1.18em root, so bump them explicitly (~1.18×
+   of the new base sizes) on top of the base bump. */
+#wx.wx-big .suni{font-size:13px}
+#wx.wx-big #wlbl{font-size:13px}
+#wx.wx-big #ctime{font-size:16px}
+#wx.wx-big #ctmp{font-size:18px}
 #wxSizeBtn{height:22px;padding:0 8px;border-radius:6px;border:1px solid var(--border);
   background:transparent;color:var(--txt2);font-family:var(--fm);font-size:9px;
   font-weight:700;letter-spacing:1px;cursor:pointer;flex-shrink:0;
@@ -633,13 +640,13 @@ body.light #permOverlay{background:rgba(240,244,248,0.94)}
 #wdot{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 6px var(--accent);flex-shrink:0}
 #wdot.stale{background:var(--warn);box-shadow:0 0 6px var(--warn)}
 #wdot.off{background:var(--danger);box-shadow:0 0 6px var(--danger)}
-#wlbl{font-family:var(--fm);font-size:9px;color:var(--txt2);letter-spacing:1px;text-transform:uppercase}
+#wlbl{font-family:var(--fm);font-size:11px;color:var(--txt2);letter-spacing:1px;text-transform:uppercase}
 #ctbox{display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:4px 10px}
-#ctime{font-family:var(--fm);font-size:13px;color:var(--txt);letter-spacing:1px}
+#ctime{font-family:var(--fm);font-size:14px;color:var(--txt);letter-spacing:1px}
 #cdot{width:3px;height:3px;border-radius:50%;background:var(--border)}
-#ctmp{font-family:var(--fd);font-size:14px;font-weight:600;color:var(--accent)}
+#ctmp{font-family:var(--fd);font-size:15px;font-weight:600;color:var(--accent)}
 #suntimes{display:flex;gap:8px;align-items:center}
-.suni{display:flex;align-items:center;gap:3px;font-family:var(--fm);font-size:9px;color:var(--txt2)}
+.suni{display:flex;align-items:center;gap:3px;font-family:var(--fm);font-size:11px;color:var(--txt2)}
 #fwarn{display:none;margin:0 12px 6px;background:rgba(240,180,41,.12);border:1px solid var(--warn);
   border-radius:8px;padding:5px 10px;font-family:var(--fm);font-size:10px;color:var(--warn);text-align:center}
 #fwarn.show{display:block}
@@ -957,6 +964,10 @@ body.prof-trail #main { overflow-y: auto; -webkit-overflow-scrolling: touch; }
    before GPS). Off-road-only elements, so this never affects trail. */
 body.prof-offroad #readouts { order: -2; }
 body.prof-offroad #gwrap    { order: -1; }
+/* Off-road: drop Session Max to the end of the #gsec stack so it sits just BELOW
+   the action row (Zero / Pin Angle / Start Trip). Everything else defaults to
+   order:0, so order:1 lands it last. Trail unaffected (card hidden there). */
+body.prof-offroad #maxAngleCard { order: 1; }
 body.prof-trail #trailHero { display: flex !important; }
 body.prof-trail #wx { padding: 14px 16px; }
 body.prof-trail .wxbig { font-size: 32px; }
@@ -12270,7 +12281,7 @@ startGPS();
 // Loaded-shell version string. Lives in index.html so it reflects the ACTUAL
 // loaded shell, and MUST be bumped in lockstep with sw.js CACHE_VERSION. Rendered
 // as a small, dim line at the bottom of Settings (no longer a loud top bar).
-const APP_SHELL_VERSION = 'tg-v20-100';
+const APP_SHELL_VERSION = 'tg-v20-101';
 { const _sv = document.getElementById('stVersion');
   if(_sv) _sv.textContent = 'TrailGauge ' + APP_SHELL_VERSION; }
 
