@@ -827,9 +827,20 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
   max-width:340px}
 .onbBody b{color:var(--accent)}
 /* ONB: feature grid + legal fine-print on the onboarding cards */
-.onbGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
+.onbGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
 .onbFeat{font-size:13px;padding:8px 10px;border:1px solid var(--border);
   border-radius:10px;text-align:left;white-space:nowrap;overflow:hidden;color:var(--txt)}
+/* ONB: standout full-width highlight feature (spans both grid columns). Accent
+   border + tint + brand-green text so it reads as the new hero feature, not a
+   7th peer cell. */
+.onbFeatWide{grid-column:1 / -1;display:flex;align-items:center;justify-content:center;
+  gap:6px;font-size:13px;font-weight:600;padding:9px 12px;border:1px solid var(--accent);
+  border-radius:10px;background:var(--aglow);color:var(--accent);text-align:center;line-height:1.3}
+/* ONB page-1 ONLY — tighten the hero + headings so the extra postcard highlight
+   row fits without clipping on small (~320px) screens. Scoped to the first card
+   so pages 2 & 3 keep the larger shared hero/spacing (they have no clip issue). */
+.onbCard:first-child .onbHero{font-size:44px;margin-bottom:10px}
+.onbCard:first-child .onbTitle{margin-bottom:10px}
 .onbLegal{font-size:11px;opacity:.55;margin-top:14px;line-height:1.45}
 #onbDots{display:flex;gap:8px;justify-content:center;align-self:center}
 .onbDot{width:8px;height:8px;border-radius:50%;background:var(--border);
@@ -1581,6 +1592,7 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
             <div class="onbFeat">🌤 Live weather</div>
             <div class="onbFeat">📍 Pins &amp; trips</div>
             <div class="onbFeat">🔥 Fire alerts</div>
+            <div class="onbFeatWide">📮 Send real postcards from the trail</div>
           </div>
         </div>
         <div class="onbCard">
@@ -12255,7 +12267,7 @@ startGPS();
 // Loaded-shell version string. Lives in index.html so it reflects the ACTUAL
 // loaded shell, and MUST be bumped in lockstep with sw.js CACHE_VERSION. Rendered
 // as a small, dim line at the bottom of Settings (no longer a loud top bar).
-const APP_SHELL_VERSION = 'tg-v20-98';
+const APP_SHELL_VERSION = 'tg-v20-99';
 { const _sv = document.getElementById('stVersion');
   if(_sv) _sv.textContent = 'TrailGauge ' + APP_SHELL_VERSION; }
 
