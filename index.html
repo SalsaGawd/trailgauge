@@ -1259,6 +1259,35 @@ body.prof-trail.trip-active #trailTripStrip{display:flex}
   max-height:80vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
 #tlp.open #tlsh,#snp.open #snsh,#tdp.open #tdsh,#rcp.open #rcsh,#shp.open #shsh,#pnsp.open #pnssh,#plp.open #plsh,#pdp.open #pdsh,#flp.open #flsh,#texp.open #texpsh{transform:translateY(0)}
 
+/* ─── ADDRESS BOOK panels — mirror the shared bottom-sheet pattern (#plp/#pnsp) ── */
+#addrBookPanel,#addrFormPanel{position:fixed;inset:0;z-index:102;display:flex;align-items:flex-end;
+  background:rgba(0,0,0,.65);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);opacity:0;pointer-events:none;transition:opacity .3s ease}
+#addrFormPanel{z-index:104}   /* form sits above the list, like #pnsp over #plp */
+#addrBookPanel.open,#addrFormPanel.open{opacity:1;pointer-events:all}
+#addrBookSh,#addrFormSh{width:100%;background:var(--card);border-radius:20px 20px 0 0;border-top:1px solid var(--border);
+  padding:16px 20px calc(20px + var(--sb));transform:translateY(100%);
+  transition:transform .35s cubic-bezier(.34,1.56,.64,1);
+  max-height:80vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+#addrBookPanel.open #addrBookSh,#addrFormPanel.open #addrFormSh{transform:translateY(0)}
+/* Rows reuse .pinSwipeWrap/.pinSwipeAction (generic swipe-to-delete); .addrRow
+   mirrors .pinRow. */
+.addrRow{display:flex;align-items:center;gap:12px;padding:12px 8px;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;background:var(--card);
+  transition:background var(--tr), transform .2s cubic-bezier(.4,0,.2,1);
+  -webkit-user-select:none;user-select:none;will-change:transform}
+.addrRow:active{background:var(--bg2)}
+.addrRow.swipe-open{transform:translateX(-76px)}
+.addrIco{width:40px;height:40px;border-radius:8px;background:var(--bg2);display:flex;
+  align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.addrMeta{flex:1;min-width:0}
+.addrName{font-family:var(--fd);font-size:14px;font-weight:600;color:var(--txt);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2}
+.addrSub{font-family:var(--fm);font-size:10px;color:var(--txt3);margin-top:3px;line-height:1.2;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#addrFormErr{font-family:var(--fm);font-size:11px;color:var(--danger);min-height:14px;
+  margin-top:10px;text-align:center;line-height:1.4}
+#addrCountry{opacity:.6}   /* locked to US at launch (see addr record / §5) */
+
 /* ─── TRAIL "Pin & Post" ─────────────────────────────────────────────────
    An .actBtn that pairs with Start Trip inside the action bar (same family of
    action). Drops+saves a pin at the current spot, then offers Postcard / Share.
@@ -2073,6 +2102,15 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
       </div>
     </div>
 
+    <!-- Postcards section (collapsed by default) — recipient Address Book. -->
+    <div class="collapseHeader" data-section="postcards" data-default-collapsed="1">Postcards</div>
+    <div class="collapseBody" id="sc-postcards">
+      <div class="srow" style="border-bottom:none">
+        <div class="sinfo"><span class="sname">Address Book</span><span class="sdesc">Saved postcard recipients</span></div>
+        <button class="modalbtn ghost" id="addrBookBtn" style="padding:8px 14px;font-size:11px">Open</button>
+      </div>
+    </div>
+
     <!-- Help & Feedback section (expanded by default) -->
     <div class="collapseHeader" data-section="help">Help &amp; Feedback</div>
     <div class="collapseBody" id="sc-help">
@@ -2263,6 +2301,49 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
     <div id="flList"></div>
     <div id="flEmpty" style="padding:24px 0;text-align:center;color:var(--txt3);font-family:var(--fm);font-size:11px;line-height:1.6;display:none">
       No folders yet.<br>Create one above to organize your pins.
+    </div>
+  </div>
+</div>
+
+<!-- Address Book — saved postcard recipients (local-only; checkout picker comes
+     later with payment). Mirrors the #plp list / #pnsp form bottom-sheet patterns. -->
+<div id="addrBookPanel">
+  <div id="addrBookSh">
+    <div class="mhdl"></div>
+    <div class="mtl"><span>Address Book</span><button id="addrAddBtn" style="margin-left:auto;background:transparent;border:1px solid var(--border);color:var(--txt2);border-radius:6px;font-family:var(--fm);font-size:10px;letter-spacing:1px;text-transform:uppercase;padding:4px 8px;cursor:pointer;-webkit-tap-highlight-color:transparent" title="Add recipient">+ Add</button><span id="addrCount" style="margin-left:8px;font-family:var(--fm);font-size:11px;color:var(--txt3)"></span></div>
+    <div id="addrList" style="max-height:60vh;overflow-y:auto"></div>
+    <div id="addrEmpty" style="padding:30px 14px;text-align:center;color:var(--txt3);font-family:var(--fm);font-size:11px;line-height:1.6;display:none">
+      No saved recipients yet.<br>Tap <b>+ Add</b> to save a mailing address.
+    </div>
+  </div>
+</div>
+
+<!-- Address add/edit form — mirrors #pnsp (Save Pin). Country locked to US at
+     launch; the field exists in the record so international needs no restructure. -->
+<div id="addrFormPanel">
+  <div id="addrFormSh">
+    <div class="mhdl"></div>
+    <div class="mtl"><span id="addrFormTitle">Add Recipient</span></div>
+    <label class="pinFieldLbl">Nickname (optional)</label>
+    <input type="text" id="addrLabel" placeholder="e.g. Mom, Grandpa, The Cabin" maxlength="40" class="pinInput" />
+    <label class="pinFieldLbl">Recipient name</label>
+    <input type="text" id="addrName" placeholder="Full name as it should print" maxlength="80" class="pinInput" autocomplete="name" />
+    <label class="pinFieldLbl">Address line 1</label>
+    <input type="text" id="addrLine1" placeholder="Street address" maxlength="100" class="pinInput" autocomplete="address-line1" />
+    <label class="pinFieldLbl">Address line 2 (optional)</label>
+    <input type="text" id="addrLine2" placeholder="Apt, suite, unit" maxlength="100" class="pinInput" autocomplete="address-line2" />
+    <label class="pinFieldLbl">City</label>
+    <input type="text" id="addrCity" placeholder="City" maxlength="60" class="pinInput" autocomplete="address-level2" />
+    <label class="pinFieldLbl">State / Region</label>
+    <input type="text" id="addrRegion" placeholder="State" maxlength="60" class="pinInput" autocomplete="address-level1" />
+    <label class="pinFieldLbl">Postcode</label>
+    <input type="text" id="addrPostcode" placeholder="ZIP / postcode" maxlength="12" class="pinInput" autocomplete="postal-code" />
+    <label class="pinFieldLbl">Country</label>
+    <input type="text" id="addrCountry" value="US" disabled class="pinInput" title="US only at launch" />
+    <div id="addrFormErr"></div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="modalbtn ghost"   id="addrCancel" style="flex:1">Cancel</button>
+      <button class="modalbtn primary" id="addrSave"   style="flex:2">Save</button>
     </div>
   </div>
 </div>
@@ -11638,7 +11719,7 @@ window.addEventListener('pagehide', () => {
 });
 
 /* ─── INDEXEDDB ──────────────────────────────────────────── */
-const DB_NAME='trailgauge', DB_VER=3, STORE='trips', PIN_STORE='pins', FOLDER_STORE='folders';
+const DB_NAME='trailgauge', DB_VER=4, STORE='trips', PIN_STORE='pins', FOLDER_STORE='folders', ADDR_STORE='addresses';
 const TRASH_FOLDER_ID = 'fld_trash';
 let _db=null;
 function openDB(){
@@ -11660,6 +11741,12 @@ function openDB(){
       }
       if(!db.objectStoreNames.contains(FOLDER_STORE)){
         db.createObjectStore(FOLDER_STORE,{keyPath:'id'});
+      }
+      // v4 added the addresses store (postcard recipients). Additive + guarded like
+      // the others, so existing trips/pins/folders are untouched on upgrade.
+      if(!db.objectStoreNames.contains(ADDR_STORE)){
+        const as=db.createObjectStore(ADDR_STORE,{keyPath:'id'});
+        as.createIndex('createdAt','createdAt',{unique:false});
       }
     };
     req.onsuccess=()=>{ _db=req.result; resolve(_db); };
@@ -11726,6 +11813,242 @@ async function pinDelete(id){
     tx.onerror=()=>rej(tx.error);
   });
 }
+
+/* ─── ADDRESS BOOK PERSISTENCE ─────────────────────────────
+   Postcard recipient addresses — their own IndexedDB store, cloned 1:1 from the
+   pin CRUD. Same forward-compatible record conventions (string id, timestamps,
+   ownerId/visibility). addrPut is upsert (save + edit by id). */
+async function addrPut(addr){
+  const db=await openDB();
+  return new Promise((res,rej)=>{
+    const tx=db.transaction(ADDR_STORE,'readwrite');
+    tx.objectStore(ADDR_STORE).put(addr);
+    tx.oncomplete=()=>res();
+    tx.onerror=()=>rej(tx.error);
+  });
+}
+async function addrAll(){
+  const db=await openDB();
+  return new Promise((res,rej)=>{
+    const tx=db.transaction(ADDR_STORE,'readonly');
+    const req=tx.objectStore(ADDR_STORE).getAll();
+    req.onsuccess=()=>res(req.result||[]);
+    req.onerror=()=>rej(req.error);
+  });
+}
+async function addrDelete(id){
+  const db=await openDB();
+  return new Promise((res,rej)=>{
+    const tx=db.transaction(ADDR_STORE,'readwrite');
+    tx.objectStore(ADDR_STORE).delete(id);
+    tx.oncomplete=()=>res();
+    tx.onerror=()=>rej(tx.error);
+  });
+}
+
+/* ─── ADDRESS BOOK UI ──────────────────────────────────────
+   Manage postcard recipients (list + add/edit/delete). Local-only foundation;
+   the checkout "send to" picker is built later with payment. Mirrors the pin
+   list (#plp) + pin-save form (#pnsp) bottom-sheet patterns. */
+let _addrEditingId = null;     // id when editing; null when adding new
+let _addrOpenSwipeRow = null;  // currently swiped-open row (mirrors _openSwipeRow)
+
+// New recipient record — Stannp-ready field set. country defaults 'US' and is
+// LOCKED at launch (not user-editable); the field exists so international can be
+// enabled later with no restructuring. id/timestamps/ownerId/visibility mirror pins.
+function _newAddr(){
+  return {
+    id: 'addr_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+    label: '', recipientName: '', line1: '', line2: '',
+    city: '', region: '', postcode: '', country: 'US',
+    createdAt: Date.now(), updatedAt: Date.now(),
+    ownerId: null, visibility: 'private'
+  };
+}
+
+// One-line address summary for the list row.
+function _addrSummary(a){
+  const parts = [a.line1, a.line2, [a.city, a.region].filter(Boolean).join(', '), a.postcode]
+    .map(s => (s || '').trim()).filter(Boolean);
+  return parts.join(' · ');
+}
+
+async function renderAddrList(){
+  const list = document.getElementById('addrList');
+  const empty = document.getElementById('addrEmpty');
+  const cnt = document.getElementById('addrCount');
+  if(!list) return;
+  let addrs = [];
+  try { addrs = await addrAll(); } catch(_){ addrs = []; }
+  addrs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  if(cnt) cnt.textContent = addrs.length ? `${addrs.length}` : '';
+  _addrOpenSwipeRow = null;
+  if(addrs.length === 0){
+    list.innerHTML = ''; list.style.display = 'none';
+    if(empty) empty.style.display = 'block';
+    return;
+  }
+  list.style.display = 'block';
+  if(empty) empty.style.display = 'none';
+  list.innerHTML = '';
+  addrs.forEach(a => {
+    const wrap = document.createElement('div');
+    wrap.className = 'pinSwipeWrap';
+    const swipeAction = document.createElement('div');
+    swipeAction.className = 'pinSwipeAction';
+    swipeAction.innerHTML = '<span class="sai">🗑</span><span class="sal">Delete</span>';
+
+    const row = document.createElement('div');
+    row.className = 'addrRow';
+    const display = (a.label && a.label.trim()) ? a.label.trim() : (a.recipientName || '(unnamed)');
+    const subBits = [];
+    if(a.label && a.label.trim() && a.recipientName) subBits.push(a.recipientName);
+    const summary = _addrSummary(a);
+    if(summary) subBits.push(summary);
+    row.innerHTML = `
+      <div class="addrIco">✉️</div>
+      <div class="addrMeta">
+        <div class="addrName">${escapeHtml(display)}</div>
+        <div class="addrSub">${escapeHtml(subBits.join(' · ') || 'Tap to edit')}</div>
+      </div>`;
+
+    // Swipe-to-delete (mirrors the pin-row gesture).
+    let startX = null, startY = null, didSwipe = false;
+    row.addEventListener('touchstart', e => {
+      if(_addrOpenSwipeRow && _addrOpenSwipeRow !== row){ _addrOpenSwipeRow.classList.remove('swipe-open'); _addrOpenSwipeRow = null; }
+      startX = e.touches[0].clientX; startY = e.touches[0].clientY; didSwipe = false;
+    }, {passive:true});
+    row.addEventListener('touchmove', e => {
+      if(startX === null) return;
+      const dx = e.touches[0].clientX - startX, dy = Math.abs(e.touches[0].clientY - startY);
+      if(!didSwipe && dx < -6 && Math.abs(dx) > dy) didSwipe = true;
+      if(didSwipe){
+        const base = row.classList.contains('swipe-open') ? -76 : 0;
+        row.style.transition = 'none';
+        row.style.transform = `translateX(${Math.max(-76, Math.min(0, base + dx))}px)`;
+      }
+    }, {passive:true});
+    row.addEventListener('touchend', e => {
+      if(!didSwipe){ startX = null; return; }
+      const dx = e.changedTouches[0].clientX - startX;
+      row.style.transition = '';
+      if(dx < -36){ row.classList.add('swipe-open'); _addrOpenSwipeRow = row; }
+      else { row.classList.remove('swipe-open'); if(_addrOpenSwipeRow === row) _addrOpenSwipeRow = null; }
+      row.style.transform = ''; startX = null;
+    }, {passive:true});
+    row.addEventListener('click', () => {
+      if(didSwipe){ didSwipe = false; return; }
+      if(row.classList.contains('swipe-open')){ row.classList.remove('swipe-open'); _addrOpenSwipeRow = null; return; }
+      openAddrForm(a);
+    });
+    swipeAction.addEventListener('click', async e => {
+      e.stopPropagation();
+      const ok = await showDangerConfirm('Delete recipient?',
+        'This saved address will be removed. <b>There\'s no undo.</b>');
+      if(!ok) return;
+      try { await addrDelete(a.id); } catch(_){}
+      wrap.style.transition = 'max-height .2s ease, opacity .15s ease';
+      wrap.style.maxHeight = wrap.offsetHeight + 'px';
+      wrap.style.overflow = 'hidden';
+      requestAnimationFrame(() => { wrap.style.maxHeight = '0'; wrap.style.opacity = '0'; });
+      setTimeout(renderAddrList, 220);
+    });
+
+    wrap.appendChild(swipeAction);
+    wrap.appendChild(row);
+    list.appendChild(wrap);
+  });
+}
+
+function openAddrBook(){
+  const p = document.getElementById('addrBookPanel');
+  if(!p) return;
+  p.classList.add('open');
+  renderAddrList();
+}
+function closeAddrBook(){
+  const p = document.getElementById('addrBookPanel');
+  if(p) p.classList.remove('open');
+}
+
+// Open the add/edit form. Pass an address to edit, or nothing/null to add new.
+function openAddrForm(addr){
+  const err = document.getElementById('addrFormErr');
+  if(err) err.textContent = '';
+  _addrEditingId = (addr && addr.id) ? addr.id : null;
+  document.getElementById('addrFormTitle').textContent = _addrEditingId ? 'Edit Recipient' : 'Add Recipient';
+  const g = id => document.getElementById(id);
+  g('addrLabel').value    = (addr && addr.label) || '';
+  g('addrName').value     = (addr && addr.recipientName) || '';
+  g('addrLine1').value    = (addr && addr.line1) || '';
+  g('addrLine2').value    = (addr && addr.line2) || '';
+  g('addrCity').value     = (addr && addr.city) || '';
+  g('addrRegion').value   = (addr && addr.region) || '';
+  g('addrPostcode').value = (addr && addr.postcode) || '';
+  g('addrCountry').value  = (addr && addr.country) || 'US';   // locked field, shown for clarity
+  document.getElementById('addrFormPanel').classList.add('open');
+}
+function closeAddrForm(){
+  const p = document.getElementById('addrFormPanel');
+  if(p) p.classList.remove('open');
+}
+
+async function saveAddr(){
+  const g = id => (document.getElementById(id).value || '').trim();
+  const err = document.getElementById('addrFormErr');
+  const setErr = m => { if(err) err.textContent = m; };
+  const recipientName = g('addrName'), line1 = g('addrLine1'), city = g('addrCity'),
+        region = g('addrRegion'), postcode = g('addrPostcode'),
+        label = g('addrLabel'), line2 = g('addrLine2');
+
+  // Required-field presence (country is auto-US; label + line2 optional).
+  const missing = [];
+  if(!recipientName) missing.push('Recipient name');
+  if(!line1) missing.push('Address line 1');
+  if(!city) missing.push('City');
+  if(!region) missing.push('State / Region');
+  if(!postcode) missing.push('Postcode');
+  if(missing.length){ setErr('Please fill: ' + missing.join(', ') + '.'); return; }
+  if(postcode.length < 3){ setErr('Please enter a valid postcode.'); return; }
+
+  // Printed free-text → same moderation rule as the message / place name.
+  const mod = checkProfanity(recipientName);
+  if(!mod.clean){ setErr('Please revise the recipient name — it contains language we can’t print.'); return; }
+
+  // Upsert: edit keeps id/createdAt; new gets a fresh record. country LOCKED to US.
+  let rec;
+  if(_addrEditingId){
+    const all = await addrAll();
+    rec = all.find(a => a.id === _addrEditingId) || _newAddr();
+  } else {
+    rec = _newAddr();
+  }
+  rec.label = label; rec.recipientName = recipientName;
+  rec.line1 = line1; rec.line2 = line2; rec.city = city;
+  rec.region = region; rec.postcode = postcode;
+  rec.country = 'US';                 // international deferred — record stays US-only at launch
+  rec.updatedAt = Date.now();
+  try { await addrPut(rec); } catch(_){ setErr('Could not save. Please try again.'); return; }
+  closeAddrForm();
+  renderAddrList();
+}
+
+(function initAddrBook(){
+  const open = document.getElementById('addrBookBtn');
+  if(open) open.addEventListener('click', openAddrBook);
+  const add = document.getElementById('addrAddBtn');
+  if(add) add.addEventListener('click', () => openAddrForm(null));
+  const save = document.getElementById('addrSave');
+  if(save) save.addEventListener('click', saveAddr);
+  const cancel = document.getElementById('addrCancel');
+  if(cancel) cancel.addEventListener('click', closeAddrForm);
+  // Backdrop tap closes (mirrors the app's modal dismiss). Only when the tap is on
+  // the panel backdrop itself, not the inner sheet.
+  const bookP = document.getElementById('addrBookPanel');
+  if(bookP) bookP.addEventListener('click', e => { if(e.target === bookP) closeAddrBook(); });
+  const formP = document.getElementById('addrFormPanel');
+  if(formP) formP.addEventListener('click', e => { if(e.target === formP) closeAddrForm(); });
+})();
 async function moveToTrash(pin){
   pin.folderIds = [TRASH_FOLDER_ID];
   pin.deletedAt = Date.now();
@@ -12485,7 +12808,7 @@ startGPS();
 // Loaded-shell version string. Lives in index.html so it reflects the ACTUAL
 // loaded shell, and MUST be bumped in lockstep with sw.js CACHE_VERSION. Rendered
 // as a small, dim line at the bottom of Settings (no longer a loud top bar).
-const APP_SHELL_VERSION = 'tg-v20-103';
+const APP_SHELL_VERSION = 'tg-v20-104';
 { const _sv = document.getElementById('stVersion');
   if(_sv) _sv.textContent = 'TrailGauge ' + APP_SHELL_VERSION; }
 
