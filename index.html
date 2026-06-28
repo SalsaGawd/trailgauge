@@ -5951,6 +5951,126 @@ let _pcSigData = null;      // captured signature image (high-res data URL) | nu
 // 4×6 message. Erring slightly low so every card prints cleanly.
 const PC_MSG_MAX = 250;
 
+// ─── PRINTED-MESSAGE CONTENT MODERATION (phase 1, client-side) ──────────────
+// The postcard message is physically printed + mailed under the brand. Strictness
+// is deliberately LIGHT: mild/general profanity (hell, damn, crap, ass, shit, bitch,
+// bastard, …) is ALLOWED — it's fine on a personal postcard. We block SLURS and
+// EXPLICIT/SEXUAL content, plus the CLEAN spelling of the f-word — but NOT its
+// self-censored forms (f*ck, fck, f!ck), a deliberate pressure-release valve.
+// This is a FIRST pass for instant UX; a server-side pass at the Stannp/Railway
+// backend is the authoritative gate (added with fulfillment — client filters are
+// bypassable). No npm/CDN: vanilla inline.
+//
+// Scunthorpe-safe by design: matching is WHOLE-TOKEN (exact + repeat-collapsed),
+// never naive substring — so "class", "assignment", "Cockburn", "Scunthorpe",
+// "grass", "shell" never trip. Only a small curated set of unambiguous strong
+// terms (verified to not be substrings of common English words) also get a
+// concatenation/substring pass to catch "fuckyou"-style joins.
+const _MOD_LEET = { '@':'a','4':'a','8':'b','(':'c','3':'e','6':'g','1':'i','!':'i','|':'i','0':'o','$':'s','5':'s','7':'t','+':'t','2':'z' };
+function _modNorm(s){
+  let o = '';
+  const t = String(s).toLowerCase();
+  for(let i = 0; i < t.length; i++){ const c = t[i]; o += (_MOD_LEET[c] !== undefined ? _MOD_LEET[c] : c); }
+  return o;
+}
+// Two blocked buckets only — slurs + explicit/sexual. Mild profanity is NOT here
+// (allowed by design). Category is reported for internal/telemetry use; the
+// user-facing copy stays generic and never echoes the term back.
+const PC_BANNED = {
+  slurs: ['nigger','nigga','faggot','fag','spic','chink','kike','wetback','tranny','dyke','gook','coon'],
+  explicit: ['cunt','jizz','blowjob','handjob','rimjob','dildo','deepthroat','creampie','cumshot','gangbang','bukkake']
+};
+// Whole-token sets: exact (de-leeted) + repeat-collapsed (len ≥3, catches "fuuuck"-style).
+const _BAD_EXACT = new Set(), _BAD_COLLAPSED = new Set(), _BAD_CAT = {};
+(function(){
+  for(const cat of ['slurs','explicit']){
+    for(const w of PC_BANNED[cat]){
+      _BAD_EXACT.add(w); _BAD_CAT[w] = (cat === 'slurs') ? 'slur' : 'explicit';
+      const col = w.replace(/(.)\1+/g, '$1');
+      if(col.length >= 3){ _BAD_COLLAPSED.add(col); _BAD_CAT[col] = _BAD_CAT[w]; }
+    }
+  }
+})();
+// Curated substring list — ONLY terms verified to not appear inside common innocent
+// English words, so a substring scan is Scunthorpe-safe for them. Deliberately
+// EXCLUDES ambiguous tokens (cunt→Scunthorpe, spic→"spic and span"/suspicious,
+// chink→"chink in the armor"): those stay WHOLE-TOKEN only above.
+const _BAD_SUB = [
+  { w:'nigger', cat:'slur' }, { w:'nigga', cat:'slur' }, { w:'faggot', cat:'slur' },
+  { w:'kike', cat:'slur' }, { w:'wetback', cat:'slur' },
+  { w:'blowjob', cat:'explicit' }, { w:'handjob', cat:'explicit' }, { w:'rimjob', cat:'explicit' },
+  { w:'deepthroat', cat:'explicit' }, { w:'creampie', cat:'explicit' }, { w:'cumshot', cat:'explicit' },
+  { w:'gangbang', cat:'explicit' }, { w:'bukkake', cat:'explicit' }, { w:'dildo', cat:'explicit' }, { w:'jizz', cat:'explicit' }
+];
+// Tokenize de-leeted text; merge runs of single chars so "f u c k" / "f.u.c.k"
+// reconstruct to one token, while real words ("such as") stay separate.
+function _modTokens(norm){
+  const raw = norm.split(/[^a-z0-9]+/).filter(Boolean);
+  const out = []; let run = [];
+  for(const tk of raw){
+    if(tk.length === 1){ run.push(tk); }
+    else { if(run.length){ out.push(run.join('')); run = []; } out.push(tk); }
+  }
+  if(run.length) out.push(run.join(''));
+  return out;
+}
+// F-WORD — DELIBERATELY LENIENT (the opposite of how slurs are handled). Block the
+// recognizable word only: "fuck"/"FUCK"/"fucking", plus clear leet that plainly reads
+// as it (f4ck where 4 is the vowel, fu(k where ( is the c, repeats like fuuuck). But
+// intentional self-censoring is a pressure-release valve and must pass CLEAN:
+// fck (no vowel), fvck (v≠vowel), f!ck / f*ck / f**k (symbol), fuk (no c). Matched by
+// a narrow regex on the RAW lowercase text — NOT the aggressive leet/spacing pipeline,
+// so "4"/"(" are accepted ONLY here (the slur path maps 4→a, which is why it can't be
+// reused) and symbol/vowel-drop censors never match. Word-leading boundary only (no
+// trailing) so inflections fuck/fucking/fucker block; no innocent English word starts
+// with this pattern, so no Scunthorpe risk.
+const _FWORD_RE = /(?:^|[^a-z0-9])f+[u4]+[c(]+k+/;
+// Returns { clean:boolean, category:'slur'|'explicit'|'profanity'|null }.
+function checkProfanity(text){
+  if(!text) return { clean: true, category: null };
+  const lower = String(text).toLowerCase();
+  // F-word — lenient, on raw lowercase (before leet mapping).
+  if(_FWORD_RE.test(lower)) return { clean: false, category: 'profanity' };
+  // Slurs + explicit — aggressive obfuscation-catching, on leet-normalized text.
+  const norm = _modNorm(lower);
+  // Whole-token pass (exact + repeat-collapsed) — Scunthorpe-safe.
+  for(const tk of _modTokens(norm)){
+    if(_BAD_EXACT.has(tk)) return { clean: false, category: _BAD_CAT[tk] };
+    const col = tk.replace(/(.)\1+/g, '$1');
+    if(col.length >= 3 && _BAD_COLLAPSED.has(col)) return { clean: false, category: _BAD_CAT[col] };
+  }
+  // Concatenation/substring pass — curated safe terms only.
+  const squished = norm.replace(/[^a-z0-9]/g, '');
+  for(const b of _BAD_SUB){ if(squished.indexOf(b.w) !== -1) return { clean: false, category: b.cat }; }
+  return { clean: true, category: null };
+}
+
+// First-mail Terms acceptance gate. One-time; persisted so it never re-prompts.
+// Reuses the existing .dangerSheet modal pattern (see showDisclaimer). onAccept
+// fires only after the user explicitly agrees.
+const MAIL_TERMS_KEY = 'tg_mail_terms_accepted_v1';
+function mailTermsAccepted(){ try { return localStorage.getItem(MAIL_TERMS_KEY) === '1'; } catch(_){ return false; } }
+function showMailTerms(onAccept){
+  const el = document.createElement('div');
+  el.className = 'dangerSheet';
+  el.innerHTML = `<div class="dangerSheetBox">
+    <div class="dangerSheetTitle">Before you mail a postcard</div>
+    <div class="dangerSheetBody">Your message and image are printed and physically mailed. By continuing you agree not to use TrailGauge postcards to harass, threaten, or defame anyone; to send unlawful content; or to infringe anyone else's rights (including copyrighted photos). Messages may be screened, and orders that violate these terms can be refused.</div>
+    <div class="dangerSheetBtns">
+      <button class="modalbtn ghost" style="flex:1" id="_mtCancel">Cancel</button>
+      <button class="modalbtn primary" style="flex:1" id="_mtAgree">I agree</button>
+    </div></div>`;
+  document.body.appendChild(el);
+  const cleanup = () => el.remove();
+  el.querySelector('#_mtCancel').onclick = cleanup;
+  el.querySelector('#_mtAgree').onclick = () => {
+    try { localStorage.setItem(MAIL_TERMS_KEY, '1'); } catch(_){}
+    cleanup();
+    if(typeof onAccept === 'function') onAccept();
+  };
+  el.addEventListener('click', e => { if(e.target === el) cleanup(); });
+}
+
 function fmtLatLon(lat, lon){
   const la = Math.abs(lat).toFixed(4) + '°' + (lat >= 0 ? 'N' : 'S');
   const lo = Math.abs(lon).toFixed(4) + '°' + (lon >= 0 ? 'E' : 'W');
@@ -6732,18 +6852,36 @@ function _pcCommitSigOverlay(){
   // Continue — placeholder until payment + fulfillment exist.
   const nextBtn = document.getElementById('pcNextBtn');
   if(nextBtn) nextBtn.addEventListener('click', () => {
-    // TODO: wire to payment + Stannp fulfillment. Address entry is also a later
-    // step. For now the design is collected in-memory only and nothing is sent.
-    const design = {
-      pin: _pcPin,
-      size: _pcSize,
-      bg: _pcBgMode,
-      photo: (_pcBgMode === 'photo') ? _pcPhotoUrl : null,
-      message: (document.getElementById('pcMsg') || {}).value || '',
-      signature: _pcSigData
+    const hint = document.getElementById('pcHint');
+    const message = (document.getElementById('pcMsg') || {}).value || '';
+
+    // GATE 1 — content moderation. Block before building the design / any future
+    // payment+Stannp step. Generic, non-judgmental copy that never echoes the term.
+    const mod = checkProfanity(message);
+    if(!mod.clean){
+      hint.textContent = 'Please revise your message before continuing — it contains language we can’t print.';
+      return;
+    }
+
+    // Build + "submit" the design. Placeholder: collected in-memory only, nothing
+    // is sent. TODO: wire to payment + Stannp fulfillment (+ server-side moderation).
+    const proceed = () => {
+      const design = {
+        pin: _pcPin,
+        size: _pcSize,
+        bg: _pcBgMode,
+        photo: (_pcBgMode === 'photo') ? _pcPhotoUrl : null,
+        message: message,
+        signature: _pcSigData
+      };
+      void design;
+      hint.textContent = '✓ Postcard ready — checkout coming soon.';
     };
-    void design;
-    document.getElementById('pcHint').textContent = '✓ Postcard ready — checkout coming soon.';
+
+    // GATE 2 — first-mail Terms acceptance (one-time). Show the sheet only if not
+    // yet accepted; proceed only once the user agrees. Otherwise straight through.
+    if(!mailTermsAccepted()){ showMailTerms(proceed); return; }
+    proceed();
   });
 })();
 
@@ -12281,7 +12419,7 @@ startGPS();
 // Loaded-shell version string. Lives in index.html so it reflects the ACTUAL
 // loaded shell, and MUST be bumped in lockstep with sw.js CACHE_VERSION. Rendered
 // as a small, dim line at the bottom of Settings (no longer a loud top bar).
-const APP_SHELL_VERSION = 'tg-v20-101';
+const APP_SHELL_VERSION = 'tg-v20-102';
 { const _sv = document.getElementById('stVersion');
   if(_sv) _sv.textContent = 'TrailGauge ' + APP_SHELL_VERSION; }
 
