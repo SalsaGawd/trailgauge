@@ -1389,6 +1389,14 @@ body.prof-trail.trip-active #actionBar #pinPostBtn{display:none}
 /* Format (orientation) picker — Landscape / Portrait / Square. */
 #pcFmtLbl{font-family:var(--fm);font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--txt3)}
 #pcFormatPick{display:flex;gap:8px}
+/* Editable place-name field — overrides the geocoded name on the postcard (display
+   only; never persisted to the pin). Coords are separate + immutable. */
+#pcNameLbl{font-family:var(--fm);font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--txt3)}
+#pcNameInput{width:100%;box-sizing:border-box;background:var(--card);border:1px solid var(--border);
+  border-radius:10px;color:var(--txt);font-family:var(--fm);font-size:13px;padding:9px 12px;
+  outline:none;-webkit-appearance:none;appearance:none}
+#pcNameInput:focus{border-color:var(--accent)}
+#pcNameInput::placeholder{color:var(--txt3)}
 .pcFmtBtn{flex:1;background:var(--card);border:1px solid var(--border);border-radius:10px;
   color:var(--txt2);font-family:var(--fd);font-size:15px;font-weight:700;padding:8px 4px;
   cursor:pointer;-webkit-tap-highlight-color:transparent;display:flex;flex-direction:column;
@@ -2342,6 +2350,8 @@ textarea.pinInput{resize:vertical;min-height:60px;font-family:var(--fm)}
         <button class="pcFmtBtn" data-fmt="portrait" type="button">▯<span>Portrait</span></button>
         <button class="pcFmtBtn" data-fmt="square" type="button">◻<span>Square</span></button>
       </div>
+      <div id="pcNameLbl">📍 Place name</div>
+      <input type="text" id="pcNameInput" maxlength="40" placeholder="Name this spot…" autocomplete="off">
       <div id="pcPhotoSrc">
         <button id="pcSrcPin" class="pcSrcBtn" type="button">📌 Use Pin Photo</button>
         <button id="pcSrcLib" class="pcSrcBtn" type="button">📷 Add Photo</button>
@@ -5945,6 +5955,11 @@ let _pcStockUrl = null;     // object URL for the stock share-card image (revoke
 let _pcBgMode = 'photo';    // 'photo' (default) | 'stock'
 let _pcPhotoUrl = null;     // chosen front photo (data URL, in-memory only)
 let _pcSigData = null;      // captured signature image (high-res data URL) | null
+// Designer-scoped place-name OVERRIDE — replaces the geocoded name on every surface
+// for THIS postcard only. null = "use the resolved pin.label/geocode default"; a
+// string (incl. '') = the user's text. NEVER written back to _pcPin.label or pinPut.
+let _pcLabelOverride = null;
+let _pcNameUserEdited = false;   // once true, a late-arriving geocode won't clobber the field
 
 // Printed-card message cap. Tuned to what fits the back's message area at a
 // READABLE print size (no auto-shrink) — ~250 chars ≈ a clean, full-but-legible
@@ -6025,6 +6040,10 @@ function _modTokens(norm){
 // trailing) so inflections fuck/fucking/fucker block; no innocent English word starts
 // with this pattern, so no Scunthorpe risk.
 const _FWORD_RE = /(?:^|[^a-z0-9])f+[u4]+[c(]+k+/;
+// PHASE 1 client-side filter (bypassable). PHASE 2 at fulfillment: re-run
+// server-side, log flagged attempts for abuse review (incl. retard/bitch
+// 'monitor-not-block' decisions), close symbol-as-vowel gap (f@ck/f*ck allowed
+// client-side by design). See launch roadmap Tier 3.1b.
 // Returns { clean:boolean, category:'slur'|'explicit'|'profanity'|null }.
 function checkProfanity(text){
   if(!text) return { clean: true, category: null };
@@ -6169,10 +6188,18 @@ function _txt(ctx, str, x, y, font, color, o){
 // tilt, summit). Trip-only fields (distance/gain/time) intentionally absent.
 function _pcModel(pin){
   pin = pin || {};
-  const raw = (pin.label && !_pcIsPlaceholderLabel(pin.label)) ? pin.label : '';
-  const parts = raw.split(',').map(s => s.trim()).filter(Boolean);
-  const name = parts[0] || 'Saved Pin';
-  const region = parts.slice(1).join(' · ').toUpperCase();
+  let name, region;
+  if(_pcLabelOverride !== null){
+    // User override REPLACES the place name entirely; the geocoded region is NOT
+    // shown alongside the user's correction (M.region = '').
+    name = _pcLabelOverride.trim();
+    region = '';
+  } else {
+    const raw = (pin.label && !_pcIsPlaceholderLabel(pin.label)) ? pin.label : '';
+    const parts = raw.split(',').map(s => s.trim()).filter(Boolean);
+    name = parts[0] || 'Saved Pin';
+    region = parts.slice(1).join(' · ').toUpperCase();
+  }
   const lat = (typeof pin.lat === 'number') ? pin.lat : 0;
   const lon = (typeof pin.lon === 'number') ? pin.lon : 0;
   const elevFt = (pin.elev != null) ? Math.round(pin.elev * 3.28084) : null;
@@ -6544,6 +6571,29 @@ function _pcBuildStyleThumbs(){
     t.classList.toggle('on', _pcBgMode === 'stock' && t.dataset.style === _pcStyle));
 }
 
+// Effective place name for the DOM surfaces (front overlay + back footer): the
+// designer override when the user has edited (incl. '' = intentionally blank),
+// otherwise the pin's resolved name (placeholder = none yet). Display only.
+function _pcEffectiveName(){
+  if(_pcLabelOverride !== null) return _pcLabelOverride.trim();
+  if(!_pcPin || _pcIsPlaceholderLabel(_pcPin.label)) return '';
+  return _pcPin.label;
+}
+// Repaint the DOM name+coords surfaces from the effective name. Coords are always
+// computed from _pcPin.lat/lon (immutable) and shown regardless of the name.
+function _pcApplyLabel(){
+  if(!_pcPin) return;
+  const coords = fmtLatLon(_pcPin.lat, _pcPin.lon);
+  let dateStr = '';
+  try { dateStr = new Date(_pcPin.createdAt || Date.now()).toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric'}); } catch(_){}
+  const footTail = coords + (dateStr ? '  ·  ' + dateStr : '');
+  const name = _pcEffectiveName();
+  const fc = document.getElementById('pcFrontCoords');
+  if(fc) fc.innerHTML = (name ? '<b>' + escapeHtml(name) + '</b><br>' : '') + coords;
+  const fm = document.getElementById('pcFootMeta');
+  if(fm) fm.textContent = (name ? name + '  ·  ' : '') + footTail;
+}
+
 async function openPostcardDesigner(pin){
   if(!pin || !_pcEl) return;
   _pcPin = pin;
@@ -6554,28 +6604,27 @@ async function openPostcardDesigner(pin){
   // pin-drop resolves in the background). The "Trail Pin · 2:15am" auto label is
   // a placeholder, not a real name — treat it as "no name yet" and fall back to
   // the timestamp/coords only when no place name is (or becomes) available.
-  const coords = fmtLatLon(pin.lat, pin.lon);
-  let dateStr = '';
-  try { dateStr = new Date(pin.createdAt || Date.now()).toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric'}); } catch(_){}
-  const footTail = coords + (dateStr ? '  ·  ' + dateStr : '');
-  function applyPcLabel(name){
-    // FRONT overlay — the framed side leads with the place name + coordinates.
-    document.getElementById('pcFrontCoords').innerHTML =
-      (name ? '<b>' + escapeHtml(name) + '</b><br>' : '') + coords;
-    // BACK printed meta — lead with the place name when known; coords · date otherwise.
-    document.getElementById('pcFootMeta').textContent = (name ? name + '  ·  ' : '') + footTail;
-  }
-  const knownName = _pcIsPlaceholderLabel(pin.label) ? null : pin.label;
-  applyPcLabel(knownName);
-  // Only a placeholder so far → resolve the real place name now and swap it in
-  // when it lands (guarded so a stale lookup can't relabel a different pin).
-  if(knownName == null){
+  // Editable place name — start with NO override (use the resolved default) and a
+  // clean edit flag. Pre-fill the input with the resolved name (blank if only the
+  // placeholder so far). The override is display-only and never persisted.
+  _pcLabelOverride = null;
+  _pcNameUserEdited = false;
+  const knownName = _pcIsPlaceholderLabel(pin.label) ? '' : pin.label;
+  const nameInput = document.getElementById('pcNameInput');
+  if(nameInput) nameInput.value = knownName;
+  _pcApplyLabel();
+  // Only a placeholder so far → resolve the real place name now and swap it in when
+  // it lands (guarded so a stale lookup can't relabel a different pin). This writes
+  // the resolved name to the PIN (its genuine name) — NOT the user's override; and
+  // it won't clobber the field if the user has already typed something.
+  if(knownName === ''){
     const reqPin = pin;
     tryReverseGeocode(pin.lat, pin.lon).then(name => {
       if(name && _pcPin === reqPin){
         reqPin.label = name; reqPin.updatedAt = Date.now();
         try { pinPut(reqPin); } catch(_){}
-        applyPcLabel(name);
+        if(!_pcNameUserEdited && nameInput) nameInput.value = name;
+        _pcApplyLabel();
       }
     }).catch(() => {});
   }
@@ -6815,6 +6864,18 @@ function _pcCommitSigOverlay(){
     document.getElementById('pcMsgCount').textContent = String(PC_MSG_MAX - msg.value.length);
   });
 
+  // Editable place name — the user's text overrides the geocoded name on every
+  // surface (display only; _pcPin.label is never touched). Re-render BOTH paths:
+  // DOM (front overlay + back footer) and canvas (stock front + thumbnails).
+  const nameInput = document.getElementById('pcNameInput');
+  if(nameInput) nameInput.addEventListener('input', () => {
+    _pcLabelOverride = nameInput.value;   // '' is a valid override (blank name, coords stay)
+    _pcNameUserEdited = true;
+    _pcApplyLabel();                      // DOM surfaces
+    _pcRenderStock();                     // canvas stock front (reads override via _pcModel)
+    _pcBuildStyleThumbs();                // thumbnails reflect the new name
+  });
+
   // Format (orientation) picker — Landscape / Portrait / Square (native buttons →
   // click is reliable on iOS). Re-renders the front + sets the card aspect ratio.
   document.querySelectorAll('.pcFmtBtn').forEach(b => {
@@ -6854,12 +6915,16 @@ function _pcCommitSigOverlay(){
   if(nextBtn) nextBtn.addEventListener('click', () => {
     const hint = document.getElementById('pcHint');
     const message = (document.getElementById('pcMsg') || {}).value || '';
+    const placeName = (document.getElementById('pcNameInput') || {}).value || '';
 
-    // GATE 1 — content moderation. Block before building the design / any future
-    // payment+Stannp step. Generic, non-judgmental copy that never echoes the term.
-    const mod = checkProfanity(message);
-    if(!mod.clean){
-      hint.textContent = 'Please revise your message before continuing — it contains language we can’t print.';
+    // GATE 1 — content moderation. Both the printed MESSAGE and the printed PLACE
+    // NAME are free-text, so filter both. Block before building the design / any
+    // future payment+Stannp step. Generic copy that never echoes the term.
+    const modLabel = checkProfanity(placeName);
+    const modMsg = checkProfanity(message);
+    if(!modLabel.clean || !modMsg.clean){
+      const what = !modLabel.clean ? 'place name' : 'message';
+      hint.textContent = 'Please revise your ' + what + ' before continuing — it contains language we can’t print.';
       return;
     }
 
@@ -6871,6 +6936,7 @@ function _pcCommitSigOverlay(){
         size: _pcSize,
         bg: _pcBgMode,
         photo: (_pcBgMode === 'photo') ? _pcPhotoUrl : null,
+        placeName: _pcEffectiveName(),    // display-only label (override or resolved); pin.label untouched
         message: message,
         signature: _pcSigData
       };
@@ -12419,7 +12485,7 @@ startGPS();
 // Loaded-shell version string. Lives in index.html so it reflects the ACTUAL
 // loaded shell, and MUST be bumped in lockstep with sw.js CACHE_VERSION. Rendered
 // as a small, dim line at the bottom of Settings (no longer a loud top bar).
-const APP_SHELL_VERSION = 'tg-v20-102';
+const APP_SHELL_VERSION = 'tg-v20-103';
 { const _sv = document.getElementById('stVersion');
   if(_sv) _sv.textContent = 'TrailGauge ' + APP_SHELL_VERSION; }
 
